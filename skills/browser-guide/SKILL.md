@@ -29,8 +29,8 @@ camoufox-cli --session <name> [--persistent] [--headed] [--json] <command> [args
 
 - **`--session <name>`**：会话隔离单元，同名 session 共享一个 profile 目录。**涉及登录的平台用一个且只用一个持久化 session 名**。
 - **`--persistent`**：冻结指纹到 `~/.camoufox-cli/profiles/<name>/camoufox-cli.json`（首次生成后冻结）。持久化平台 session 必带；临时性 session（新闻等不登录站点）**不带**——走默认临时 profile，每次随机指纹，关闭自清。
-- **`--headed`**：有头模式。**需要用户配合过验证码、扫码、收短信的，或者填表场景，必须 `--headed`**。例外：**微信公众号 wx_mp** 可无头截含二维码区域截图发用户登录；**微信视频号 wechat-channel / 微博 / 闲鱼等扫码登录页无法无头截 QR，必须 `--headed` 弹窗让用户在浏览器里手动扫码**。其他场景，包括探活，都可以使用默认的无头模式。
-- **`--viewport <WxH>`**：固定窗口尺寸，如 `1920x1080`。camoufox 默认按指纹给**移动端窗口比例**，导致有头登录时二维码看不全；有头扫码登录（微博 / 闲鱼 / 视频号等）一律加 `--viewport 1920x1080` 强制桌面比例。业务无头操作无需此 flag。
+- **`--headed`**：有头模式。**需要用户配合过验证码、收短信的，或者填表场景，必须 `--headed`**。例外：**微信公众号 wx_mp 与微信视频号 wechat-channel** 可无头截图二维码发用户远程扫码（按各自专家包约定：截 QR PNG 发用户聊天窗口 → 用户手机扫码 → 轮询 URL 确认登录就位）；无头下二维码渲染失败（等 10s 仍无 QR img、截图空白或「加载失败」）才 teardown 换 `--headed` 弹窗兜底。**微博 / 闲鱼等扫码登录页维持必须 `--headed`** 弹窗让用户在浏览器里手动扫码。其他场景，包括探活，都可以使用默认的无头模式。
+- **`--viewport <WxH>`**：固定窗口尺寸，如 `1920x1080`。camoufox 默认按指纹给**移动端窗口比例**，导致有头登录时二维码看不全；`--headed` 兜底扫码登录（微博 / 闲鱼等）或窗口内容看不全时加 `--viewport 1920x1080` 强制桌面比例。业务无头操作无需此 flag。
 - **`--json`**：命令输出走 JSON 信封（`{ok, ...}` / `{error, ...}`），agent 解析稳定，推荐常带。
 - 命令集（含 `upload` / `identity export`）：
   `open / back / forward / reload / url / title / close / snapshot / click / fill / type / select / check / hover / press / text / eval / screenshot / pdf / scroll / wait / tabs / switch / close-tab / sessions / cookies / install / upload / identity`

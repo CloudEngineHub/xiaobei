@@ -36,7 +36,7 @@
 
 ### Step 3: 逐内容互动
 
-对每个搜索到的内容，按配置的互动策略执行。通用要求：输入使用 `type` + `slowly: true`，不要用 `fill()`。
+对每个搜索到的内容，按配置的互动策略执行。通用要求：输入使用 `type` + `slowly: true`，不要用 `fill()`。**X/Twitter 例外**：评论/回复含中文/日文/韩文时**禁用 `type`**（camoufox-cli `type` 逐字符按键流与 X Draft.js 异步处理竞态，中文实测丢字+乱序）——按 `expert-twitter/tools/twitter-post/SKILL.md`「CJK 正文输入与校验闸门」改用 eval + `document.execCommand("insertText")` + 发布前校验 MATCH。X 回复应走平台表中 `twitter-post` Reply workflow，同样适用该闸门。
 
 #### 策略 A：直接留言（direct_comment）
 

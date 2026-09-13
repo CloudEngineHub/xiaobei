@@ -153,9 +153,9 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 
 **其他场景默认走 camoufox 持久化 session，不显式指定有头/无头**——camoufox-cli 默认行为即可（headless 是默认）。
 
-**browser-guide §1-B 那句「wechat-channel / wx-mp 可无头启动截图发 QR；douyin / twitter / xhs / weibo / zhihu / xianyu / reddit / youtube 登录必须有头模式」要改**：
-- wx-mp 那个无头特例只属于 wx-mp-hunter/engagement 的自有体系，不属于 login-manager 体系，不应在 browser-guide 里和 wechat-channel 并列提。
-- wechat-channel（视频号）扫码登录页**无法无头截 QR**，必须 `--headed --viewport 1920x1080` 弹窗手动扫码（同 weibo / xianyu），按现行 wechat-channels-publish 技能自有 SKILL.md 走。
+**browser-guide §1-B 有头/无头规则（2026-09-13 实测修正）**：
+- wx-mp 无头特例只属于 wx-mp-hunter/engagement 的自有体系，不属于 login-manager 体系，browser-guide 里与 wechat-channel 并列标注「按各自专家包约定走无头截 QR」。
+- wechat-channel（视频号）与 wx-mp 同模式：**无头截 QR 发用户扫码**（2026-09-13 实测无头二维码完整渲染可扫；此前「视频号无法无头截 QR、必须 --headed」说法是早期失败残留，同日有头窗口的二维码加载失败实为代理 fake-ip 拦截，与有头/无头模式无关）。按 wechat-channels-publish / wx-channel-engagement 技能自有 SKILL.md 的无头截图扫码登录流走；无头渲染失败才 `--headed` 兜底。
 
 ## 8. published-track 流程 2A·自动更新（定时任务用）取数方案
 
