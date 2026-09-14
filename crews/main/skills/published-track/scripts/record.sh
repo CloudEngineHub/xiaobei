@@ -40,6 +40,45 @@ ensure_v3_columns() {
   done
 }
 
+# --help/-h is a usage probe; honor it before the DB check so it works without a DB.
+for arg in "$@"; do
+  if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+    cat <<'EOF'
+用法: record.sh --platform <name> --title <text> --content-type <article|video|post> --source-folder <folder> [可选参数...]
+
+发布记录入库（upsert 到 pub_<platform>）。去重键 (source_folder, publish_date)：
+同作品同平台同天重跑 → 更新原行不重复插行；不同 publish_date（补发/再发布）→ 新建行。
+
+必填:
+  --platform <name>        平台表后缀（落 pub_<name>，如 xhs / wx_channel / douyin）。
+  --title <text>           标题。⚠️ wx_channel 必须传完整视频描述（含 hashtag，约 300 字），
+                           不是短标题——engagement 抓取按它匹配后台作品；短标题不入库。
+  --content-type <type>    article | video | post。
+  --source-folder <folder> 作品目录（绝对路径，或相对 workspace 根）。目录内有
+                           dna-meta.json 且未传 --dna-id 时自动从中读 dna_id。
+
+可选:
+  --publish-url <url>      公开链接（如 https://weixin.qq.com/sph/xxx）。发布时没拿到的，
+                           后续用相同 --source-folder 重跑本命令补传（upsert 更新原行）。
+  --publish-date <YYYY-MM-DD>  缺省为今天。当天发布不要传此参数；
+                           ❌ 禁止传 "$(date +%Y-%m-%d)"——exec 沙箱不展开 $()。
+  --notes <text>           备注。
+  --distribute-status <n>  0=待分发（默认）| 1=不分发 | 2=已分发。
+  --dna-id <id>            显式指定 DNA id，优先于 dna-meta.json 自动读取。
+  --account <alias>        发布所用账号 alias（如 wx_mp accounts.json 的 alias）。
+
+示例:
+  record.sh --platform wx_channel --title "完整视频描述... #话题" --content-type video \
+    --source-folder wx_channel/outputs/my-video/ --account xiaobei
+  record.sh --platform xhs --title "标题" --content-type post --source-folder xhs/outputs/abc/ \
+    --publish-url "https://www.xiaohongshu.com/..."
+
+输出: stdout JSON。成功 {"ok":true,"action":"inserted|updated",...}，失败 {"ok":false,"error":...}。
+EOF
+    exit 0
+  fi
+done
+
 if [ ! -f "$DB" ]; then
   bash "$(dirname "$0")/init-db.sh"
 fi
