@@ -35,14 +35,9 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 ## 🚀 **v5.7.1 更新**
 
 - 小红书、抖音、视频号 DNA系统升级到2.0架构，Let's do this like an expert！
-- content producer 升级为专家系统，现在除了AIGC大片外，还可以复刻众多短视频平台流行的“套路”，摆脱“低创”、限流：
-  > 默认模式 - AIGC大片：小贝宣传片
-  >  - YouTube：https://youtu.be/eK8aWWCNVZQ?si=K-MbWai-j6ydqCdy
-  >  - bilibili：https://www.bilibili.com/video/BV1euMR6PEDh
-
-  > 套路一 - 贴纸人
-  
-  > 套路二 - “万万没想到”
+- content producer 升级为专家系统，现在除了AIGC大片外，还可以复刻众多短视频平台流行的“套路”，更易获得平台推荐流量：
+  > 效果展示，xiaobei的视频号：https://openclaw-for-business.com/xiaobei-wxchannel.jpg
+- xiaobei 可直接指挥content producer，用户可选择将brief出具、节点验收等委托xiaobei
 - 修复一键安装脚本中，openclaw-weixin不会自动升级的问题
 
 详见 [CHANGELOG.md](CHANGELOG.md)
