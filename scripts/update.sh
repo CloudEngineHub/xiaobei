@@ -1,11 +1,15 @@
 #!/bin/bash
-# update.sh - wiseflow 升级脚本（已 git clone 用户用）
+# update.sh - wiseflow 升级脚本（git clone 源码路线用户用）
 #
-# 与 scripts/install.sh 区别：
-#   - install.sh = curl 首装路线（从零开始，clone 仓 → build → onboard）
-#   - update.sh  = 已 git clone 用户的升级路线（fetch + reset → checkout openclaw → build → daemon reload）
+# 与 scripts/install.sh 区别（两条互不混用的分发路线）：
+#   - install.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → daemon restart，全程无需用户预装 Node/git/pnpm）
+#   - update.sh  = 本脚本，git clone 源码用户的升级路线（fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
-# 适用场景：用户已通过 install.sh 装好 wiseflow，后续要拉新版本用此脚本。
+# 适用场景：用户是 git clone 本仓装的（项目目录内有 .git），后续要拉新版本用此脚本。
+#   ⚠️ 通过 install.sh 以 tarball 装的机器**不要**用本脚本——重跑 install.sh 即可升级。
+#   本脚本对无 .git 的目录会 git init + fetch + reset --hard，等于把 tarball 安装转成源码路线，
+#   并要求系统 Node/git/pnpm 11+ 自行 build，恰是 tarball 用户特意绕开的依赖。
+#
 # 升级前请确保系统空闲（无 agent 会话正在处理任务）。
 #
 # 执行流程：
