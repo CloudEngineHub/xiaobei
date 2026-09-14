@@ -8,9 +8,9 @@
 #   bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
 #   bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)" -s -- [options]
 #
-# 与 update.sh 区别：
-#   - install-atomgit.sh = 首装路线（拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
-#   - update.sh  = 已装用户的升级路线（拉新 tarball → pnpm install --prod → daemon reload）
+# 与 update.sh 区别（两条互不混用的分发路线）：
+#   - install-atomgit.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
+#   - update.sh          = git clone 源码用户的升级路线（git fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
 # 执行流程：
 #   1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
@@ -503,14 +503,6 @@ install_python_deps() {
     ui_success "Python deps done"
 }
 
-run_remote_bash() {
-    local url="$1"
-    local tmp
-    tmp="$(mktempfile)"
-    download_file "$url" "$tmp"
-    /bin/bash "$tmp"
-}
-
 # ═══════════════════════════════════════════════════════════════════
 # UI helpers
 # ═══════════════════════════════════════════════════════════════════
@@ -695,10 +687,6 @@ run_required_step() {
     exit 1
 }
 
-refresh_shell_command_cache() {
-    hash -r 2>/dev/null || true
-}
-
 is_promptable() {
     if [[ "$NO_PROMPT" == "1" ]]; then
         return 1
@@ -707,20 +695,6 @@ is_promptable() {
         return 0
     fi
     return 1
-}
-
-is_root() {
-    [[ "$(id -u 2>/dev/null || echo 1)" -eq 0 ]]
-}
-
-require_sudo() {
-    if is_root; then
-        return 0
-    fi
-    if ! command -v sudo >/dev/null 2>&1; then
-        ui_error "sudo required but not available"
-        exit 1
-    fi
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -948,7 +922,6 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
 VERBOSE=0
 NO_PROMPT=0
-USE_LOCAL=false
 FORCE_RUNTIME=false
 SKIP_WEIXIN_BIND=false
 SKIP_BROWSER=false
@@ -969,12 +942,6 @@ parse_args() {
                 # 强覆盖已有运行数据（~/.openclaw/openclaw.json + workspace-* + daemon.env）
                 # 默认已装机器重跑 install 只更新 program（tarball）+ rebuild deps，不碰运行数据
                 FORCE_RUNTIME=true
-                shift
-                ;;
-            --use-local)
-                # 复用 WISEFLOW_ROOT 已有的本地 wiseflow checkout，跳 clone/fetch，保本地改动
-                # 主要给开发/调试场景：在仓内跑 install.sh 验流程，不想被 fetch+reset 盖掉改动
-                USE_LOCAL=true
                 shift
                 ;;
             --skip-bind)

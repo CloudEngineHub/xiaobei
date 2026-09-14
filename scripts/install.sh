@@ -4,9 +4,9 @@
 # 用法：
 #   curl -fsSL https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.sh | bash
 #
-# 与 update.sh 区别：
-#   - install.sh = 首装路线（拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
-#   - update.sh  = 已装用户的升级路线（拉新 tarball → pnpm install --prod → daemon reload）
+# 与 update.sh 区别（两条互不混用的分发路线）：
+#   - install.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
+#   - update.sh  = git clone 源码用户的升级路线（git fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
 # 执行流程：
 #   1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
@@ -491,14 +491,6 @@ install_python_deps() {
     ui_success "Python deps done"
 }
 
-run_remote_bash() {
-    local url="$1"
-    local tmp
-    tmp="$(mktempfile)"
-    download_file "$url" "$tmp"
-    /bin/bash "$tmp"
-}
-
 # ═══════════════════════════════════════════════════════════════════
 # UI helpers
 # ═══════════════════════════════════════════════════════════════════
@@ -683,10 +675,6 @@ run_required_step() {
     exit 1
 }
 
-refresh_shell_command_cache() {
-    hash -r 2>/dev/null || true
-}
-
 is_promptable() {
     if [[ "$NO_PROMPT" == "1" ]]; then
         return 1
@@ -695,363 +683,6 @@ is_promptable() {
         return 0
     fi
     return 1
-}
-
-is_root() {
-    [[ "$(id -u 2>/dev/null || echo 1)" -eq 0 ]]
-}
-
-require_sudo() {
-    if is_root; then
-        return 0
-    fi
-    if ! command -v sudo >/dev/null 2>&1; then
-        ui_error "sudo required but not available"
-        exit 1
-    fi
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# Homebrew（mac 才用）
-# ═══════════════════════════════════════════════════════════════════
-is_macos_admin_user() {
-    local groups
-    groups="$(id -Gn 2>/dev/null || true)"
-    if [[ "$groups" == *"admin"* ]]; then
-        return 0
-    fi
-    return 1
-}
-
-print_homebrew_admin_fix() {
-    ui_error "Homebrew install requires an admin user"
-    echo "Add your user to the 'admin' group or run as admin: sudo dscl . -append /Users/$(id -un) GroupMembership admin"
-}
-
-install_homebrew() {
-    if [[ "$OS" == "macos" ]]; then
-        if ! command -v brew &> /dev/null; then
-            if ! is_macos_admin_user; then
-                print_homebrew_admin_fix
-                exit 1
-            fi
-            ui_info "Homebrew not found, installing"
-            run_quiet_step "Installing Homebrew" run_remote_bash "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
-
-            # Add Homebrew to PATH for this session
-            if [[ -f "/opt/homebrew/bin/brew" ]]; then
-                eval "$(/opt/homebrew/bin/brew shellenv)"
-            elif [[ -f "/usr/local/bin/brew" ]]; then
-                eval "$(/usr/local/bin/brew shellenv)"
-            fi
-            ui_success "Homebrew installed"
-        else
-            ui_success "Homebrew already installed"
-        fi
-    fi
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# Node.js
-# ═══════════════════════════════════════════════════════════════════
-parse_node_version_components_for_binary() {
-    local node_bin="${1:-node}"
-    if ! command -v "$node_bin" &> /dev/null && [[ ! -x "$node_bin" ]]; then
-        return 1
-    fi
-    local version major minor
-    version="$("$node_bin" -v 2>/dev/null || true)"
-    major="${version#v}"
-    major="${major%%.*}"
-    minor="${version#v}"
-    minor="${minor#*.}"
-    minor="${minor%%.*}"
-
-    if [[ ! "$major" =~ ^[0-9]+$ ]]; then
-        return 1
-    fi
-    if [[ ! "$minor" =~ ^[0-9]+$ ]]; then
-        return 1
-    fi
-    echo "${major} ${minor}"
-    return 0
-}
-
-parse_node_version_components() {
-    if ! command -v node &> /dev/null; then
-        return 1
-    fi
-    parse_node_version_components_for_binary node
-}
-
-node_major_version() {
-    local version_components major minor
-    version_components="$(parse_node_version_components || true)"
-    read -r major minor <<< "$version_components"
-    if [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]]; then
-        echo "$major"
-        return 0
-    fi
-    return 1
-}
-
-node_is_at_least_required() {
-    local version_components major minor
-    version_components="$(parse_node_version_components || true)"
-    read -r major minor <<< "$version_components"
-    if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ ]]; then
-        return 1
-    fi
-    if [[ "$major" -gt "$NODE_MIN_MAJOR" ]]; then
-        return 0
-    fi
-    if [[ "$major" -eq "$NODE_MIN_MAJOR" && "$minor" -ge "$NODE_MIN_MINOR" ]]; then
-        return 0
-    fi
-    return 1
-}
-
-prepend_path_dir() {
-    local dir="${1%/}"
-    if [[ -z "$dir" || ! -d "$dir" ]]; then
-        return 1
-    fi
-    local current=":${PATH:-}:"
-    current="${current//:${dir}:/:}"
-    current="${current#:}"
-    current="${current%:}"
-    if [[ -n "$current" ]]; then
-        export PATH="${dir}:${current}"
-    else
-        export PATH="${dir}"
-    fi
-    refresh_shell_command_cache
-}
-
-check_node() {
-    if command -v node &> /dev/null; then
-        NODE_VERSION="$(node_major_version || true)"
-        if node_is_at_least_required; then
-            ui_success "Node.js v$(node -v | cut -d'v' -f2) found"
-            return 0
-        else
-            if [[ -n "$NODE_VERSION" ]]; then
-                ui_info "Node.js $(node -v) found, upgrading to v${NODE_MIN_VERSION}+"
-            else
-                ui_info "Node.js found but version could not be parsed; reinstalling v${NODE_MIN_VERSION}+"
-            fi
-            return 1
-        fi
-    else
-        ui_info "Node.js not found, installing it now"
-        return 1
-    fi
-}
-
-install_node() {
-    if [[ "$OS" == "macos" ]]; then
-        ui_info "Installing Node.js via Homebrew"
-        if ! run_quiet_step "Installing node@${NODE_DEFAULT_MAJOR}" brew install "node@${NODE_DEFAULT_MAJOR}"; then
-            echo "Re-run with --verbose or run 'brew install node@${NODE_DEFAULT_MAJOR}' directly, then rerun the installer."
-            exit 1
-        fi
-        brew link "node@${NODE_DEFAULT_MAJOR}" --overwrite --force 2>/dev/null || true
-        ui_success "Node.js installed"
-    elif [[ "$OS" == "linux" ]]; then
-        require_sudo
-        ui_info "Installing Node.js on Linux"
-        # 走 NodeSource 官方安装脚本（稳定跨发行版）
-        if ! run_quiet_step "Installing Node.js ${NODE_DEFAULT_MAJOR}.x via NodeSource" \
-            run_remote_bash "https://deb.nodesource.com/setup_${NODE_DEFAULT_MAJOR}.x"; then
-            ui_error "NodeSource setup script failed"
-            exit 1
-        fi
-        if command -v apt-get &> /dev/null; then
-            run_required_step "Installing nodejs" apt-get install -y nodejs
-        elif command -v dnf &> /dev/null; then
-            run_required_step "Installing nodejs" dnf install -y nodejs
-        elif command -v yum &> /dev/null; then
-            run_required_step "Installing nodejs" yum install -y nodejs
-        else
-            ui_error "Unsupported Linux distribution for Node.js auto-install"
-            echo "Install Node.js ${NODE_DEFAULT_MAJOR} manually then rerun."
-            exit 1
-        fi
-        ui_success "Node.js installed"
-    else
-        ui_error "Unsupported OS for Node.js install: $OS"
-        exit 1
-    fi
-
-    if ! node_is_at_least_required; then
-        local active_path active_version
-        active_path="$(command -v node 2>/dev/null || echo "not found")"
-        active_version="$(node -v 2>/dev/null || echo "missing")"
-        ui_error "Installed Node.js must be v${NODE_MIN_VERSION}+ but this shell is using ${active_version} (${active_path})"
-        exit 1
-    fi
-    ui_success "Node.js v$(node -v | cut -d'v' -f2) ready"
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# Git
-# ═══════════════════════════════════════════════════════════════════
-check_git() {
-    if command -v git &> /dev/null; then
-        ui_success "Git already installed"
-        return 0
-    fi
-    return 1
-}
-
-install_git() {
-    if [[ "$OS" == "macos" ]]; then
-        install_homebrew
-        run_quiet_step "Installing Git" brew install git
-    elif [[ "$OS" == "linux" ]]; then
-        require_sudo
-        if command -v apt-get &> /dev/null; then
-            run_required_step "Installing git" apt-get install -y git
-        elif command -v dnf &> /dev/null; then
-            run_required_step "Installing git" dnf install -y git
-        elif command -v yum &> /dev/null; then
-            run_required_step "Installing git" yum install -y git
-        elif command -v apk &> /dev/null; then
-            run_required_step "Installing git" apk add --no-cache git
-        else
-            ui_error "Unsupported Linux distribution for git auto-install"
-            exit 1
-        fi
-    fi
-    ui_success "Git installed"
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# pnpm
-# ═══════════════════════════════════════════════════════════════════
-# 与 openclaw/package.json 的 packageManager pin 保持同步（apply-addons.sh 的依赖
-# 同步用了 pnpm 11 的 install CLI flags——如 --fetch-retries，pnpm 10.x 不认会炸）。
-# 升级 openclaw 换 pin 时此处要跟着改。
-PNPM_VERSION="${OPENCLAW_PNPM_VERSION:-11.2.2}"
-
-# 在无 packageManager pin 的目录下探测 pnpm 真实安装版本。
-# pnpm ≥11 默认开 manage-package-manager-versions，在带 pin 的目录里
-# `pnpm --version` 返回 pin 版本而非实际安装的版本，版本判断会被骗。
-pnpm_real_version() {
-    (cd / && pnpm --version 2>/dev/null) || true
-}
-
-install_pnpm() {
-    local required_major installed_major
-    required_major="${PNPM_VERSION%%.*}"
-    installed_major="$(pnpm_real_version | cut -d. -f1)"
-    if command -v pnpm >/dev/null 2>&1 && [ "${installed_major:-0}" -ge "$required_major" ]; then
-        ui_success "pnpm already installed ($(pnpm_real_version || echo unknown))"
-        return 0
-    fi
-    if command -v pnpm >/dev/null 2>&1; then
-        ui_info "Upgrading pnpm to ${PNPM_VERSION} (found $(pnpm_real_version || echo unknown); openclaw 工作区需要 pnpm ${required_major}+)"
-    else
-        ui_info "Installing pnpm@${PNPM_VERSION} globally"
-    fi
-    # 用 corepack 路线（与 openclaw 仓 packageManager 对齐，最稳）
-    if command -v corepack >/dev/null 2>&1; then
-        run_required_step "Enabling corepack" corepack enable
-        run_required_step "Preparing pnpm@${PNPM_VERSION}" corepack prepare "pnpm@${PNPM_VERSION}" --activate
-    else
-        # corepack 不可用回退 npm 全局装（走阿里云镜像，国内用户裸跑 npm registry 慢得离谱）
-        run_required_step "Installing pnpm via npm" npm install -g "pnpm@${PNPM_VERSION}" --registry=https://registry.npmmirror.com
-    fi
-    if ! command -v pnpm >/dev/null 2>&1; then
-        ui_error "pnpm install failed"
-        exit 1
-    fi
-    ui_success "pnpm ready ($(pnpm --version))"
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# wiseflow clone + checkout openclaw
-# ═══════════════════════════════════════════════════════════════════
-# 三个分支：
-#   1. --use-local + WISEFLOW_ROOT 已是 wiseflow 仓 → 直接复用，跳 clone/fetch（保本地改动）
-#   2. WISEFLOW_ROOT 已是 wiseflow 仓但未开 --use-local → fetch + reset --hard origin/master（覆盖本地改动）
-#   3. WISEFLOW_ROOT 不存在 → git clone
-clone_wiseflow() {
-    local target="$WISEFLOW_ROOT"
-
-    # 分支 1：本地复用
-    if [[ "$USE_LOCAL" == "true" && -d "$target/.git" ]]; then
-        ui_success "Using local wiseflow checkout at $target (--use-local, skipping clone/fetch)"
-        # 验下基本结构，免得跑下去 apply-addons 段才炸
-        if [[ ! -f "$target/scripts/apply-addons.sh" || ! -d "$target/openclaw" ]]; then
-            ui_error "$target is a git checkout but missing scripts/apply-addons.sh or openclaw/ subdir"
-            exit 1
-        fi
-        return 0
-    fi
-
-    # 分支 2：已是仓但没开 --use-local，fetch + reset 走升级路线
-    if [[ -d "$target/.git" ]]; then
-        ui_warn "wiseflow already cloned at $target"
-        if [[ "$USE_LOCAL" != "true" ]]; then
-            ui_warn "Fetching + resetting to origin/master — THIS WILL DISCARD LOCAL CHANGES"
-            ui_warn "Pass --use-local to preserve local working tree"
-            run_quiet_step "Fetching latest wiseflow" git -C "$target" fetch origin master
-            run_required_step "Resetting to origin/master" git -C "$target" reset --hard origin/master
-        fi
-        return 0
-    fi
-
-    # 分支 3：全新 clone
-    if [[ -d "$target" ]]; then
-        ui_error "$target exists but is not a git checkout; refusing to overwrite"
-        echo "Move or remove it, then rerun."
-        exit 1
-    fi
-    run_required_step "Cloning wiseflow repo" git clone "$WISEFLOW_REPO" "$target"
-    ui_success "wiseflow cloned to $target"
-}
-
-checkout_openclaw_at_pin() {
-    local target="$WISEFLOW_ROOT"
-    local version_file="$target/openclaw.version"
-    local openclaw_dir="$target/openclaw"
-
-    if [[ ! -f "$version_file" ]]; then
-        ui_error "openclaw.version missing in cloned wiseflow repo"
-        exit 1
-    fi
-
-    # shellcheck source=/dev/null
-    source "$version_file"
-    if [[ -z "$OPENCLAW_COMMIT" ]]; then
-        ui_error "OPENCLAW_COMMIT not set in openclaw.version"
-        exit 1
-    fi
-
-    ui_info "openclaw target: ${OPENCLAW_VERSION:-unknown} (${OPENCLAW_COMMIT})"
-
-    if [[ ! -d "$openclaw_dir/.git" ]]; then
-        run_required_step "Cloning openclaw upstream" git clone https://github.com/openclaw/openclaw.git "$openclaw_dir"
-    fi
-
-    local current_commit
-    current_commit="$(git -C "$openclaw_dir" rev-parse HEAD 2>/dev/null || echo "")"
-    if [[ "$current_commit" = "$OPENCLAW_COMMIT" ]]; then
-        ui_success "openclaw already at target commit"
-        return 0
-    fi
-
-    # reset 上游到干净状态（之前可能 apply 过 patches）
-    git -C "$openclaw_dir" reset --hard HEAD 2>/dev/null || true
-    git -C "$openclaw_dir" clean -fd 2>/dev/null || true
-
-    if ! git -C "$openclaw_dir" cat-file -e "${OPENCLAW_COMMIT}^{tree}" 2>/dev/null; then
-        ui_info "Fetching openclaw target commit"
-        run_required_step "Fetching openclaw commit" git -C "$openclaw_dir" fetch origin "$OPENCLAW_COMMIT"
-    fi
-    run_required_step "Checking out openclaw@pin" git -C "$openclaw_dir" checkout "$OPENCLAW_COMMIT"
-    ui_success "openclaw checked out at ${OPENCLAW_VERSION:-unknown}"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1279,7 +910,6 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
 VERBOSE=0
 NO_PROMPT=0
-USE_LOCAL=false
 FORCE_RUNTIME=false
 SKIP_WEIXIN_BIND=false
 SKIP_BROWSER=false
@@ -1300,12 +930,6 @@ parse_args() {
                 # 强覆盖已有运行数据（~/.openclaw/openclaw.json + workspace-* + daemon.env）
                 # 默认已装机器重跑 install 只更新 program（tarball）+ rebuild deps，不碰运行数据
                 FORCE_RUNTIME=true
-                shift
-                ;;
-            --use-local)
-                # 复用 WISEFLOW_ROOT 已有的本地 wiseflow checkout，跳 clone/fetch，保本地改动
-                # 主要给开发/调试场景：在仓内跑 install.sh 验流程，不想被 fetch+reset 盖掉改动
-                USE_LOCAL=true
                 shift
                 ;;
             --skip-bind)
