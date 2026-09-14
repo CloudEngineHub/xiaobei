@@ -40,13 +40,15 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
   slideshow-risk       Stage 9  六维幻灯风险打分（pre-compose 闸门）
   delivery-promise-lock Stage 9 交付承诺八类锁定
   render-shot          Stage 10 按 slot 渲染（AIGC i2v / 静图）
+  motion-graphics      Stage 10 程序化逐帧动态图形（声明式 spec；产品段动效/标题动画，与 render-shot 并列的第二条渲染路径）
   mix-audio            Stage 11 旁白（awk-tts）+ BGM + 字幕
-  narration-align      Stage 11 旁白字级时间戳对齐（复用 awk-tts 原生时间戳，缺失回退火山 ASR）
-  clip-trim            Stage 12 精确切素材段（入点/出点/倍速/前置缓冲）
-  audio-mix            Stage 12 多轨混音（每轨独立延时与音量）
+  narration-align      Stage 11 旁白字级时间戳对齐（整段 narration.mp3 模式；复用 awk-tts 原生时间戳，缺失回退火山 ASR）
+  narration-layout     Stage 11 逐句旁白排布 + 防重叠守卫 + 越界断言 + SRT + 可选混音（逐句 mp3 模式）
+  clip-trim            Stage 12 精确切素材段（入点/出点/倍速/归一化/调色/多窗/定帧缓推）
+  audio-mix            Stage 12 多轨混音（每轨独立延时、音量与淡入淡出）
   timeline-compose     Stage 12 按时间轴 JSON 合成片段（内部调 clip-trim + audio-mix）
   scene-compose        Stage 12 单 Scene 分段合成（片段+旁白+对白 → 一个 Scene 片段）
-  assemble             Stage 12 按镜顺序拼接成片 + 转场 + 规格归一化
+  assemble             Stage 12 按镜顺序拼接成片 + 转场 + 规格归一化 + 守卫断言（--manifest/--verify-fps/--expect-durations）
   add-silent-audio     Stage 12 给无音频的视频片段补静音音轨（concat 前置）
   make-outro           Stage 12 片尾制作（形象图+黑边+烧字幕+静音轨 → 标准比例片尾）
   motion-audit         Stage 13 motion_led 抽查（补公共 video-review）

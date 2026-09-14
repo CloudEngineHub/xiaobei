@@ -136,9 +136,13 @@ Stage 9a slideshow-risk     六维幻灯风险打分（pre-compose 闸门，≥4
 Stage 9b delivery-promise-lock 交付承诺八类锁定 + motion_ratio 预估
    ────── GATE B：素材闸门（素材齐+计划过审，停，发甲方看 contact sheet）──────
 Stage 10 render-shot        按 slot 渲染（AIGC 走 aigc-video-gen i2v 首尾帧插值；静图走 siliconflow-img-gen）
+         motion-graphics    Stage 10 第二条渲染路径：程序化逐帧动态图形（声明式 spec，产品段动效/标题动画/
+                            录屏圈选；确定性渲染不走 AIGC，与 render-shot 并列按镜头性质二选一）
 Stage 11 mix-audio          配音配乐四场景分流（A 人物对话声画同出 / B 旁白一次性 TTS 带字级时间戳 + 对齐 /
                             C BGM 成片后统一生成（优先 bgm-library 免版税曲库，pexels/pixabay 并列；定制风格用
                             aigc-video-gen music）/ D 甲方口播录音 → ASR 时间戳 → 按时间戳补素材）
+         narration-layout   逐句 TTS 模式（每句独立 mp3）：对齐镜头起点 + 防重叠守卫 + 越界断言 + SRT + 可选混音；
+                            整段模式的时间戳对齐仍走 narration-align，两者互补
 Stage 12 assemble           按序拼接成片（原子工具箱，见下节，我按场景组合，不写死流程）
 Stage 13a video-review      公共 video-review 技术自检（强制闸门，verdict=pass 才继续）
 Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）
@@ -183,7 +187,9 @@ Stage 14b 交付              回报成片 + 封面 + final-deliver.md 的绝对
 原子子命令（`clip-trim` / `audio-mix` / `timeline-compose` / `scene-compose` / `assemble` / `add-silent-audio` / `make-outro`）的入参与产物见 `video-producer` 工具说明。下面只给组合套路：
 
 - **无旁白直拼**：段就绪、无需切素材与混音 → `assemble <project_dir> --transition fade` 一把过。
-- **有旁白走时间轴**：旁白一次性 TTS + `narration-align` 拿字级时间戳 → 据各段 start/end 定素材入点出点写 `timeline.json` → `timeline-compose`（内部调 clip-trim 切段 + audio-mix 叠旁白）；全片 BGM 走 `timeline.json` 的 `audio_globals` 混入。
+- **有旁白走时间轴（整段模式）**：旁白一次性 TTS + `narration-align` 拿字级时间戳 → 据各段 start/end 定素材入点出点写 `timeline.json` → `timeline-compose`（内部调 clip-trim 切段 + audio-mix 叠旁白）；全片 BGM 走 `timeline.json` 的 `audio_globals` 混入。
+- **逐句旁白守卫排布（逐句模式，解说/反转植入类常用）**：逐句 TTS 出独立 mp3 → 写 `narration_plan.json`（shots 有序清单 + 逐句 file/text/shot_id + BGM + 守卫参数）→ `narration-layout` 出 `abs_starts.json` + SRT + 可选 mix → `assemble --manifest segments.json --verify-fps 25 --expect-durations slots/shotdur.json` 拼接并断言（**不传 --transition，hard 直拼**：fade/xfade 吃重叠会平移时间轴使排布失效）→ `burn-srt --force-style`（样式串直接取 abs_starts.json 的 force_style）→ `normalize`。**守卫断言失败改计划（镜头时长/文案），不放宽容差硬过。**
+- **产品段/标题动态图形**：写 `mg-*.json` spec（四模板或基础元素组合）→ `motion-graphics` 出单段 clip → 段进 manifest 一起 `assemble`。超出模板的特制动画走 spec 的 `custom` 插件逃生舱（plugin 只画帧，编码/checkpoint/时长校验仍在子命令），**不整段手写渲染脚本**。
 - **分段先合再合**：长片或某些段需独立预合 → 写 `scene-01.json`（clips + narration + dialogue）→ `scene-compose` 出 `scene-01.mp4`，同法出 `scene-02.mp4` → 两个 scene 当段素材 `assemble --source-dir scenes --transition fade`。
 - **素材尺寸不一**（AIGC 720x1280 / 录屏 1080x2384 / 片尾 784x1176 混拼）：`assemble --width 1080 --fps 30` 归一化后再 concat。
 - **精确调速某段**：`clip-trim --speed 2 --sync-audio`，快放段当段素材再拼。
@@ -200,7 +206,7 @@ Stage 14b 交付              回报成片 + 封面 + final-deliver.md 的绝对
 
 跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 8/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`siliconflow-img-gen`（静帧、角色三视图、封面，Stage 6/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；`--enable-subtitle` 让火山流式 HTTP 原生返回时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
 
-env 依赖：`AWK_API_KEY`（静帧 / 视频生成）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。缺 env 时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests` 在仓根 `requirements.txt`。机器资源约束（线程数、分辨率上限、低载编码）读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里。
+env 依赖：`AWK_API_KEY`（静帧 / 视频生成）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。缺 env 时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow`（`motion-graphics` 逐帧绘制）在仓根 `requirements.txt`。系统依赖：`motion-graphics` 需要 Noto Sans SC/CJK 字体（探测 `/usr/share/fonts/opentype/noto-sc` 等候选目录，缺失 exit 2；可用 spec `font_dir` 或 env `MG_FONT_DIR` 覆盖）。机器资源约束（线程数、分辨率上限、低载编码）读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里（`motion-graphics` 默认即低载：nice19/veryfast/crf18/threads2）。
 
 ## 禁止事项（强制）
 

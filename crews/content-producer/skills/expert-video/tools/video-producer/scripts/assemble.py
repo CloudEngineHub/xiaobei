@@ -8,11 +8,20 @@ agent 按 SKILL.md 场景化组合调用。
 Usage:
   python3 scripts/assemble.py <project_dir> [--transition hard|fade|dissolve|xfade] [--width 1080] [--fps 30]
 
+  # 显式段清单（手写管线/非常规命名产物，绕开目录发现约定）+ 拼接后帧率断言 + 逐段时长校验
+  python3 scripts/assemble.py <project_dir> --manifest render/segments.json \
+      --verify-fps 25 --expect-durations slots/shotdur.json
+
 入：project_dir/render/ 各 shot-NN/gen*.mp4（段已就绪，assemble 不再切段）
+   或 --manifest 显式有序段清单（JSON 列表，条目为路径字符串或 {"name","path"}，
+   路径相对 project_dir 或绝对；name 缺省取文件 stem，stem 为 clip 时取父目录名）
 出：project_dir/video.mp4（按序拼接的成片）
 
 可选归一化：段尺寸/帧率不一时传 --width/--fps 统一（scale + pad 16:9 + sar + fps）。
 段就绪约定：render/shot-NN/ 下应有 gen*.mp4 或 multi-best*.mp4，assemble 自动识别变体取最新。
+守卫断言：--verify-fps N 拼接后断言 avg_frame_rate==N/1；--expect-durations plan.json
+逐段实测时长 vs 计划 ±容差（--duration-tolerance，默认 0.12s），违反即非零退出打印明细。
+plan.json 兼容三种形态：[{"id","dur"}...] / {"segments":[...]} / {"beats":[...]}（shotdur.json 直用）。
 """
 
 import argparse
@@ -222,6 +231,105 @@ def probe_video(path: Path) -> tuple[int, int, int] | None:
         return None
 
 
+def probe_frame_rate(path: Path) -> str | None:
+    """探测视频流 avg_frame_rate 原始串（如 "25/1"、"30000/1001"）。无视频流返回 None。"""
+    p = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
+         "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    out = p.stdout.strip()
+    return out or None
+
+
+def load_manifest(project: Path, manifest_path: Path) -> list[tuple[str, Path]]:
+    """显式有序段清单：条目为路径字符串或 {"name","path"}；相对路径挂 project_dir。"""
+    if not manifest_path.is_file():
+        die(f"manifest 不存在: {manifest_path}")
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        die(f"manifest 不是合法 JSON: {manifest_path}（{e}）")
+    if not isinstance(raw, list) or not raw:
+        die("manifest 必须是非空 JSON 列表（路径字符串或 {name, path} 对象）")
+    segments: list[tuple[str, Path]] = []
+    for i, entry in enumerate(raw):
+        if isinstance(entry, str):
+            name, path = None, entry
+        elif isinstance(entry, dict) and "path" in entry:
+            name, path = entry.get("name"), entry["path"]
+        else:
+            die(f"manifest[{i}] 条目须为路径字符串或 {{name, path}}: {entry!r}")
+        p = Path(path)
+        p = p if p.is_absolute() else project / p
+        if not p.is_file():
+            die(f"manifest[{i}] 段文件不存在: {p}")
+        if not name:
+            name = p.parent.name if p.stem == "clip" else p.stem
+        segments.append((str(name), p))
+    return segments
+
+
+def load_duration_plan(plan_path: Path) -> dict[str, float]:
+    """时长计划：兼容 [{"id","dur"}...] / {"segments":[...]} / {"beats":[...]}。"""
+    if not plan_path.is_file():
+        die(f"时长计划不存在: {plan_path}")
+    try:
+        raw = json.loads(plan_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        die(f"时长计划不是合法 JSON: {plan_path}（{e}）")
+    if isinstance(raw, dict):
+        raw = raw.get("segments") or raw.get("beats")
+        if not isinstance(raw, list):
+            die("时长计划 dict 形态须含 segments 或 beats 列表")
+    if not isinstance(raw, list) or not raw:
+        die("时长计划必须是非空列表 [{id, dur}, ...]")
+    plan: dict[str, float] = {}
+    for entry in raw:
+        if not isinstance(entry, dict) or "id" not in entry or "dur" not in entry:
+            die(f"时长计划条目须含 id 与 dur: {entry!r}")
+        plan[str(entry["id"])] = float(entry["dur"])
+    return plan
+
+
+def check_expect_durations(segments: list[tuple[str, Path]], plan: dict[str, float],
+                           tolerance: float) -> None:
+    """逐段实测时长 vs 计划 ± 容差。收集全部违例后统一退出，不只报第一处。"""
+    violations: list[str] = []
+    checked = 0
+    for name, path in segments:
+        if name not in plan:
+            print(f"[warn] 段 {name} 不在时长计划中，跳过校验")
+            continue
+        actual = probe_duration(path)
+        expect = plan[name]
+        checked += 1
+        if abs(actual - expect) > tolerance:
+            violations.append(
+                f"{name}: 实测 {actual:.3f}s vs 计划 {expect:.3f}s（偏差 {actual - expect:+.3f}s > ±{tolerance}s）"
+            )
+    unused = set(plan) - {name for name, _ in segments}
+    for name in sorted(unused):
+        print(f"[warn] 时长计划里的 {name} 没有对应段（计划过期？）")
+    if violations:
+        print(f"[fail] 逐段时长校验失败 {len(violations)} 处：", file=sys.stderr)
+        for v in violations:
+            print(f"  - {v}", file=sys.stderr)
+        sys.exit(1)
+    print(f"[guard] 逐段时长校验通过：{checked} 段全部在 ±{tolerance}s 内")
+
+
+def verify_output_fps(video_out: Path, expect_fps: int) -> None:
+    """拼接后帧率断言：avg_frame_rate 必须等于 expect_fps/1。"""
+    afr = probe_frame_rate(video_out)
+    if afr is None:
+        die(f"成片无视频流，无法验帧率: {video_out}")
+    want = f"{expect_fps}/1"
+    if afr != want:
+        die(f"成片帧率断言失败: avg_frame_rate={afr}，期望 {want}（{video_out}）")
+    print(f"[guard] 帧率断言通过：avg_frame_rate={afr}")
+
+
 def concat_hard(segments: list[tuple[str, Path]], out: Path) -> None:
     """hard 转场：concat demuxer 直拼。concat_list.txt 里 file 行用绝对路径，避免 cwd 解析歧义。"""
     list_file = out.parent / "concat_list.txt"
@@ -293,6 +401,14 @@ def main() -> None:
                         help="concat 前统一音频格式（采样率/声道，默认 24000/mono，与 awk-tts 对齐）")
     parser.add_argument("--audio-duration", type=float, default=None,
                         help="静音轨时长（秒，默认取视频时长对齐）")
+    parser.add_argument("--manifest", default=None,
+                        help="显式有序段清单 JSON（相对 project_dir 或绝对），绕开目录发现约定")
+    parser.add_argument("--verify-fps", type=int, default=None,
+                        help="拼接后断言成片 avg_frame_rate==N/1（如 25），不符非零退出")
+    parser.add_argument("--expect-durations", default=None,
+                        help="逐段时长计划 JSON（[{'id','dur'}] / {'segments'} / {'beats'} 三形态兼容）")
+    parser.add_argument("--duration-tolerance", type=float, default=0.12,
+                        help="--expect-durations 校验容差（秒，默认 0.12）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
@@ -300,11 +416,16 @@ def main() -> None:
     preset, crf = encode_opts(args.low_memory)
     audio_sr, audio_ch = parse_audio_format(args.audio_format)
 
-    # 收段：两种目录结构兼容
+    # 收段：--manifest 显式清单优先；否则走目录发现约定
     # - render/：按 shot-NN/ 子目录收，每目录取最新 gen*.mp4 / multi-best*.mp4
     # - 其他目录（如 artifacts/timeline/）：直接收目录下的 clip-NN.mp4 或 *.mp4，按文件名序
     segments: list[tuple[str, Path]] = []
-    if source_dir.name == "render":
+    if args.manifest:
+        manifest_path = Path(args.manifest)
+        manifest_path = manifest_path if manifest_path.is_absolute() else project / manifest_path
+        segments = load_manifest(project, manifest_path)
+        print(f"[manifest] 显式段清单 {len(segments)} 段：{manifest_path}")
+    elif source_dir.name == "render":
         # 收段：shot-NN/ 子目录 + 命名子目录（outro/、intro/ 等）
         # shot-NN/ 走 multi-best*.mp4 / gen*.mp4 变体识别
         # 命名子目录直接收目录下的 *.mp4（按文件名序）
@@ -327,10 +448,19 @@ def main() -> None:
                 segments.append((pick.stem, pick))
 
     if not segments:
-        die(f"{source_dir}/ 下无任何段（render/ 走 shot-NN/gen*.mp4；其他目录走 *.mp4），先跑 render-shot 或 timeline-compose")
+        die(f"{source_dir}/ 下无任何段（render/ 走 shot-NN/gen*.mp4；其他目录走 *.mp4；"
+            f"非常规命名产物走 --manifest 显式清单），先跑 render-shot 或 timeline-compose")
+
+    # 逐段时长守卫（fail-fast：拼接前对源段校验，重跑命中 checkpoint 时同样生效）
+    if args.expect_durations:
+        plan_path = Path(args.expect_durations)
+        plan_path = plan_path if plan_path.is_absolute() else project / plan_path
+        check_expect_durations(segments, load_duration_plan(plan_path), args.duration_tolerance)
 
     video_out = project / args.output
     if video_out.is_file():
+        if args.verify_fps is not None:
+            verify_output_fps(video_out, args.verify_fps)
         print(f"[checkpoint] {args.output} 已存在：{video_out}")
         return
 
@@ -342,7 +472,8 @@ def main() -> None:
     audio_work.mkdir(parents=True, exist_ok=True)
     unified: list[tuple[str, Path]] = []
     for idx, (name, src) in enumerate(segments, 1):
-        dst = audio_work / f"{idx:02d}_{name}.mp4"
+        # 段名可能含 /（manifest 自由命名 / 命名子目录 "outro/clip-01"），落盘名打平
+        dst = audio_work / f"{idx:02d}_{name.replace('/', '-')}.mp4"
         vid_dur = args.audio_duration if args.audio_duration is not None else probe_duration(src)
         if not dst.is_file():
             print(f"[auni] {name} → {dst.name} (sr={audio_sr}, ch={audio_ch})")
@@ -402,6 +533,10 @@ def main() -> None:
             # xfade 需要时长信息
             with_dur = [(n, s, probe_duration(s)) for n, s in segments]
             concat_xfade(with_dur, video_out, args.transition, preset, crf)
+
+    # 拼接后帧率断言（brief 常要求的守卫：混拼不同帧率源时兜底）
+    if args.verify_fps is not None:
+        verify_output_fps(video_out, args.verify_fps)
 
     # 可选预览：截前 N 秒到 <output-stem>-preview.mp4，用于试听
     if args.preview_duration is not None:

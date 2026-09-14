@@ -72,7 +72,7 @@ def main() -> None:
     }
     promise_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] delivery-promise.json 模板已落：{promise_path}")
-    print(f"[next] GATE B 素材闸门：呈交 slot/素材/slide-risk/promise �摘要 → 用户批 → 跑 render-shot（Stage 10）")
+    print(f"[next] GATE B 素材闸门：呈交 slot/素材/slide-risk/promise 摘要 → 用户批 → 跑 render-shot（Stage 10）")
 
 
 if __name__ == "__main__":

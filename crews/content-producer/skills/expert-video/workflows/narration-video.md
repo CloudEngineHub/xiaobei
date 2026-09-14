@@ -36,7 +36,7 @@ Brief 里写 `workflow: narration-video`，或 Brief 交付了口播文案 / 真
 | Stage 9a | 幻灯风险重点查"一句口播一张静图"的幻灯片感 |
 | Stage 9b | 交付承诺必须含音画同步与字幕样式 |
 | Stage 11 | **核心阶段**：场景 B（TTS 一次性生成 + 字级时间戳）或场景 D（甲方录音 → ASR 时间戳）；字幕必须来自对齐后的时间轴 |
-| Stage 12 | `timeline-compose` 按字级时间戳对齐：每句口播不得越过对应镜头边界，连续口播保留呼吸间隔；切旁白段用 `clip-trim --pre-buffer 0.5` 防吞首字 |
+| Stage 12 | `timeline-compose` 按字级时间戳对齐：每句口播不得越过对应镜头边界，连续口播保留呼吸间隔；切旁白段用 `clip-trim --pre-buffer 0.5` 防吞首字。甲方要求逐句 TTS（每句独立 mp3）时改走 `narration-layout`（对齐镜头起点 + 防重叠守卫 + 越界断言 + SRT + 混音一步），拼接用 `assemble --manifest --verify-fps` |
 | Stage 13 | `video-review` + `motion-audit` + **响度归一化必跑** |
 | Stage 14 | 封面主文案来自 Brief；口播金句作候选时需 Brief 允许 |
 
