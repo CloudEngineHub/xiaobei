@@ -2,7 +2,7 @@
 
 抽出前散在三处：
   - crews/main/skills/talking-head-cut/scripts/cut_plan.py 的 volc_asr()
-  - crews/content-producer/skills/video-producer/scripts/narration-align.py 的 fallback_asr()
+  - crews/content-producer/skills/expert-video/tools/video-producer/scripts/narration-align.py 的 fallback_asr()
   - crews/main/skills/viral-chaser/scripts/transcriber.ts 的 PYTHON_SCRIPT 内联段
 
 三方调同一火山接口（volc.bigasr.auc_turbo），凭据同池：

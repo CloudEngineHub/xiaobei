@@ -9,9 +9,11 @@ description: 微信视频号已发布作品数据抓取，写入 published-track
 
 通过 **camoufox-cli + 与 `wechat-channels-publish` 共管的 `wechat-channel` 持久化 session + 视频号助手后台爬虫**，从视频号助手「内容管理 → 作品管理」页抓已发布视频的播放/点赞/评论/分享/收藏，写入 published-track 的 `pub_wx_channel` 表。
 
-**思路**：视频号助手后台 `channels.weixin.qq.com/platform/` 的作品管理页把每条已发布视频的播放/点赞/评论/分享/收藏列在行内，走「作品管理页 → 解析 innerText → 按标题匹配 → 提行内数字」。
+**思路**：视频号助手后台 `channels.weixin.qq.com/platform/` 的作品管理页把每条已发布视频的播放/点赞/评论/分享/收藏列在行内，走「作品管理页 → 解析 innerText → 按完整视频描述匹配 → 提行内数字」。
 
-**输入**：`--row-id`（pub_wx_channel 行 id，fetch 单篇）或不带参数（list / fetch-all 批量）。行内数据按 `row.title`（即完整描述文案）在作品管理页匹配。
+**输入**：`--row-id`（pub_wx_channel 行 id，fetch 单篇）或不带参数（list / fetch-all 批量）。行内数据按 `row.title`（数据库字段名，语义为完整视频描述）在作品管理页匹配。
+
+> **只用视频描述，不用短标题**：视频号发布页改版后可以同时填视频描述与短标题，但作品管理页只展示视频描述，短标题抓不到。因此入库（`published-track record --title`）与本工具的匹配一律用完整视频描述，短标题不写库、不参与匹配。
 **输出**：行内 metrics（plays / likes / comments / shares / favorites），并经 published-track `update-metrics` 写入 `pub_wx_channel`。
 **限制**：仅支持用户**自己有后台权限的号**（视频号助手用微信扫码登录）。竞品号拿不到——这是产品约束，不是技术约束。
 
@@ -53,7 +55,7 @@ wx-channel-engagement login --reset   # 删 profile 目录 + 重新 open，从�
 
 退出码：
 - `0` 成功
-- `1` 通用错误（参数错 / row 找不到 / 标题未匹配）
+- `1` 通用错误（参数错 / row 找不到 / 完整视频描述未匹配）
 - `2` session 失效（后台首页跳登录页）
 - `3` session 正忙（fail-first 队列）
 
@@ -94,7 +96,7 @@ wx-channel-engagement fetch-all                # 批量刷新（心跳用）：�
 
 4. **数据提取方式**：不依赖 selector，直接用 `document.body.innerText` 解析（穿透 shadow DOM 后）。页面 innerText 结构清晰：
    ```
-   <视频标题>
+   <完整视频描述>
    <发布时间>
    <播放数> <点赞数> <评论数> <分享数> <收藏数>
    ```
@@ -110,7 +112,7 @@ wx-channel-engagement fetch-all                # 批量刷新（心跳用）：�
 3. 复用 wechat-channel 持久化 session（不开独立 session、不 import cookie）：
    camoufox-cli --session wechat-channel --persistent --json open "https://channels.weixin.qq.com/platform/post/list"
 4. eval JS 解析作品管理页 innerText -> [{title, metrics}, ...]
-5. match_article(rows, row.title) -> 按标题归一化匹配
+5. match_article(rows, row.title) -> 按完整视频描述归一化匹配
 6. update-metrics --platform wx_channel --id <row_id> ... -> 写 pub_wx_channel
 7. finally: close session（登录态在磁盘 profile，不留进程占内存；下次 fetch 按需重起无头 session，profile 桥接登录态）
 ```

@@ -34,17 +34,22 @@
 - 用户级留存数据不可得。
 - 用户可提供创作者中心后台截图（完播、粉丝画像、流量来源），作为更高置信度的证据；没有就用库内指标。
 
-### 互动漏斗 → template 七部分 → 17 维映射
+### 互动漏斗 → template 语义段 → DNA 维度映射（视频作品）
 
-| 漏斗卡点 | 先怀疑的 template 部分 | 可回溯的 DNA 维度 |
-|---------|----------------------|------------------|
-| 播放低（推荐/点击瓶颈） | 选题、标题（含封面） | topic-angle、title-style、cover-frame |
-| 点击后快速划走（完播估算低） | 起（钩子）、承 | hook、video-structure、narrative-rhythm、speech-rhythm |
-| 点赞低 | 承、合（价值感与情绪落点） | professionalism、conflict-tension、tone |
-| 评论低 | CTA、互动设计 | interaction-design、conflict-tension |
-| 分享低 | 选题、合（社交货币） | topic-angle、conflict-tension |
-| 收藏低 | 承（实用价值密度） | professionalism、video-structure |
-| 关注转化低 | 合、CTA | signature、series-design、tone |
+| 漏斗卡点 | 先怀疑的 template 语义段 | 可回溯的 DNA 维度 |
+|---------|--------------------------|------------------|
+| 播放低（推荐/点击瓶颈） | 选题、标题与封面 | topic-angle、title-cover |
+| 点击后快速划走（完播估算低） | 内容创意、制作规格、口播文案 | content-idea、production-spec、narration-script |
+| 点赞低 | 内容创意、选题 | content-idea、topic-angle |
+| 评论低 | 内容创意（讨论点）、口播文案 | content-idea、narration-script |
+| 分享低 | 选题、内容创意 | topic-angle、content-idea |
+| 收藏低 | 内容创意、制作规格 | content-idea、production-spec |
+| 关注转化低 | 账号运营子模块、业务植入与 CTA | account-bio、content-mix-cadence、interaction-cta |
+| 组件点击 / 私信 / 成交转化低 | 业务植入与 CTA | biz-implant、interaction-cta |
+| 广告感重（负面评论、掉粉、植入点完播跳水） | 业务植入与 CTA、选题 | biz-implant、interaction-cta、topic-angle |
+| 画面/时长/音色被吐槽 | 制作规格、视频形态与制作指向 | production-spec、video-form |
+
+图文作品（`dna-*-note`）改按图文 template 语义段归因：选题、标题与封面、内容创意与结构、正文表达、图组、业务植入与 CTA，对应维度 `topic-angle`、`title-cover`、`content-idea`、`body-voice`、`imageset-visual`、`biz-implant`、`interaction-cta`。
 
 ### 平台混杂因素（归因前必排）
 
@@ -84,7 +89,7 @@ content-calibrator eval --platform douyin --dna-id <id>      # 指定 DNA
 
 1. 判定只看比值与走向，绝对值只作上下文。
 2. 逐条排除平台混杂因素，输出替代假设检验结果。
-3. 回读 `douyin/dna/<dna-id>/<dna-id>.dna.md` / `.template.md` 与待评估作品原文（`source_folder` 下的转录 / 简报），把趋势变化落到 template 七部分与 17 维。
+3. 回读 `douyin/dna/<dna-id>/<dna-id>.dna.md` / `.template.md` 与待评估作品原文（`source_folder` 下的转录 / Brief / 口播终稿），把趋势变化落到 template 语义段与 DNA 维度。
 
 ### Step 3 - 报告与标记
 

@@ -1,9 +1,3 @@
-# AGENTS.md
-
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
-
-Codex 被授权在本仓库中执行任何 git 命令（包括 push、branch、tag 等），无需逐次确认。
-
 ## Docker 部署规范
 
 - 用户态镜像、Compose service 和持久卷统一使用 **xiaobei** 命名；不得新增 `wiseflow-*` 镜像或卷名。
@@ -39,7 +33,7 @@ openclaw 实际识别的 frontmatter 字段（参见 `openclaw/src/agents/skills
 - 顶层：`name`、`description`（**必需**）、`user-invocable`（默认 true）、`disable-model-invocation`（默认 false）
 - `metadata.openclaw.*`：`emoji`、`homepage`、`skillKey`、`primaryEnv`、`os`、`requires`、`install`、`always`
 
-其他字段（如 Codex 的 `argument-hint`、`allowed-tools`、`license`）会被静默忽略。
+其他字段（如 claude code 的 `argument-hint`、`allowed-tools`、`license`）会被静默忽略。
 
 **写法用 YAML block style**，不要用 flow style（嵌套花括号 + 引号）。openclaw bundled 技能和官方文档均采用 block style：
 
@@ -58,6 +52,14 @@ metadata:
 
 - `always: true` 的真实语义是"跳过 `requires` 二进制/env 检查直接判定 eligible"（见 `config-eval.ts:124`），**不是**"强制注入整个 SKILL.md"。如果 skill 没声明 `requires`，加 `always: true` 等于无意义，应删除。
 - 加载阶段 openclaw 只把 `name` + `description` + SKILL.md 绝对路径塞进 system prompt 的 `<available_skills>` 块；agent 用到时才主动 read 全文。所以 frontmatter 写得再多也不会污染 system prompt，但反过来也意味着——除上述识别字段外，多余字段不会带来任何运行时收益。
+
+## SKILL.md 内容书写规范
+
+SKILL.md 是写给**执行时的智能体**看的操作手册，不是开发日志。内容只写指导性指令、正例、反例：
+
+- ✅ 直接写"应该怎么做""不要怎么做"，配 ✅ 正例 / ❌ 反例
+- ❌ 不写排查故事、历史往来、开发经历、思路背景、踩坑全过程
+- 经验教训要提炼成一条可执行的规则，而不是一段叙事
 
 ## skill 依赖打包规则
 
@@ -84,5 +86,6 @@ metadata:
 |-------|--------------|----------------|
 | `crews/main/skills/wx-mp-hunter` | `cheerio` | ✅ |
 | `crews/main/skills/rss-reader` | `rss-parser` | ✅ |
+| `crews/main/skills/ui-demo` | `camoufox-js`、`playwright-core` | ✅ |
 
 其余 skill 的脚本只用 Node 内置模块或相对 import，不需要 `package.json`。

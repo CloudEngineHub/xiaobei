@@ -138,7 +138,7 @@ login-manager check douyin   # wrapper 在 PATH 中
 | bilibili-publish | scripts/publish_bilibili.py | wrapper → py |
 | design-system-picker | scripts/pick.sh | wrapper → sh |
 | init-workspace | scripts/init.sh | wrapper → sh |
-| manim-explainer | scripts/render-manim.sh | wrapper → sh |
+| ~~manim-explainer~~ | scripts/render-manim.sh | wrapper → sh（**2026-09-10 技能删除**，wrapper 与 bin 软链由 `expose_skill_wrappers` 的悬挂清理回收） |
 | siliconflow-tts | scripts/tts.py | wrapper → py |
 | siliconflow-video-gen | scripts/gen.py | wrapper → py |
 | awada-channel-setup | scripts/apply-awada-config.py | wrapper → py |
@@ -160,7 +160,7 @@ login-manager check douyin   # wrapper 在 PATH 中
 | sales-cs-enablement | scripts/symlink_business_knowledge.py | wrapper → py（2026-08-27 转子命令分发器：`link` / `check-channel`，随 sales-cs-manager 专家包收纳至 `crews/main/skills/sales-cs-manager/tools/sales-cs-enablement/`） |
 | sales-cs-review | scripts/scan_feedback.py | wrapper → py（2026-08-27 随 sales-cs-manager 专家包收纳至 `crews/main/skills/sales-cs-manager/tools/sales-cs-review/`） |
 
-**C 类清单（多并列脚本，暂不加分发器 wrapper，维持 SKILL.md 绝对路径调用）**：bd-record（5）、info-record（4）、ir-record（11）、work-channel-binding（7）、customer-db（7）、pitch-deck（3）、video-product（6）、html-video（2，功能分裂）。（published-track、content-calibrator 已于 2026-08-21 转分发器 wrapper；swcr-register 已于 2026-08-27 转分发器 wrapper 并保持顶层位置（曾短暂折入 expert-bd/tools，同日移出），见变更历史。）
+**C 类清单（多并列脚本，暂不加分发器 wrapper，维持 SKILL.md 绝对路径调用）**：bd-record（5）、info-record（4）、ir-record（11）、work-channel-binding（7）、customer-db（7）、pitch-deck（3）、video-product（6）、html-video（2，功能分裂）。（published-track、content-calibrator 已于 2026-08-21 转分发器 wrapper，见变更历史。）
 
 > **为何 C 类不加**：分发器 wrapper（`<skill> <subcmd> ...` 呺由到对应脚本）是为每个 skill 单定制分发表，引入新子命令方言、agent 还要学一套；现 SKILL.md 已把 `./skills/<name>/scripts/<file>.sh` 绝对路径写死（CLAUDE.md 也强制要求），多并列脚本那种靠 SKILL.md 路径明文已治拼错。分发器是未来可选演进，本轮不做。
 
@@ -217,7 +217,11 @@ dev plan §Phase 7 续 写"验收"：
 
 ## 六、变更历史
 
-- **2026-08-27**：`swcr-register` 加子命令分发器 wrapper（`swcr-register <code-doc|manual|form-info>`，-> scripts 下三个 Python 脚本），移出 C 类清单。同日随 expert-bd 专家包落地时曾折入 `expert-bd/tools/`，当天移出回归顶层 `crews/main/skills/swcr-register/`（软著属项目申报配套，非 BD 领域专属，跨包复用保持顶层）。wrapper 为 `SCRIPT_DIR` 自定位写法，与所在层级无关，移入移出均无需改动；`expert-bd/SKILL.md` 工具清单与 AGENTS.md 路由同步去除包内引用。同日 sales-cs-enablement / sales-cs-review 随 `sales-cs-manager` 专家包收纳至 tools/ 层（见 §4.2 表注与 §8.2 条目 21），sales-cs-enablement 转子命令分发器。
+- **2026-09-10**：`content-producer` 引入专家包，四个技能整合为两个包——`video-producer` / `collage-broll` 收纳进 `expert-video/tools/`（`pipelines/` 改造为 `expert-video/workflows/`，`dna-ad-video-pipeline.md` 重构为 `reversal-ad.md`），`design-full` 收纳进 `expert-design/tools/`，`manim-explainer` 删除。**PATH wrapper 名与子命令全部不变**（`video-producer <子命令>` / `design-full <init|pick>`），靠 `expose_skill_wrappers` 的 `*/tools/*/` 扫描层暴露；新增 `collage-broll <check-setup|gate3>` wrapper（原先 agent 直接拼 `scripts/run_gate3.py` 路径）。同时给 `expose_skill_wrappers` 与 `sync_crew_skills` 加**悬挂软链清理**（技能改名 / 收纳后，`~/.openclaw/bin` 与 `workspace-*/skills/` 里的旧软链会指向不存在的仓路径），并让 `collect_skill_script_commands` 扫 `skills/<skill>/tools/*/scripts/`（否则包内 `.sh` 脚本会从 ALLOWED_COMMANDS 掉出去）。
+
+- **2026-09-12**：`swcr-register` 技能删除（软著材料生成，产品定位调整），其 wrapper 与 expert-ir 侧引用、本文档 C 类清单注记一并清理。
+
+- **2026-08-27**：sales-cs-enablement / sales-cs-review 随 `sales-cs-manager` 专家包收纳至 tools/ 层（见 §4.2 表注与 §8.2 条目 21），sales-cs-enablement 转子命令分发器。
 
 - **2026-08-21**：数据直连 DNA 改造连带 wrapper 补强：`published-track`（C 类转分发器 wrapper：`published-track <record|update-metrics|fetch-metrics|query|query-pending|check-published|set-distribute-status|get-xhs-user-id|init-db|migrate-v3>`）与 `content-calibrator`（`content-calibrator <eval|query-metrics|init>`）落顶层分发器 wrapper，SKILL.md / HEARTBEAT.md / AGENTS.md / expert-wx-mp workflows 全部 PATH 化，agent 零路径拼接。继 video-edit 之后第 2、3 个分发器 wrapper。
 

@@ -267,9 +267,9 @@ image_list:
 排版独立于 DNA，不作为风格符合证据；排版在这一步选定：
 
 1. 用户指定主题 -> 使用指定主题。
-2. 用户未指定 -> Agent 根据文章内容自主选择：先看 `wenyan-theme/index.json` 有无可复用自定义主题，再按 `wx-mp-publisher` 的决策树从内置主题中挑选，不丢给 relay 默认。
-3. 用户要求对标排版（“照着这篇的排版来”）-> 调 `generate-wenyan-theme` 提取参考文章排版风格生成主题，登记到 `wenyan-theme/index.json`。
-4. 自定义主题把登记的 `theme-id` 直接传给 `wx-mp-publisher`（脚本经 `wenyan-theme/index.json` 解析出 CSS 并随请求上传 relay）；直接传 `.css` 文件路径也可以。
+2. 用户未指定 -> Agent 根据文章内容自主选择：先看 `wx_mp/wenyan-theme/index.json` 有无可复用自定义主题，再按 `wx-mp-publisher` 的决策树从内置主题中挑选，不丢给 relay 默认。
+3. 用户要求对标排版（“照着这篇的排版来”）-> 调 `generate-wenyan-theme` 提取参考文章排版风格生成主题，登记到 `wx_mp/wenyan-theme/index.json`。
+4. 自定义主题把登记的 `theme-id` 直接传给 `wx-mp-publisher`（脚本经 `wx_mp/wenyan-theme/index.json` 解析出 CSS 并随请求上传 relay）；直接传 `.css` 文件路径也可以。
 
 ### 9-2. 发布
 

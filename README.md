@@ -7,17 +7,17 @@
 - 图文海报生成
 - 短视频生成与多平台分发（支持视频号、抖音、小红书）
 - Twitter/X、微博、知乎等平台发文
+- 微信朋友圈内容发布（通过企业微信接口）
 - 爆款视频追爆分析、仿写与再创作（支持抖音、B站和小红书视频链接）
+- 赛道头部账号DNA级复刻（目前支持小红书、微信视频号、抖音、微信公众号四个平台）
 - 已发布作品数据监控与每日定时复盘
-- 内置小红书、抖音、twitter/x、公众号、视频号平台“专家包”
-- 信息搜集与情报：内置 Smart Search，覆盖小红书、抖音、微博、知乎、B站、Twitter、YouTube、视频号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等 18 类信源——无需配置任何 key、纯免费
-- 指定信源监控与提取
+- 自媒体评论区获客
+- 7*24 小时智能客服（售前接待）
 - 通过社交媒体寻找潜在客户或市场调研
-- 灵感记录与思路梳理
+- 信息搜集与情报：内置 Smart Search，覆盖小红书、抖音、微博、知乎、B站、Twitter、YouTube、视频号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等 18 类信源——无需配置任何 key、纯免费
 - "四声分析"法战略研判与讨论
 - 产品deck、ppt制作，投资/IR 材料准备
-- 软件著作权、ICP 备案等材料辅助生成
-- 闲鱼运营、企业微信朋友圈触达
+- 网站设计与制作、ICP 备案等材料辅助
 - ……
 
 并且你只需通过手机上的微信与他沟通，即可实现全部功能！（同时支持飞书、企业微信）
@@ -32,31 +32,13 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ---
 
-## 🚀 **v5.7.0 更新**
+## 🚀 **v5.7.1 更新**
 
-> Let's do this like an expert.
-
-- **专家包（Expert Pack）——像专家一样干活**：公众号、小红书、抖音、视频号能力升级为“专家包”，起号定位、对标拆解、内容生产、改稿调整、数据复盘六条工作流跑通账号运营全生命周期。你只管把任务丢过来，小贝按专业路数把活办完，不再拿一份越写越厚的通用说明书应付所有平台。
-- **内容风格 DNA——先像人写，再自我进化**：16+维细颗粒度复刻对标账号，统计学聚合做证据底座、定性判断提炼规则，最后落成内容生产 DNA template；发布数据回流后按量触发评估 -> DNA不断自我进化，迎合目标客群口味。
-- **OpenClaw 上游同步 v2026.7.1-2**。
-- **camoufox-cli 升 0.7.3 + 浏览器二进制升 FF152**：同步上游安装链路修复（不再误拉 beta 版浏览器、broken install 立即报错），FF152 解决重负载下鼠标输入卡死等稳定性顽疾。
-
-详见 [CHANGELOG.md](CHANGELOG.md)
-
----
-
-## 🚀 **v5.6.3 更新**
-
-- **🎬 Content Producer 正式发布**：我们参考了GitHub上几乎所有热门的视频生产项目，并重点解决了纯AIGC模式容易被平台限流，以及难以融合业务素材的问题。xiaobei系统的content-producer就是你目前能够找到的最适合获客内容制作的开源免费方案！
-
-  > ☀️测试阶段，我们应用content-producer制作了xiaobei系统的第一支品牌故事宣传片：
-  >
-  >  - YouTube：https://youtu.be/eK8aWWCNVZQ?si=K-MbWai-j6ydqCdy
-  >  - bilibili：https://www.bilibili.com/video/BV1euMR6PEDh
-  >  - 开发与使用心得: https://mp.weixin.qq.com/s/zxvWdCMUd0XquWxujvxkSg 
-
-- **安装脚本大幅优化**：对比 5.6.0，install.sh / install-atomgit.sh / install.ps1 / install-atomgit.ps1 四脚本修了若干实测踩坑——tarball 下载原子写、Windows `.env`/`daemon.env` 换行与 BOM、技能 wrapper 在 Windows 用 `.cmd` shim 替代软链、`OPENCLAW_HOME` 在 `set -u` 下报 unbound、atomgit 国内线路默认跳过 gum spinner bootstrap 避免连 GitHub 超时、Windows 软链需要开发者模式等，产品稳定性显著提高。
-- **wx-mp-hunter 更新**：原微信公众号素材接口方案因官方调整已不可用，我们更新了微信公众号获取方案
+- 小红书、抖音、视频号 DNA系统升级到2.0架构，Let's do this like an expert！
+- content producer 升级为专家系统，现在除了AIGC大片外，还可以复刻众多短视频平台流行的“套路”，更易获得平台推荐流量：
+  > 效果展示，xiaobei的视频号：https://openclaw-for-business.com/xiaobei-wxchannel.jpg
+- xiaobei 可直接指挥content producer，用户可选择将brief出具、节点验收等委托xiaobei
+- 修复一键安装脚本中，openclaw-weixin不会自动升级的问题
 
 详见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -201,17 +183,24 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 >
 > 推荐用 [SiliconFlow](https://cloud.siliconflow.cn/i/WNLYbBpi)（🎁 xiaobei 邀请链接，注册认证后你可获得一张 16 元代金券），它提供 `BAAI/bge-m3` 与 `Qwen/Qwen3-VL-Embedding` 系列，均为 OpenAI 接口格式，可直接配置为 `memorySearch` 的 embedding provider。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`；想开做梦就把 `plugins.entries.memory-core.config.dreaming.enabled` 改回 `true`。改完重启 gateway 生效。可以让小贝帮你完成配置。
 
-🎉 xiaobei 项目目前提供 **VIP Club**（售价 **168 元/年**），权益包括：
+### 配置繁琐，不想操心？
 
-- **付费知识库**：包含《手把手从零开始安装教程》、《安装之后三分钟上手指南》、《Openclaw 自定义配置全案教程》、《Windows 下安装 WSL2 无脑教程》以及各种最佳实践分享
-- **vip 微信交流群**，共同探讨交流各种自动化获客玩法，搞钱路上不孤单
-- 免费加入 Wiseflow 知识星球
-- 每月一次的线上闭门分享（腾讯会议），陪伴你从"小白"到"大神"！
-- **会员有效期内免费使用官方中转服务**：涉及小红书、抖音、bili、快手、微信公众号、企业微信朋友圈的技能都需要固定IP（平台要求），一般的家庭网络或办公网络环境并没有固定IP，Wiseflow团队已经搭建了官方的中转服务，vipclub会员期内畅用，不必再单独自建或购买。
+🎉 wiseflow团队现提供 **远程安装** 与 **远程技术支持** 增值服务，同时继续提供**VIP Club**（售价 **168 元/年**）服务，陪伴你从"小白"到"大神"！
 
-此外，我们也面向 VIP Club 会员提供如下增值服务：**远程安装部署、远程技术支持、awada lane 租赁** (需额外付费）
+VIP Club（售价 **168 元/年**），权益包括：
 
-欢迎添加"掌柜的"企业微信（这背后接的就是 xiaobei sales-cs）咨询了解：
+- 付费知识库：「手把手」安装教程、上手指南、配置全案、高阶玩法、最佳实践等……
+- VIP 微信交流群：问题讨论、产品反馈、技术沟通、专家 DNA 分享……
+- 官方中转服务：针对部分自媒体平台的发布技能要求固定 IP 和签名的问题，向 VIP Club 会员免费提供官方中转服务
+- 会员期内所有增值服务享半价（不含 awada lane 租赁）
+- 会员可申请成为服务合作商
+- 会员可申请定制开发服务
+
+*⚠️ 如存在不当使用官方中转服务、在社群发表不当言论等行为，Wiseflow 团队有权提前终止会员资格且不予退款，详见会员协议。*
+
+另开放 **服务代理商** 合作，共享AI时代红利！详见：https://openclaw-for-business.com/pricing 
+
+也欢迎添加"掌柜的"企业微信（由 xiaobei sales-cs 驱动）咨询了解：
 
 <img width="360" height="360" alt="xiaobei掌柜" src="https://github.com/user-attachments/assets/b013b3fd-546e-4176-b418-57bee419e761" />
 

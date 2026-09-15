@@ -35,17 +35,32 @@ xhs 互动数据来自创作者后台笔记管理页 5 列（`xhs-engagement` �
 - 精确的传播系数（每次分享带来多少新观众）不可得；只能用 分享/(点赞+评论) 作为传播效率的代理估算。
 - 用户可提供创作者中心后台截图（流量来源、粉丝画像、搜索词），作为更高置信度的证据；没有就用库内指标。
 
-### 互动漏斗 → template 七部分 → 16 维映射
+### 互动漏斗 → template 语义段 → DNA 维度映射
 
-| 漏斗卡点 | 先怀疑的 template 部分 | 可回溯的 DNA 维度 |
-|---------|----------------------|------------------|
-| 阅读低（推荐/点击瓶颈） | 选题、标题（含封面图） | topic-angle、title-style、cover-imageset、keyword-seo |
-| 阅读正常但收藏低 | 承（实用价值密度） | body-structure、credibility-proof、keyword-seo |
-| 阅读正常但评论低 | CTA（互动设计） | interaction-design、opening-hook |
-| 点赞低 | 承、结尾（价值感与情绪落点） | language-tone、credibility-proof、emoji-rhythm |
-| 分享低 | 选题、CTA（社交货币） | topic-angle、cta-conversion |
-| 关注转化低 | 结尾、CTA（账号承诺） | signature-mark、series-design、topic-angle |
-| 搜索流量弱 | 标题（含封面图）、标签 | keyword-seo、tag-strategy |
+**图文作品（默认 `dna-0`）**
+
+| 漏斗卡点 | 先怀疑的 template 语义段 | 可回溯的 DNA 维度 |
+|---------|--------------------------|------------------|
+| 阅读低（推荐/点击瓶颈） | 选题、标题与封面、关键词与用户问题 | topic-angle、title-cover、search-intent |
+| 阅读正常但收藏低 | 内容创意与结构、正文表达 | content-idea、body-voice |
+| 阅读正常但评论低 | 业务植入与 CTA、内容创意 | interaction-cta、biz-implant、content-idea |
+| 点赞低 | 内容创意、正文表达 | content-idea、body-voice |
+| 分享低 | 选题、正文表达 | topic-angle、body-voice |
+| 关注转化低 | 账号运营子模块、业务植入与 CTA | account-bio、content-mix-cadence、interaction-cta |
+| 进店 / 咨询 / 私信转化低 | 业务植入与 CTA | biz-implant、interaction-cta |
+| 广告感重（收藏高但评论转冷、负面评论） | 业务植入与 CTA、选题 | biz-implant、interaction-cta、topic-angle |
+| 搜索流量弱 | 关键词与用户问题、标题与封面 | search-intent、title-cover |
+| 图组跳失 / 图片被吐槽 | 图组、标题与封面 | imageset-visual、title-cover |
+
+**视频作品（`dna-*-video`）**
+
+| 漏斗卡点 | 先怀疑的 template 语义段 | 可回溯的 DNA 维度 |
+|---------|--------------------------|------------------|
+| 播放低 | 选题、标题与封面、关键词与用户问题 | topic-angle、title-cover、search-intent |
+| 完播估算低 | 内容创意、制作规格、口播文案 | content-idea、production-spec、narration-script |
+| 搜索流量弱 | 关键词与用户问题 | search-intent |
+| 关注转化低 | 账号运营子模块、业务植入与 CTA | account-bio、content-mix-cadence、interaction-cta |
+| 进店 / 咨询转化低 | 业务植入与 CTA | biz-implant、interaction-cta |
 
 ### 平台混杂因素（归因前必排）
 
@@ -86,7 +101,7 @@ content-calibrator eval --platform xhs --dna-id <id>      # 指定 DNA
 
 1. 判定只看比值与走向，绝对值只作上下文。
 2. 逐条排除平台混杂因素，输出替代假设检验结果。
-3. 回读 `xhs/dna/<dna-id>/<dna-id>.dna.md` / `.template.md` 与待评估作品原文（`source_folder` 下的 `note.md` 与图片），把趋势变化落到 template 七部分与 16 维。
+3. 回读 `xhs/dna/<dna-id>/<dna-id>.dna.md` / `.template.md` 与待评估作品（`source_folder` 下的 `note.md`、`brief.md`、`voiceover.md` 与图片/成片线索），把趋势变化落到 template 语义段与 DNA 维度。
 
 ### Step 3 - 报告与标记
 

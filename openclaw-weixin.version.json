@@ -1,8 +1,8 @@
 {
   "openclaw-weixin": {
     "package": "@tencent-weixin/openclaw-weixin",
-    "version": "2.4.6",
-    "integrity": "sha512-qw9k3PLTiMWGNjjsknHgcTManH1w4j+Ji1ArWIaYLKCq3aFRsVwcqnPi127bvOoVMJGW4dbyJ8NECEMgoO+iRw=="
+    "version": "2.4.8",
+    "integrity": "sha512-hhO9prUQwzfSpIL6XGWazRsxNs89K+Mis3iQW6a8eum4AIDxOUiTFMg4nlNVD/au0SjAx5CcJjo3KYWZqGpgQA=="
   },
   "openclaw-weixin-cli": {
     "package": "@tencent-weixin/openclaw-weixin-cli",
@@ -11,7 +11,7 @@
   },
   "wecom-openclaw-cli": {
     "package": "@wecom/wecom-openclaw-cli",
-    "version": "1.1.0",
-    "integrity": "sha512-qnD0JXaHtgSsKh0REm5r17Kv/PyqZY+uavBxfLdqeoptfZS08aftJXUtIiFbuASdxGKpEjDxto2fiwf/3yAgew=="
+    "version": "1.1.1",
+    "integrity": "sha512-b+TT7KodLzu9+DA6CFkpHsj9xg1dZktagbigF3BEI5hrNai+C+djyjS/rRPvy0Ix+AGg9EepQ9kfMFs+Hov3og=="
   }
 }

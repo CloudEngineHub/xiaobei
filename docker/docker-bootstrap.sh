@@ -100,6 +100,30 @@ log "STEP 4 done"
 
 # ─── 预装 openclaw-weixin 插件（非致命，首启可补）────────────────
 # 与裸机 install.sh 的 install_weixin_plugin() 同源：读 pin 走在线 plugins install
+# 幂等：**已装版本 == pin 版本**才跳过；不等则 --force 升级到 pin。
+# 容器里 /root/.openclaw 是持久卷，镜像升级后插件包不会自己跟着 pin 走，所以这里必须比版本。
+weixin_installed_version() {
+    local pkg="$1" oc_home="${OPENCLAW_HOME:-/root/.openclaw}" v f
+    v="$((cd "$PROJECT_ROOT/openclaw" && pnpm openclaw plugins list --json) 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for p in d.get('plugins', []):
+    if p.get('id') == 'openclaw-weixin' or p.get('name') == '$pkg':
+        print(p.get('version') or '')
+        break
+" 2>/dev/null)"
+    if [ -n "$v" ]; then printf '%s\n' "$v"; return 0; fi
+    for f in "$oc_home"/npm/projects/*/node_modules/"$pkg"/package.json; do
+        [ -f "$f" ] || continue
+        v="$(python3 -c "import json;print(json.load(open('$f')).get('version',''))" 2>/dev/null)"
+        if [ -n "$v" ]; then printf '%s\n' "$v"; return 0; fi
+    done
+    return 1
+}
+
 install_weixin_plugin() {
     local pin_file="$PROJECT_ROOT/openclaw-weixin.version.json"
     local pkg ver
@@ -108,17 +132,26 @@ install_weixin_plugin() {
         ver=$(python3 -c "import json;print(json.load(open('$pin_file'))['openclaw-weixin']['version'])" 2>/dev/null || true)
     fi
     pkg="${pkg:-@tencent-weixin/openclaw-weixin}"
-    ver="${ver:-2.4.6}"
-    # 幂等检查
-    if (cd "$PROJECT_ROOT/openclaw" && pnpm openclaw plugins list 2>/dev/null | grep -q "openclaw-weixin"); then
-        log "openclaw-weixin plugin already installed"
+    ver="${ver:-2.4.8}"
+    # 幂等检查：已装版本 == pin 才跳过
+    local installed force_flag=""
+    installed="$(weixin_installed_version "$pkg" || true)"
+    if [ -n "$installed" ] && [ "$installed" = "$ver" ]; then
+        log "openclaw-weixin plugin already installed (${ver})"
         return 0
     fi
+    if [ -n "$installed" ]; then
+        log "openclaw-weixin 已装 ${installed}，pin=${ver} → --force 升级"
+        force_flag="--force"
+    elif (cd "$PROJECT_ROOT/openclaw" && pnpm openclaw plugins list 2>/dev/null | grep -q "openclaw-weixin"); then
+        log "⚠️ openclaw-weixin 已装但版本读不到；按 pin ${ver} 强制重装"
+        force_flag="--force"
+    fi
     log "installing openclaw-weixin plugin (${pkg}@${ver})"
-    if (cd "$PROJECT_ROOT/openclaw" && pnpm openclaw plugins install "${pkg}@${ver}" --pin); then
-        log "openclaw-weixin plugin installed"
+    if (cd "$PROJECT_ROOT/openclaw" && pnpm openclaw plugins install "${pkg}@${ver}" --pin $force_flag); then
+        log "openclaw-weixin plugin installed (${ver})"
     else
-        log "⚠️ openclaw-weixin 插件预装失败；首启可手动：pnpm openclaw plugins install ${pkg}@${ver} --pin"
+        log "⚠️ openclaw-weixin 插件预装失败；首启可手动：pnpm openclaw plugins install ${pkg}@${ver} --pin $force_flag"
     fi
 }
 log "STEP 5: installing openclaw-weixin plugin..."

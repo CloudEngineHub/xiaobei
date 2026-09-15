@@ -283,6 +283,9 @@ for agent_dir in "$CREWS_DIR"/*/; do
     # §2.3：已部署 workspace 仍同步 crew 专属 skill（覆盖），但不碰 AGENTS.md/TOOLS.md/Memory
     # 及部署实例自定义 skill（sync_crew_skills 只覆盖仓库里同名的 skill）
     sync_crew_skills "$agent_dir" "$dest"
+    # skill 声明文件（BUILTIN_SKILLS / DENIED_SKILLS）跟仓库走：陈旧条目会让 openclaw.json
+    # 的 skills allowlist 指向已改名 / 已收纳的技能，crew 直接失去这批能力。
+    sync_skill_declaration_files "$agent_dir" "$dest" "$PROJECT_ROOT" "$OPENCLAW_HOME"
     # 仅做幂等注入（有标记则跳过，不覆盖用户编辑的内容）
     inject_file_edit_guide "$dest/TOOLS.md"
     inject_exec_guide "$dest/TOOLS.md" "$dest"
@@ -549,10 +552,13 @@ if [ -f "$CONFIG_PATH" ]; then
   echo "  ✅ Agent skill filters synchronized"
   echo "  ✅ openclaw.json updated"
 
-  # ─── 4b. 幂等同步模板 ALLOWED_COMMANDS → workspace ────────────────
+  # ─── 4b. 幂等同步模板 ALLOWED_COMMANDS → workspace（仅对外 crew）──
   # 只注入模板中的 + 行（缺失时追加），不覆盖 workspace 已有条目（包括私有技能）
+  # 对内 crew 跳过：internal → security:full，apply_exec_tiers 不读 ALLOWED_COMMANDS（见 exec-tiers.sh 权限模型）。
+  # crew-type 以 workspace SOUL.md 为准（与 4c 一致）；SOUL.md 缺失时 resolve_crew_type 兜底 external，照常生成（fail-closed）。
   while IFS=$'\t' read -r a_id a_ws; do
     [ -n "$a_id" ] || continue
+    [ "$(resolve_crew_type "$a_ws/SOUL.md")" = "external" ] || continue
     template_ac="$CREWS_DIR/$a_id/ALLOWED_COMMANDS"
     workspace_ac="$a_ws/ALLOWED_COMMANDS"
     [ -f "$template_ac" ] || continue
@@ -570,14 +576,16 @@ if [ -f "$CONFIG_PATH" ]; then
     fi
   done < <(list_agent_workspaces)
 
-  # ─── 4b.5. 自动注入 skill scripts → ALLOWED_COMMANDS（幂等）──
+  # ─── 4b.5. 自动注入 skill scripts → ALLOWED_COMMANDS（幂等，仅对外 crew）──
   # 扫描每个 agent 的 skill 列表，将带 scripts/ 的技能脚本路径追加到 ALLOWED_COMMANDS。
   # workspace-local skill → +./skills/<skill>/scripts/<file>（相对路径）
   # 全局 skill（openclaw/skills/）→ +<abs_path>（绝对路径）
+  # 对内 crew 跳过：internal → security:full，该文件无任何运行时消费者，生成只会误导成"受白名单约束"。
   echo "  📝 Auto-injecting skill script commands into ALLOWED_COMMANDS..."
   while IFS=$'\t' read -r a_id a_ws; do
     [ -n "$a_id" ] || continue
     [ -d "$a_ws" ] || continue
+    [ "$(resolve_crew_type "$a_ws/SOUL.md")" = "external" ] || continue
     local_ac="$a_ws/ALLOWED_COMMANDS"
 
     # 读取该 agent 在 openclaw.json 中已写入的 skills 列表

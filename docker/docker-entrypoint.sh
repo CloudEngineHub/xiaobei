@@ -73,6 +73,16 @@ load_runtime_environment() {
   # DISPLAY=:0 被抄进来），会覆盖入口脚本上方 export 的 Xvfb 显示号（:99），
   # 有头浏览器开去不存在的显示、noVNC 里什么都看不到。这里强制恢复入口设定。
   export DISPLAY=":${DISPLAY_NUM}"
+
+  # 保证 skill wrapper 软链目录在 PATH 最前。gateway 不 source shell rc，agent exec
+  # 调裸技能名（如 aigc-video-gen）靠 PATH 解析 ~/.openclaw/bin 下的 wrapper 软链。
+  # 幂等：已在 PATH 中则跳过；缺失则前置，避免 daemon.env 模板或持久卷里漏写。
+  if [ -d "$OPENCLAW_HOME/bin" ]; then
+    case ":${PATH:-}:" in
+      *":$OPENCLAW_HOME/bin:"*) ;;
+      *) export PATH="$OPENCLAW_HOME/bin:$PATH" ;;
+    esac
+  fi
 }
 
 # ─── 3. 首启生成 gateway token ─────────────────────────────────────

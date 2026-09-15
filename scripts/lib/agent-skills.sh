@@ -376,6 +376,26 @@ for (const b of bins) console.log("+" + b);
       done < <(find "$ws_scripts_dir" -type f -print0 2>/dev/null)
     fi
 
+    # ── 专家包收纳层：skills/<skill>/tools/<tool>/scripts/ ──────────
+    # 技能整体迁入专家包 tools/ 后（如 expert-design/tools/design-full/scripts/init.sh），
+    # 脚本路径多一层；不扫这层会让改名后的包内脚本从 ALLOWED_COMMANDS 掉出去。
+    local tool_scripts_dir=""
+    for tool_scripts_dir in "$workspace_dir/skills/$skill"/tools/*/scripts; do
+      [ -d "$tool_scripts_dir" ] || continue
+      while IFS= read -r -d '' f; do
+        local tfname
+        tfname="$(basename "$f")"
+        case "$tfname" in
+          *.py|*.mjs|*.ts|*.js|*.json|*.txt|*.md|*.yaml|*.yml) continue ;;
+        esac
+        [ -x "$f" ] || continue
+        local tool_name
+        tool_name="$(basename "$(dirname "$tool_scripts_dir")")"
+        local trelpath="${f#$tool_scripts_dir/}"
+        printf '+./skills/%s/tools/%s/scripts/%s\n' "$skill" "$tool_name" "$trelpath"
+      done < <(find "$tool_scripts_dir" -type f -print0 2>/dev/null)
+    done
+
     # ── 全局 skill（~/.openclaw/skills/，由 apply-addons.sh 同步）──
     local global_scripts_dir="$openclaw_home/skills/$skill/scripts"
     if [ -d "$global_scripts_dir" ]; then
@@ -475,7 +495,10 @@ inject_media_send_guide() {
 - 在本地打开媒体文件（如调用图片查看器、浏览器打开 file://）——用户不一定方便操作这台电脑，本地打开对用户毫无意义。
 - 把 base64 或文件原始字节当作文本贴进回复——刷屏且用户无法使用。
 
-正确做法：用当前渠道的媒体发送能力把文件本体直接投递到聊天中（需提供文件绝对路径）。具体调用哪个工具/action 以本机当前可用渠道为准，不要假定渠道名或写死某个 action。
+正确做法：用当前渠道的媒体发送能力把文件本体直接投递到聊天中（需提供文件绝对路径）。
+
+- 飞书：`message(action="send", media="<绝对路径>")`（对于 HTML 类型文件，飞书要求先复制到 `/tmp/openclaw/`，再执行发送）。
+- `openclaw-weixin`：`message(action="send", media="<本地绝对路径或 HTTPS URL>")`，当前会话可不传 target。
 GUIDE
 }
 

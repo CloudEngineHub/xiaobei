@@ -24,7 +24,7 @@
 | 0 | **全线使用 forked camoufox-cli**，放弃 patchright 的 patch |
 | 1 | 涉及登录的自媒体平台，**每平台一个且只一个持久化 session**，必须顺次使用（fail-first 队列，见 §fork 改造清单） |
 | 2 | browser-guide 约定：需要用户配合过验证码的，**必须用 camoufox-cli 有头模式** |
-| 3 | login-manager 约定：wx-mp 登录可无头启动截图发 QR；**wechat-channel（视频号）/ douyin / twitter / xhs（xhs-publish \| xhs-browse）/ weibo / zhihu / xianyu 登录必须 有头模式**（扫码登录页无法无头截 QR；有头扫码一律 `--viewport 1920x1080` 强制桌面比例，camoufox 默认移动端比例二维码看不全） |
+| 3 | login-manager 约定：wx-mp 与 wechat-channel（视频号）登录可无头启动截图发 QR（2026-09-13 实测视频号无头 QR 可渲染，与 wx-mp 同模式）；douyin / twitter / xhs（xhs-publish \| xhs-browse）/ weibo / zhihu / xianyu 登录仍必须 有头模式（扫码登录页无法无头截 QR；有头扫码一律 `--viewport 1920x1080` 强制桌面比例，camoufox 默认移动端比例二维码看不全） |
 | 4 | login-manager 导出 cookie **同时导出 UA**；所有用中央 cookie 的脚本导入 cookie 同时导入 UA |
 | 5 | **严禁浏览器方案导入 cookie**（登录失效必须重新登录流程，见 §profile 丢失处理） |
 | 6 | 恢复 twitter-interact 脚本操作模式（参考 AiToEarn 上游，见 §twitter-interact） |
@@ -154,7 +154,7 @@ spike 文档 L30-33 已设计：
 | `douyin-publish` | 由脚本方案改为浏览器自动化方案：forked cli 持久化 session `douyin` + upload；有头登录 |
 | `weibo-publish` | forked cli 持久化 session `weibo` + upload；有头登录 |
 | `zhihu-publish` | forked cli 持久化 session `zhihu` + upload；有头登录 |
-| `wechat-channels-publish` | forked cli 持久化 session `wechat-channel` + upload；有头手动扫码登录（`--headed --viewport 1920x1080`，视频号扫码页无法无头截 QR） |
+| `wechat-channels-publish` | forked cli 持久化 session `wechat-channel` + upload；无头截图扫码登录（截 QR PNG 发用户扫码，渲染失败才 `--headed` 兜底） |
 | `viral-chaser` | 适配修改后的login-manager中央cookie格式，尤其是导入Cookie的时候，要同时导入UA。 |
 | `wx-mp-hunter` | 见 §6 收编 |
 | `xianyu-ops` | forked cli 持久化 session `xianyu`；有头登录 |

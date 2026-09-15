@@ -74,6 +74,21 @@ sync_crew_skills() {
 
   [ "$synced" -gt 0 ] && echo "  ✅ synced $synced crew skill(s) → $(basename "$dest_ws")"
 
+  # 清理悬挂软链：技能在仓里改名 / 收纳进专家包后（如 video-producer → expert-video/tools/video-producer），
+  # dest_skills 下的旧软链会指向不存在的仓路径。只删「软链且目标不存在」的条目，
+  # 真目录（部署实例自建技能）与有效软链一律不动。
+  local pruned=0
+  local link=""
+  for link in "$dest_skills"/*; do
+    [ -L "$link" ] || continue
+    if [ ! -e "$link" ]; then
+      if rm -f "$link" 2>/dev/null; then
+        pruned=$((pruned + 1))
+      fi
+    fi
+  done
+  [ "$pruned" -gt 0 ] && echo "  🧹 pruned $pruned dangling skill symlink(s) in $(basename "$dest_ws")/skills"
+
   # D21 wrapper 暴露：把 dest_ws/skills 下顶层 wrapper 暴露到 ~/.openclaw/bin/。
   # 必须扫 dest_ws 而非 src：wrapper 软链目标需指向 workspace 字面路径——子脚本用
   # dirname $0/../../.. 推导 workspace 根（ROOT/db/…），若指向 src（仓库模板），
@@ -85,6 +100,73 @@ sync_crew_skills() {
     [ -f "$_script_dir/skill-wrappers.sh" ] && source "$_script_dir/skill-wrappers.sh"
   fi
   type expose_skill_wrappers &>/dev/null && expose_skill_wrappers "$dest_skills"
+}
+
+# 同步仓库声明的 skill 列表文件（BUILTIN_SKILLS / DENIED_SKILLS）到已部署 workspace。
+#   $1 src_crew      仓库 crews/<id>/
+#   $2 dest_ws       ~/.openclaw/workspace-<id>/
+#   $3 project_root  仓库根
+#   $4 openclaw_home ~/.openclaw
+# 为什么需要：这两个文件驱动 openclaw.json 里该 agent 的 skills allowlist。技能改名或
+# 收纳进专家包后（如 video-producer → expert-video/tools/video-producer），已部署 workspace
+# 里的旧文件名会让 allowlist 指向不存在的技能，crew 直接失去这批能力。
+# 安全边界：只在「已部署文件里存在解析不到的陈旧条目」时才重写；重写取
+# 仓库声明 ∪ 已部署文件中仍能解析的条目，实例自装技能不会被抹掉。
+sync_skill_declaration_files() {
+  local src_crew="$1"
+  local dest_ws="$2"
+  local project_root="$3"
+  local openclaw_home="${4:-$HOME/.openclaw}"
+  local fname=""
+
+  _skill_name_resolves() {
+    local name="$1"
+    [ -d "$dest_ws/skills/$name" ] && return 0
+    [ -d "$src_crew/skills/$name" ] && return 0
+    [ -d "$project_root/skills/$name" ] && return 0
+    [ -d "$openclaw_home/skills/$name" ] && return 0
+    [ -d "$project_root/openclaw/skills/$name" ] && return 0
+    return 1
+  }
+
+  for fname in BUILTIN_SKILLS DENIED_SKILLS; do
+    local src="$src_crew/$fname"
+    local dest="$dest_ws/$fname"
+    [ -f "$src" ] || continue
+    if [ ! -f "$dest" ]; then
+      cp "$src" "$dest" 2>/dev/null || true
+      echo "  ✅ $fname installed → $(basename "$dest_ws")"
+      continue
+    fi
+
+    local stale=0
+    local line=""
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line#"${line%%[![:space:]]*}"}"      # ltrim
+      line="${line%"${line##*[![:space:]]}"}"      # rtrim
+      [ -n "$line" ] || continue
+      case "$line" in \#*) continue ;; esac
+      _skill_name_resolves "$line" || stale=1
+    done < "$dest"
+
+    [ "$stale" = "1" ] || continue
+
+    # 重写：仓库声明在前，已部署文件中仍能解析的自定义条目追加在后（去重）
+    local merged=""
+    merged="$(cat "$src")"
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [ -n "$line" ] || continue
+      case "$line" in \#*) continue ;; esac
+      _skill_name_resolves "$line" || continue
+      if ! printf '%s\n' "$merged" | grep -qxF "$line"; then
+        merged="$merged"$'\n'"$line"
+      fi
+    done < "$dest"
+    printf '%s\n' "$merged" > "$dest"
+    echo "  🧹 $fname refreshed (stale skill entries) → $(basename "$dest_ws")"
+  done
 }
 
 ensure_soul_crew_type() {

@@ -1,11 +1,15 @@
 #!/bin/bash
-# update.sh - wiseflow 升级脚本（已 git clone 用户用）
+# update.sh - wiseflow 升级脚本（git clone 源码路线用户用）
 #
-# 与 scripts/install.sh 区别：
-#   - install.sh = curl 首装路线（从零开始，clone 仓 → build → onboard）
-#   - update.sh  = 已 git clone 用户的升级路线（fetch + reset → checkout openclaw → build → daemon reload）
+# 与 scripts/install.sh 区别（两条互不混用的分发路线）：
+#   - install.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → daemon restart，全程无需用户预装 Node/git/pnpm）
+#   - update.sh  = 本脚本，git clone 源码用户的升级路线（fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
-# 适用场景：用户已通过 install.sh 装好 wiseflow，后续要拉新版本用此脚本。
+# 适用场景：用户是 git clone 本仓装的（项目目录内有 .git），后续要拉新版本用此脚本。
+#   ⚠️ 通过 install.sh 以 tarball 装的机器**不要**用本脚本——重跑 install.sh 即可升级。
+#   本脚本对无 .git 的目录会 git init + fetch + reset --hard，等于把 tarball 安装转成源码路线，
+#   并要求系统 Node/git/pnpm 11+ 自行 build，恰是 tarball 用户特意绕开的依赖。
+#
 # 升级前请确保系统空闲（无 agent 会话正在处理任务）。
 #
 # 执行流程：
@@ -82,6 +86,26 @@ echo ""
 if [ ! -f "$PROJECT_ROOT/scripts/apply-addons.sh" ] || [ ! -d "$OPENCLAW_DIR" ]; then
   echo "❌ This does not look like a wiseflow project directory."
   echo "   Expected: scripts/apply-addons.sh and openclaw/ subdirectory"
+  exit 1
+fi
+
+# ─── 1.5 pnpm 版本预检 ────────────────────────────────────────────────
+# openclaw 工作区按其 package.json 的 packageManager pin 要求 pnpm 大版本：
+# apply-addons.sh 的依赖同步传了 --fetch-retries 等 flag，只有 pnpm 11 的
+# install CLI 才认（pnpm 10.x 直接 unknown argument 炸掉）。
+# 注意 pnpm ≥11 默认开 manage-package-manager-versions，在带 pin 的目录里
+# `pnpm --version` 返回 pin 版本而非实际安装版本，须在无 pin 的 / 下探测。
+REQUIRED_PNPM_MAJOR="$(grep -m1 '"packageManager"' "$OPENCLAW_DIR/package.json" 2>/dev/null | grep -o 'pnpm@[0-9.]*' | head -1 | sed 's/^pnpm@//; s/\..*//')"
+: "${REQUIRED_PNPM_MAJOR:=11}"
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "❌ pnpm 未安装（openclaw 工作区需要 pnpm ${REQUIRED_PNPM_MAJOR}.x+）"
+  echo "   安装：npm install -g pnpm@${REQUIRED_PNPM_MAJOR} --registry=https://registry.npmmirror.com"
+  exit 1
+fi
+INSTALLED_PNPM_MAJOR="$( (cd / && pnpm --version 2>/dev/null) | cut -d. -f1)"
+if [ "${INSTALLED_PNPM_MAJOR:-0}" -lt "$REQUIRED_PNPM_MAJOR" ]; then
+  echo "❌ pnpm ${REQUIRED_PNPM_MAJOR}.x+ required (openclaw/package.json packageManager pin), found $(cd / && pnpm --version 2>/dev/null || echo unknown)"
+  echo "   升级：npm install -g pnpm@${REQUIRED_PNPM_MAJOR} --registry=https://registry.npmmirror.com"
   exit 1
 fi
 
@@ -166,8 +190,11 @@ install_weixin_channel() {
         }
       ' "$plugin_tgz" "$plugin_integrity"
     fi
-    if (cd "$OPENCLAW_DIR" && pnpm openclaw plugins install "$plugin_tgz"); then
-      echo "  ✅ bundled openclaw-weixin installed"
+    # --force = "Overwrite an existing installed plugin"（7.1-2 起就有该 flag）。
+    # bundled 路径本来就每次都装（不像 install.sh 有幂等跳过），缺这个 flag 时
+    # 在已装过该插件的实例上会失败，进而触发下面的 exit 1，把整次 update 打断。
+    if (cd "$OPENCLAW_DIR" && pnpm openclaw plugins install "$plugin_tgz" --force); then
+      echo "  ✅ bundled openclaw-weixin installed (${plugin_version})"
     else
       echo "❌ Bundled openclaw-weixin install failed"
       echo "   Re-run with --skip-weixin only if you intentionally want to configure the onboarding channel later."

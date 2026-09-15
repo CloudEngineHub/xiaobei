@@ -32,6 +32,8 @@ export interface VideoInfo {
   durationMs: number
   author: string
   stats: { playCount: number; likeCount: number; commentCount: number; collectCount: number; shareCount: number }
+  /** 话题标签名（HTML 路线的 tagList） */
+  hashtags: string[]
   mediaFormat?: string
 }
 
@@ -121,5 +123,6 @@ export async function getXhsVideo(
       collectCount: note.stats.collectCount,
       shareCount: note.stats.shareCount,
     },
+    hashtags: note.tags ?? [],
   }
 }

@@ -5,7 +5,7 @@
 评论数 / 分享数 / 收藏数，写入 published-track 的 pub_wx_channel 表。
 
 与 wx-mp-engagement 同源方法：camoufox 打开创作者后台 → 解析 innerText →
-按标题匹配 → 提行内数字。视频号助手后台使用 wujie 微前端，shadow DOM 内
+按完整视频描述匹配 → 提行内数字。视频号助手后台使用 wujie 微前端，shadow DOM 内
 文本需用 eval 手写 document.querySelector('wujie-app').shadowRoot.innerText。
 
 CLI 形态：
@@ -647,9 +647,9 @@ def _extract_metrics(row: dict) -> dict:
 
 
 def match_post(rows: list[dict], target_desc: str, target_date: str | None = None) -> dict | None:
-    """按描述文案在后台列表里找最匹配的行，返回 {desc, metrics}
+    """按完整视频描述在后台列表里找最匹配的行，返回 {desc, metrics}
 
-    视频号作品管理页展示的是描述文案（desc），不是短标题——DB 里 title 列存的
+    视频号作品管理页只展示完整视频描述（desc）；发布页虽可另填短标题，但管理页不展示、抓不到——DB 里 title 列存的
     也应是完整 desc（见 main AGENTS.md 发布工作流）。匹配策略（小贝建议）：
     1. 用发布日期±1天筛同日候选（后台行 published_at 形如「2026年08月03日 12:06」）
     2. 拿 desc 前 60 字归一化包含匹配——避开 hashtag 噪声，够区分

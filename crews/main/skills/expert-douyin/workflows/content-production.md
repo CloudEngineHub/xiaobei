@@ -2,7 +2,7 @@
 
 从选题到发布的完整内容生产。用户说"帮我做条抖音视频""发个抖音""这条照着做一条""这个选题我们也做一条"走这个。
 
-视频制作分工是硬边界（用户钦定）：main agent 只做**基于已有素材的组装与轻剪辑**；出脚本、从零端到端制作一律委托 `content-producer`。本 workflow 的价值在于：用 DNA template 锁定内容与风格要求、编排输入分支与确认节点、衔接制作（自做或委托）、把关质量与发布记录。
+**视频作品分工硬边界**：main agent 负责选题策划、按 DNA 出 **Brief**、拟定标题与简介、准备素材（用户素材预处理 / `ui-demo` 录屏 / 从 `campaign_assets/` 挑选，绝对路径写进 Brief）、监督并推动作为 subagent 的 `content-producer`、成片后的发布与运营；也直接做图文内容与**已有视频素材的简单加工**（`video-edit` / `talking-head-cut`）。视频全案的成片制作一律委托 `content-producer`。本 workflow 的价值在于：用 DNA 锁定选题、包装、内容创意、视频形态与制作规格，编排输入分支与确认节点，衔接制作并把关发布记录。
 
 ## Step 0 - 入口判断
 
@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | 素材组装 / 轻剪辑 | 用户手里有可用素材 | main 直接做：`video-edit` / `talking-head-cut` / `ui-demo` |
 | 从零制作 | 没有素材，需要出脚本、拍摄/生成画面 | main 出制作简报，委托 `content-producer` |
-| 脚本制作 | 用户已有脚本 | 脚本交 `content-producer` 制作 |
+| 脚本制作 | 用户已有脚本 | 根据dna对脚本做必要修改，提交用户确认后，脚本交 `content-producer` 制作 |
 
 ### 3. 抖音链接的意图判断
 
@@ -54,7 +54,10 @@ douyin/dna/{dna-id}/{dna-id}.dna.md
 douyin/dna/{dna-id}/{dna-id}.template.md
 ```
 
-DNA template 是选题、标题、钩子、结构、口播、画面和互动路线的直接执行依据；DNA 文档用于理解稳定性、例外和适用条件。委托 `content-producer` 时，把 template 的执行要求写进制作简报，让制作方按 DNA 生产。
+DNA template 是 main agent 的生产输入模板：
+
+- **视频 DNA 的 template = Brief 正文模板 +（可选）口播文案模板**，覆盖选题与观看理由、标题与封面、内容创意、业务植入与 CTA、视频形态与制作指向、制作规格、口播文案（如果是口播类视频创作），它不规定创作细节：逐句台词、镜头表、转场或编码参数，这些归 Content Producer决定；
+- **图文 DNA 的 template = 图文写作模板**。
 
 ### 2. 读取业务知识
 
@@ -91,7 +94,7 @@ DNA template 是选题、标题、钩子、结构、口播、画面和互动路�
 > Agent 的一般内容判断
 ```
 
-DNA 约束的是选题、钩子、结构、口播、画面和互动方式；不能覆盖用户指定素材、事实、合规边界和转化要求。
+DNA 约束的是选题与观看理由、标题与封面写法、内容创意原型、业务植入套路、互动引导与 CTA 套路、视频形态与制作指向、制作规格；口播文案子模块只在明确启用时约束口播；账号运营子模块（简介写法、内容形式比例、发布习惯）只用于起号、对标与发布节奏决策，不进 Brief。DNA 不能覆盖用户指定素材、事实、合规边界和转化要求。
 
 ## Step 2 - 素材获取与整理
 
@@ -161,6 +164,7 @@ DNA 约束的是选题、钩子、结构、口播、画面和互动方式；不�
 - 标题硬限制：不超过 30 字（抖音创作者平台上限）。
 - 简介提及产品或业务，但不放明显引流信息；禁止二维码、联系方式；可引导用户主动搜索或点头像看主页。
 - 话题标签按 DNA template 的策略组织：主标签 + 场景词 + 痛点词，不堆砌。
+- 业务植入与 CTA 按 DNA 的 `biz-implant` / `interaction-cta` 落位：植入位置、载体与衔接句写清楚，一条只放一个主行动，不堆叠 CTA。
 
 ## 【确认】标题与文案
 
@@ -172,42 +176,57 @@ DNA 约束的是选题、钩子、结构、口播、画面和互动方式；不�
 
 ### 路线 A：素材组装 / 轻剪辑（main 直接做）
 
-按 DNA template 的起承转合 CTA 结构编排素材：
+只处理已有素材的简单加工，不升格为全案制作：
 
-1. 按 template 各部分的画面与口播要求，把素材整理成剪辑顺序清单（哪段素材对应哪个部分、配什么口播/字幕）。
+1. 按 DNA 的核心传达、内容形式与互动目标整理剪辑顺序清单；若创作口播类视频，由 main 先写口播稿。
 2. 口播类素材去口气词、剪高光 -> `talking-head-cut`。
 3. 抽段拼接、加旁白 / BGM、烧字幕、编号合成 -> `video-edit`。
 4. 素材缺口经 AIGC 片段（`aigc-video-gen`）或免费素材库（`pexels-footage` / `pixabay-footage`）补充，补充素材在清单中标注来源。
 5. 产品操作演示 -> `ui-demo` 录制。
+6. 若需求超出“简单加工”（需要重写叙事、全新分镜、全案生成），停止自做，改走 Brief 委托路线。
 
 ### 路线 B / C：委托 content-producer 制作
 
-1. 产出**制作简报** `douyin/outputs/<video-name>/brief.md`，至少包含：选题与观看理由、标题与文案、DNA template 各部分执行要求（钩子类型与开场口播、结构与节奏、画面与镜头、声音、互动引导）、素材清单（如有）、时长带、验收标准（钩子兑现、结构完整、DNA 检查项）。
-2. 参考模式附上 `viral-chaser` 拆解报告路径，作为 brief 的一部分。
-3. spawn `content-producer` 作为 subagent（或提示用户直接委托 content-producer），由其出脚本并完成端到端制作；脚本讨论也直接找 content-producer，main 不代写完整脚本。
-4. 跟进制作进展，避免长时间卡住；成品视频回传 `douyin/outputs/<video-name>/`。
+1. 产出**制作简报** `douyin/outputs/<video-name>/brief.md`（Brief 是 main / CP 的唯一交接物）：
 
-## Step 6 - 成片自检
+```markdown
+# 抖音视频制作 Brief
 
-成品必须过 `video-review` 闸门（ffprobe 校验 + 黑帧扫描 + 音频电平 + 时长/分辨率一致性）。
+- 视频名 / slug：
+- platform：douyin
+- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，Stage 1 自定档位）
+- 选题与观看理由：
+- 核心传达：
+- 内容创意：创意原型 + 展开逻辑 + 记忆点（+ 反转设计，如为反转植入类）
+- 业务植入与 CTA：植入位置与方式原型 + 内容与业务的衔接句要求 + CTA 主目标与句式（只写要求，不写 DNA 规则原文）
+- 标题与简介：发布标题、简介文案、话题标签（main 定稿）
+- 封面要求：封面主文案 + 视觉方向
+- 制作规格：横屏 / 竖屏、时长带、画面风格、配音音色与声音形态、BGM 与音效、字幕
+- 口播文案：`voiceover.md` 绝对路径（口播类必填）/ 真人口播录音绝对路径 / 不适用
+- 素材清单：逐条**绝对路径** + 来源 + 授权（无素材时写「无，由 CP 按 Brief 取材」）
+- 交付物与验收：`video.mp4` + `cover.jpg` + `final-deliver.md`，回报三者绝对路径；验收标准
+- 闸门：GATE A / GATE B 批准人（用户或 main 代理批准 + 批准范围）
+- 禁止事项：事实与承诺边界、合规红线、禁用方向
+```
 
-- verdict = pass -> 继续。
-- verdict = warn -> 向用户说明警告项，由用户决定是否修正。
-- verdict = fail -> 回到 Step 5 修正后重跑，不带病交付。
+Brief 硬性规则：
 
-## Step 7 - 封面
+- **不写 DNA**：Brief 里不出现 dna-id、DNA 文档路径或 DNA 规则原文——CP 看不到 main 的 DNA，只按 Brief 制作。DNA 的结论由 main 消化后写成 Brief 的具体要求。
+- **不建工作区**：main 不替 CP 建目录、不指定项目路径；CP 在自己的 workspace 下自建工作区。双方 T3 权限可互访取文件。
+- **素材给绝对路径**：main 负责素材准备（用户素材预处理、`ui-demo` 录屏、从 `campaign_assets/` 挑选），把绝对路径写进 Brief。
+- **甲乙方关系**：需求方向、品牌事实、发布文案归 main；制作方案、分镜、渲染参数归 CP。
 
-1. 读取 DNA template 的封面 / 首帧风格和封面 AIGC 提示词要素。
-2. 结合最终标题、目标观众和本条核心收益，补齐本次封面的主体、场景、构图、色彩、文字视觉和负向约束。
-3. 优先从成片中选帧作为封面（与内容一致）；需要更强视觉冲击时用 `siliconflow-img-gen` 生成。
-4. 用户已提供封面时直接使用；用户提供素材不足时作为生成参考。
-5. 封面图发用户确认，确认后保存为 `douyin/outputs/<video-name>/cover.jpg`。
+2. 口播类视频：按 DNA 的 `narration-script` 子模块写口播终稿 `douyin/outputs/<video-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。
+3. 参考模式下，把选题与创意结论写进 Brief 的「内容创意」段即可；`viral-chaser` 拆解报告是 main 的采样材料，**不作为 Brief 附件交给 CP**。
+4. spawn `content-producer` 委托制作：只交 Brief + 素材绝对路径 + 口播文案 / 录音；不指定 CP 的工作区与制作方案。
+5. Brief 变更时更新版本并推送变更要点；已开工中间产物按新版取舍，弃用部分记入交付说明。
+6. CP 交付后，按其回报的绝对路径把成片与封面取回 `douyin/outputs/<video-name>/`（`video.mp4` / `cover.jpg`），并把交付说明要点记入作品目录。
 
 ## 【确认】成片与封面
 
 第三个必停节点。成片与封面确认后才可发布。用户有意见按意见修改，直至确认。
 
-## Step 8 - 发布
+## Step 6 - 发布
 
 发布走 `douyin-publish`（工具说明见包内 `douyin-publish` 文档）：
 
@@ -226,7 +245,7 @@ douyin-publish run --video douyin/outputs/<video-name>/<成片文件> --title "�
 - 同一时间只能有一个 `douyin-publish` 发布任务在跑（浏览器 session 竞态），多平台分发时抖音这条必须串行。
 - 限频：单抖音号每 24h ≤ 5 条；触发风控立即降级，30 分钟内不重试。
 
-## Step 9 - 记录
+## Step 7 - 记录
 
 发布成功（拿到视频链接）后入库：
 

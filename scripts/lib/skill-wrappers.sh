@@ -63,6 +63,20 @@ expose_skill_wrappers() {
     exposed=$((exposed + 1))
   done
 
+  # 清理悬挂 wrapper：技能改名 / 收纳进专家包 tools/ 后，旧 bin 软链会指向不存在的路径。
+  # 只删「软链且目标不存在」的条目；真文件与有效软链不动。
+  local bin_link=""
+  local pruned=0
+  for bin_link in "$OPENCLAW_BIN_DIR"/*; do
+    [ -L "$bin_link" ] || continue
+    if [ ! -e "$bin_link" ]; then
+      if rm -f "$bin_link" 2>/dev/null; then
+        pruned=$((pruned + 1))
+      fi
+    fi
+  done
+  [ "$pruned" -gt 0 ] && echo "  🧹 pruned $pruned dangling wrapper symlink(s) in ~/.openclaw/bin"
+
   [ "$exposed" -gt 0 ] && echo "  ✅ exposed $exposed wrapper(s) → ~/.openclaw/bin (from $(basename "$skills_root"))"
 }
 

@@ -39,14 +39,14 @@ wx-mp-publisher <markdown_file> [theme] [--account ALIAS]
 - `theme`：渲染主题，三种形态：
   1. **内置 id**（`pie` / `lapis` / `default` / …）——原样作为 `theme` 传给 relay
   2. **本地 `.css` 文件路径**——脚本读出文件内容，作为 `custom_theme` 字段随 multipart 上传 relay
-  3. **wenyan-theme/index.json 登记的自定义 id**--从工作区主题注册表解析出对应 CSS 路径，同 (2)
+  3. **wx_mp/wenyan-theme/index.json 登记的自定义 id**--从工作区主题注册表解析出对应 CSS 路径，同 (2)
 
   可选，缺省由 relay 默认渲染。
 - `--account ALIAS`：多账号时指定目标公众号；缺省用 `accounts.json` 的 `default`
 
 > **自定义主题不持久化到 relay**：relay 是无状态多租户中转，**不存任何用户主题**。CSS 随请求上传，relay 写到 per-request 临时目录、用后即清理，天然按用户隔离。
 >
-> 主题注册表在 client 侧：**工作区 `wenyan-theme/index.json`**。generate-wenyan-theme 生成新主题后写入该文件，发布时从该文件读取。结构固定为 `version: 1` + `themes` 数组；每条记录包含 `id`、`name`、`css`、`source`、`createdAt`。
+> 主题注册表在 client 侧：**工作区 `wx_mp/wenyan-theme/index.json`**。generate-wenyan-theme 生成新主题后写入该文件，发布时从该文件读取。结构固定为 `version: 1` + `themes` 数组；每条记录包含 `id`、`name`、`css`、`source`、`createdAt`，其中 `css` 为相对工作区根的路径（如 `wx_mp/wenyan-theme/<id>.css`）。
 
 脚本自动：
 - 从 `accounts.json` 取目标账号凭据
@@ -57,7 +57,7 @@ wx-mp-publisher <markdown_file> [theme] [--account ALIAS]
 
 ### 主题选择（未指定时）
 
-> 自定义主题说明：`generate-wenyan-theme` 生成的用户自定义 CSS 登记在 `wenyan-theme/index.json`。若用户明确指定某个自定义主题，必须优先采用；未指定时才按内容在内置主题和已登记自定义主题中匹配。
+> 自定义主题说明：`generate-wenyan-theme` 生成的用户自定义 CSS 登记在 `wx_mp/wenyan-theme/index.json`。若用户明确指定某个自定义主题，必须优先采用；未指定时才按内容在内置主题和已登记自定义主题中匹配。
 
 | 主题 ID | 风格描述 | 适用场景 |
 |---------|---------|---------|

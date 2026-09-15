@@ -18,7 +18,7 @@ description: 从自然语言描述或对标公众号文章生成自定义排版 
 - **自然语言转 CSS**：理解视觉需求（如"赛博朋克风"、"深色代码块"、"带装饰的引用块"），转换为精确的 CSS 代码
 - **微信文章仿样式生成**：当用户提供 `https://mp.weixin.qq.com` 文章链接时，调用 `wx-mp-hunter fetch <url> --html` 获取正文 HTML，分析原文排版特征后生成 wenyan CSS
 - **公众号近期文章归纳生成**：当用户提供公众号账号时，调用 `wx-mp-hunter search` + `account-posts` + `fetch --html` 采集近期文章 HTML，抽取共性后生成模板
-- **主题注册到 index.json**：生成自定义 CSS 后，把主题信息写入工作区 `wenyan-theme/index.json`，`wx-mp-publisher` 会从这里读自定义主题
+- **主题注册到 index.json**：生成自定义 CSS 后，把主题信息写入工作区 `wx_mp/wenyan-theme/index.json`，`wx-mp-publisher` 会从这里读自定义主题
 - **微信排版规范适配**：严格遵循 `#wenyan` 命名空间约束，确保样式能完美注入微信公众号 DOM 结构
 - **高级排版特效**：支持伪元素 (`::before`/`::after`)、渐变背景 (`linear-gradient`)、内联 SVG/Base64 图片等高级 CSS 特性
 
@@ -312,7 +312,7 @@ generate-wenyan-theme --account <公众号名> --keywords "关键词1,关键词2
 每次成功生成自定义 CSS 后，必须更新工作区主题注册表：
 
 ```text
-wenyan-theme/index.json
+wx_mp/wenyan-theme/index.json
 ```
 
 结构固定为：

@@ -1,7 +1,8 @@
 # 小贝系统视频能力重新规划 — 调研与开发计划
 
 > 起草日期：2026-07-25（周六）
-> 状态：调研期（未进入开发）
+> 状态：调研期历史文档（未进入开发），**不作为当前实现依据**
+> 2026-09-10 注：本文提到的 `video-producer` / `collage-broll` / `manim-explainer` / `design-full` 四个技能已整合为 `crews/content-producer/skills/expert-video`（含 `video-producer` / `collage-broll` 两个 tool 与 reversal-ad / narration-video / collage-broll 三个 workflow）与 `expert-design`（含 `design-full` tool 与 web-page / app-ui / brand-visual 三个 workflow），`manim-explainer` 已删除；main 与 content-producer 的分工与 Brief 交接契约以 `docs/expert-pack-dna-architecture.md` 4.7 / 4.9 节为准。
 > 用途：本文件用于**沉淀调研结果**与**规划出发点**，最终据此生成开发计划。开发计划不在本文件撰写，等调研结束另起一份。
 
 ---

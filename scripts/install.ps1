@@ -38,6 +38,7 @@
 #      manually later)
 #   7. camoufox-cli: .cmd shim + camoufox-cli install downloads Firefox
 #   8. openclaw-weixin plugin: openclaw plugins install ... --pin (npmmirror)
+#      idempotency by VERSION: skip only when installed == pin; --force upgrade otherwise
 #   9. Interactive prompt for AWK_API_KEY -> write daemon.env + setx user env var -> attempt
 #      openclaw daemon install
 #
@@ -498,6 +499,53 @@ function Install-CamoufoxCli {
 }
 
 # --- 9. openclaw-weixin plugin ---
+# Read the installed openclaw-weixin version; returns $null when unreadable.
+# Primary path: `plugins list --json` (fields id / name / version); fallback: the real
+# package.json under npm\projects\* (project dir names carry a hash, so glob).
+function Get-WeixinInstalledVersion([string]$pkg) {
+    # Capture stdout only (mirrors bash 2>/dev/null): stderr noise would break ConvertFrom-Json.
+    # EAP must be Continue here - under Stop, `2>$null` on a .cmd still throws
+    # NativeCommandError on Windows PowerShell 5.1 (same pitfall as Capture-Streamed above).
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $json = (& $ClawCmd plugins list --json 2>$null | Out-String) }
+    finally { $ErrorActionPreference = $prev }
+    if ($json) {
+        try {
+            foreach ($p in ($json | ConvertFrom-Json).plugins) {
+                if ($p.id -eq "openclaw-weixin" -or $p.name -eq $pkg) {
+                    if ($p.version) { return [string]$p.version }
+                    break
+                }
+            }
+        } catch { }
+    }
+    # Fallback: CLI/JSON unavailable - read the installed package.json directly
+    $projRoot = Join-Path $OpenclawHome "npm\projects"
+    if (Test-Path $projRoot) {
+        $pkgRel = $pkg.Replace("/", "\")
+        foreach ($dir in (Get-ChildItem $projRoot -Directory -ErrorAction SilentlyContinue)) {
+            $f = Join-Path $dir.FullName "node_modules\$pkgRel\package.json"
+            if (-not (Test-Path $f)) { continue }
+            try {
+                $v = (Get-Content $f -Raw | ConvertFrom-Json).version
+                if ($v) { return [string]$v }
+            } catch { }
+        }
+    }
+    return $null
+}
+
+# Install the openclaw-weixin plugin (the config template pre-populates the channel, but the
+# plugin itself needs `openclaw plugins install`). Pin comes from openclaw-weixin.version.json
+# in the tarball; registry is npmmirror.
+# Idempotency by VERSION, not by name: skip only when installed == pin; installed != pin ->
+# `--force` upgrade to pin. (The old logic merely matched the plugin name in `plugins list`
+# and returned, so after a pin bump existing installs stayed on the old version forever.)
+# --force = "Overwrite an existing installed plugin" (flag exists since 7.1-2). The upgrade
+# only replaces the package under npm\projects; login state in $OpenclawHome\openclaw-weixin\
+# is untouched, and the update route restarts the gateway afterwards so the new version takes
+# effect.
 function Install-WeixinPlugin {
     Write-Stage "Installing WeChat plugin"
     if (-not (Test-Path $ClawCmd)) { Write-Warn "openclaw wrapper not found: $ClawCmd; skipping"; return }
@@ -510,11 +558,26 @@ function Install-WeixinPlugin {
         } catch { Write-Warn "pin file parse failed, using default $pkg@$ver" }
     }
     $env:npm_config_registry = "https://registry.npmmirror.com"
-    $listOut = Capture-Streamed { & $ClawCmd plugins list }
-    if ($listOut -match "openclaw-weixin") { Write-Ok "openclaw-weixin plugin already installed"; return }
-    Invoke-Streamed { & $ClawCmd plugins install "$pkg@$ver" --pin }
-    if ($LASTEXITCODE -eq 0) { Write-Ok "openclaw-weixin plugin installed" }
-    else { Write-Warn "plugin install failed; you can run manually later: $ClawCmd plugins install $pkg@$ver --pin" }
+    # Idempotency check: skip only when installed version == pin
+    $installed = Get-WeixinInstalledVersion $pkg
+    $forceFlag = @()
+    if ($installed -and $installed -ceq $ver) { Write-Ok "openclaw-weixin plugin already installed ($ver)"; return }
+    if ($installed) {
+        Write-Host "  [i]  openclaw-weixin installed $installed, pin $ver -> --force upgrade" -ForegroundColor Yellow
+        $forceFlag = @("--force")
+    } else {
+        $listOut = Capture-Streamed { & $ClawCmd plugins list }
+        if ($listOut -match "openclaw-weixin") {
+            # Plugin present but version unreadable (CLI/JSON anomaly): force reinstall at pin
+            Write-Warn "openclaw-weixin installed but version unreadable; force reinstalling at pin $ver"
+            $forceFlag = @("--force")
+        }
+    }
+    $installArgs = @("plugins", "install", "$pkg@$ver", "--pin") + $forceFlag
+    $forceHint = if ($forceFlag) { " --force" } else { "" }
+    Invoke-Streamed { & $ClawCmd @installArgs }
+    if ($LASTEXITCODE -eq 0) { Write-Ok "openclaw-weixin plugin installed ($ver)" }
+    else { Write-Warn "plugin install failed; you can run manually later: $ClawCmd plugins install $pkg@$ver --pin$forceHint" }
 }
 
 # --- 10. awada local plugin deps (ws + zod) ---

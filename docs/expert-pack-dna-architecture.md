@@ -1,6 +1,6 @@
 # 专家包（Expert Pack）+ DNA 架构规划
 
-> 日期：2026-08-14；2026-08-18 更新 DNA 生产模式与跨平台 profiler 规范；2026-08-20 明确跨平台 DNA 维度边界与 template 通用开头；2026-08-20 废除 rubric、数据直连 DNA（见第 11 节）；2026-08-29 新增平台运营文件夹规范（见 4.2 节）；2026-08-29 `dna/` 与 `calibration/` 由集中目录下沉进各平台运营文件夹（见 4.2 节）
+> 日期：2026-08-14；2026-08-18 更新 DNA 生产模式与跨平台 profiler 规范；2026-08-20 明确跨平台 DNA 维度边界与 template 通用开头；2026-08-20 废除 rubric、数据直连 DNA（见第 11 节）；2026-08-29 新增平台运营文件夹规范（见 4.2 节）；2026-08-29 `dna/` 与 `calibration/` 由集中目录下沉进各平台运营文件夹（见 4.2 节）；2026-09-08 抖音 / 视频号 / 小红书 DNA 维度重做（v1，已废止）；2026-09-10 三平台 DNA 回到「单篇作品提取 → 批次聚合」范式并按作品类型分框架（v2，见 4.7 节）；2026-09-10 明确 main / Content Producer 的 Brief 交接契约（见 4.7 节）；2026-09-10 content-producer 引入专家包 expert-video / expert-design（见 4.9 节）
 > 首个改造对象：`crews/main`（小贝 / main agent）
 
 ---
@@ -149,6 +149,7 @@ crews/main/
 - 专家包内不使用 `AGENTS.md` 作为文件名（避免与 workspace bootstrap 文件混淆，也避免被误解为会被自动注入）。
 - 专家包内不保存可变 DNA。运行期生成的 DNA report、DNA 文档和 DNA template 一律写入 Workspace 的 `<platform>/dna/<dna-id>/`；专家包只保留方法论、框架和工具。
 - 非内容平台专家包（`expert-bd` / `expert-ir`，2026-08-27 落地）没有 DNA 与数据复盘概念：不配 style-profiler，也不要求 4.7 的 6 类 workflow 基线集；workflow 按业务场景组织（如 Lead Hunting / Investor Pipeline），运行期数据只有 Workspace `db/` 下的 SQLite 库。其余分层原则同样适用：薄根 `SKILL.md`（入口 + 路由）+ `workflows/*.md`（场景编排）+ `tools/`（原子技能收纳，SKILL.md 瘦身为工具说明书）+ 顶层 `<tool>.sh` wrapper 暴露到 PATH（`skill-wrappers.sh` 的 `*/tools/*/` 扫描层）。
+- 专家包不限于 main crew：`content-producer` 也已按同一分层原则改造为 `expert-video` + `expert-design`两个非平台运营专家包（无 DNA / 无 style-profiler / 无复盘 workflow），详见 4.9 节。
 - 既有非内容专家包命名统一 `expert-` 前缀；`sales-cs-manager`（2026-08-27 落地）是特例：crew 管理型专家包，同样无 DNA / style-profiler / workflow 基线集要求，只覆盖 sales-cs crew 的启用（Enablement）与复盘升级（Review）两个 workflow，且自身不落任何运行期数据（无 `db/`、无 Workspace 数据目录），运行期产物都在 sales-cs workspace（feedback/ 只读、business_knowledge 软链）。
 
 ### 4.2 专家包与运行时资产分层原则
@@ -188,7 +189,7 @@ Workspace/
 | 数据 | 归属 |
 |------|------|
 | DNA report / DNA 文档 / DNA template | `<platform>/dna/<dna-id>/` |
-| 排版主题 | 平台主题目录，例如 `wenyan-theme/` |
+| 排版主题 | 平台主题目录，例如 `wx_mp/wenyan-theme/` |
 | 校准、复盘、抓取结果 | `<platform>/calibration/` |
 
 硬性边界：
@@ -393,22 +394,43 @@ crews/<crew>/skills/expert-<platform>/tools/<platform>-style-profiler/
 5. **用户输入**：进入转译区，由 Agent 映射到平台维度后同步 DNA 文档与 template。
 6. **统计边界**：脚本只做证据底座，不评分、不替代定性判断。
 7. **更新模式**：合并历史 report 与新 report，保留 Agent 已完成结论和自定义段落。
-8. **template 开头两项**：template 开头两项统一为选题、标题（含封面图）；第三项起平台自定义。
+8. **template 开头两项**：所有平台固定为选题、标题（含封面图）；第三项起平台自定义。抖音 / 视频号 / 小红书 v2 的第三项起按下方作品类型框架执行。
 
-各平台允许不同、且必须单独讨论的部分只有：
+**（抖音 / 视频号 / 小红书，v2，2026-09-10）**：这三个平台**不存在「平台级 DNA」或「账号级 DNA」**——DNA 的生产范式与微信完全一致：按框架从**单篇作品**提取 report，再从**一批样本**聚合出 DNA 文档与 template；同一批样本可以来自多个不同账号，也可以来自用户指定的一个账号（从其发布列表批量提取）。2026-09-08 的 v1 把这三个平台的 DNA 写成「账号级运营框架」是对需求的过度解读，已废止。
 
-- DNA 提取与分析维度（可以与微信 17 维截然不同；本规范不要求其他平台采纳 17 维）；
-- 维度分组和命名；
-- 平台特有观测物，例如图文的标题与分段、视频的分镜与节奏、电商的卖点组织；
-- template 第三项起的分段结构（开头两项固定为选题、标题（含封面图））；
-- focus ID 集合。
+与微信的差别只在**维度**：这三个平台的观测物是短视频 / 图文笔记，不是长文，因此不照搬 17 维里的表层与深层写作维度。v2 维度按**作品类型**分框架：
 
-其他平台改造固定顺序：
+| 平台 | 框架文件 | 维度 |
+|------|----------|------|
+| 抖音 | `video-dna-framework.md`（10 维）+ `note-dna-framework.md`（9 维） | 视频：选题与观看理由、标题与封面、内容创意、**业务植入套路**（`biz-implant`）、**互动引导与 CTA 套路**（`interaction-cta`）、视频内容形态与制作指向、制作规格与视听倾向、口播文案子模块（可选）、账号运营子模块（简介写法、内容形式比例与发布习惯）；图文：选题、标题与封面图组、内容创意、正文表达与语气、图组视觉、业务植入套路、互动引导与 CTA 套路、账号运营子模块 |
+| 小红书 | `note-dna-framework.md`（10 维，默认）+ `video-dna-framework.md`（11 维） | 同上，另加**匹配的用户问题**（`search-intent`）——小红书最大流量池来自搜索，关键词必须落到用户可能的提问原句 |
+| 视频号 | `video-dna-framework.md`（10 维，只有视频） | 同抖音视频，其中标题维度是**短标题 + 视频描述**两项（发布页都可填、官方称填短标题有更多流量；管理页不展示短标题，取数与入库只用视频描述） |
 
-1. **先搭架构**：复制 wechat-style-profiler 的命令契约、存储结构、三层产物、权重/focus、用户输入转译和 update 机制，仅保留通用维度占位。
-2. **再定义维度**：与用户讨论并确认该平台的 DNA 提取与分析维度；维度可以与微信截然不同，本规范不要求采纳 17 维，没有确认前不得直接照搬。
-3. **最后接入工作流**：将内容生产（含仿写）、改稿等下游环节改为读取该平台 DNA template 直接执行。
-4. **配齐 workflow 基线集**：每个平台的专家包至少包含与 wx_mp 对应的 6 类 workflow——`style-dna`（DNA 创建与更新）、`content-production`（内容生产，含仿写 / 改写等输入分支）、`account-setup`（起号与定位）、`account-benchmark`（对标比较）、`editing`（改稿与调整）、`review`（数据复盘）。命名可按平台语境微调，职责不能缺；平台特有场景（如 wx_mp 的小绿书）优先作为 content-production 的产出分支，确有必要才独立成 workflow。
+四条硬规则：
+
+1. **一个 `dna-id` 只承载一种作品类型**（`--kind video|note`），混型 `build` 直接报错；抖音默认 `dna-0` 为视频、图文另建（如 `dna-0-note`），小红书默认 `dna-0` 为图文、视频另建（如 `dna-0-video`）。
+2. **业务植入与 CTA 是三平台共有维度**（2026-09-10 补）：`biz-implant` 记「营销内容怎么植入」（位置与时机、载体、方式原型、衔接句、密度与占比），`interaction-cta` 记「怎么引导行动」（主目标、位置与时机、句式原文、行动数量、诱因、合规边界）；两维都必须给出**位置 + 载体 + 原文摘录**证据，只写「自然植入」「引导关注」不算提取完成。口播类的 `narration-script` 只记「合」的收束方式，CTA 目标与句式归 `interaction-cta`。
+3. **子模块不是独立 DNA**：口播文案子模块（`narration-script`，参考微信的起承转合）只在口播类作品启用，用于指导 main 写同类型视频的口播文案；账号运营子模块（`account-bio`、`content-mix-cadence`）只在样本来自对标账号批量提取时填写，**只写进 DNA 文档、不进 template**。
+4. **视频 DNA 不含创作细节**：不写脚本结构、逐句台词、镜头表、转场与编码参数。视频类 template = **Brief.md 正文模板 + 口播文案模板（可选）**；图文类 template = 图文写作模板。
+
+`video-form`（视频内容形态：口播 / 实拍拼接 / 影视解说+反转植入 / 纯 AIGC 动画 / 创意转场 / 录屏 / 图文卡片）必须聚合成明确的**制作指向**，且只能写真实存在的资源名：Content Producer `expert-video` 的某个 workflow（Reversal Ad / Narration Video / Collage B-roll；不属这三类就写「不指定类型 workflow」，由 CP 按通用制作流程 + Stage 1 定档位），或 main 的素材加工技能（`video-edit` / `talking-head-cut` / `ui-demo`）。Brief 的 `workflow` 字段据此填写。
+
+采样侧配套：`viral-chaser` 的输出必须够喂这套框架——视频 meta（时长、宽高与横竖屏、发布时间、作者与简介、话题标签、互动数据）、覆盖全片的关键帧（含 25%/50%/63%/75%/90% 比例点，反转点通常在 55%-76%）、按时间占比的结构拆解与反转点位置、内容形态判定与制作指向，以及可直接喂 profiler 的 DNA 样本文字稿格式。
+
+在全案视频制作（非已有素材简单剪辑）上，main agent 与 Content Producer 的分工分界点是 **Brief**，两者始终是甲方 / 乙方关系：
+
+| 角色 | 职责 |
+|------|------|
+| main agent（甲方） | 选题策划；按 DNA 出 `brief.md`；拟定标题 / 短标题 / 简介等发布文案；素材准备（用户素材的简单预处理、按要求用 `ui-demo` 录屏、从 `campaign_assets/` 挑选），把素材**绝对路径**写进 Brief；口播类视频出口播文案（真人口播时向用户取得录音文件）；监督并推动作为 subagent 的 CP；成片后执行发布与运营 |
+| Content Producer（乙方） | 接 Brief + 已有素材，按自己技能包的 workflow 制作成片（含封面），交付成片 + 封面 + 交付说明 |
+
+交接契约：
+
+1. **交接物**：甲方给「已有素材（绝对路径）+ `brief.md` + 口播文案 / 口播录音（如有）」；乙方回「成片 + 封面图 + 交付说明」，并回报三者的绝对路径。
+2. **Brief 不含 DNA**：CP 查不到 main 的 DNA，Brief 里不写 dna-id、DNA 文档路径或 DNA 规则原文；DNA 结论由 main 消化成 Brief 的具体要求。
+3. **各自建各自的工作区**：main 不指定、也不替 CP 建工作区；CP 按自己技能包的工作区约定自建（`output_videos/<topic-en-slug>/`、`design_assets/YYYY-MM-DD-<任务名>/`）。双方都是 T3 权限，可互访对方工作区取文件。
+4. **不越界**：需求方向、品牌事实、卖点承诺、发布文案归 main；制作方案、分镜、素材实现、渲染参数归 CP。CP 不发布、不私信用户、不做平台运营。
+
 
 ### 4.8 Markdown 引用与运行时数据边界
 
@@ -422,9 +444,46 @@ crews/<crew>/skills/expert-<platform>/tools/<platform>-style-profiler/
    - 只有工具清单中明确列出的 wrapper 名称可以直接作为 shell 命令调用；未暴露 wrapper 的 Tool 名称仅用于定位工具说明，不得拼成脚本路径。
 
 2. **运行期数据只能写 Workspace**。
-   - DNA report、DNA 文档、DNA template、主题 CSS、抓取结果、校准数据等生成物，都必须保存到 Workspace 下的平台数据目录（例如 `wx_mp/dna/`、`wenyan-theme/`、`wx_mp/calibration/`）。
+   - DNA report、DNA 文档、DNA template、主题 CSS、抓取结果、校准数据等生成物，都必须保存到 Workspace 下的平台数据目录（例如 `wx_mp/dna/`、`wx_mp/wenyan-theme/`、`wx_mp/calibration/`）。
    - 不得写入专家包的 `dna/`、`references/`、`tools/` 或其他包内目录。专家包是可替换、可重建、可软链的代码与规则资产；运行期写入会造成实例状态和源仓状态耦合， reinstall / 重建 / 升级时也容易丢失。
    - 专家包只发布方法论、框架和工具；DNA 生成结果保存在 Workspace `<platform>/dna/<dna-id>/`，不通过索引登记。
+
+### 4.9 非 main crew 的专家包：content-producer（2026-09-10）
+
+专家包不只适用于 main。`content-producer` 按同一套分层原则改造，但属于**非平台运营专家包**（同 `expert-bd` / `expert-ir`）：没有 DNA、没有 style-profiler、没有数据复盘，也不要求平台包的 6 类 workflow 基线集。
+
+```text
+crews/content-producer/
+  AGENTS.md                # 薄：两种工作模式 + 专家包路由 + 交接契约 + 通用约定
+  skills/
+    expert-video/
+      SKILL.md             # 乙方角色与交接契约 + 三层阅读法（通用制作流程 = 基准准则 /
+                           # 类型 workflow = 细化 / 工具说明 = 子命令参数）+ 工作区
+                           # + 通用制作流程（阶段链 Stage 0→14，两闸门）+ 护栏 + 禁止事项
+      workflows/           # workflow = 通用制作流程在某一类型视频上的细化（不替代基准）
+        reversal-ad.md         「万万没想到」式：影视 / 剧情解说 + 突然反转植入品宣
+        narration-video.md     口播类：甲方交付口播文案或真人录音，做声画实现
+        collage-broll.md       纸拼贴 B-roll：隐喻 → 静帧 → i2v 三道闸门
+      tools/
+        video-producer/    # 原子能力（29 个子命令，含 5 个后期处理）+ wrapper，PATH 名不变
+        collage-broll/     # check-setup / gate3 + wrapper
+    expert-design/
+      SKILL.md             # 通用骨架（七步两闸门）+ workflow 清单 + 工具清单
+      workflows/           # workflow = 某一类设计任务怎么做
+        web-page.md / app-ui.md / brand-visual.md
+      tools/design-full/   # init / pick + 设计系统库 + wrapper，PATH 名不变
+```
+
+要点：
+
+- **workflow 的语义随 crew 变**：平台运营包里 workflow = 业务场景（起号 / 生产 / 复盘）；content-producer 里 workflow = **某一类型视频 / 某一类设计任务怎么做**。制作流程本身高度程式化、跨类型一致，写在包根 `SKILL.md`（阶段链、两闸门、护栏、Stage 12 工具箱）；类型差异（叙事套路、素材来源、声画组织方式）才写进 workflow。
+- **原技能整体降级为 tool**：`video-producer` / `collage-broll` / `design-full` 从路由面消失，成为包内工具；wrapper 名与子命令不变（靠 `skill-wrappers.sh` 的 `*/tools/*/` 扫描层暴露），调用方零改动。
+- **`manim-explainer` 删除**：能力已被 `expert-video` 的通用制作流程与 AIGC 动画路径覆盖。
+- **原「Pipeline 机制」废除**：Brief 字段从 `pipeline` 改为 `workflow`；不存在「viral-chaser 报告输入」阶段（追爆拆解是 main 的采样动作，CP 只吃 Brief），Stage 1 由 `intent-router` 承担定档位，`reference-concepts` 降为可选工具（仅直接对接用户模式下用户给了参考拆解报告时用）。
+- **两种工作模式**：A 作为 main 的 subagent（甲方 = main，Brief 已确认，不重开需求讨论）；B 直接对接用户（甲方 = 用户，可能不专业，先引导确认 Brief、落实素材位置与存在性，口播文案代拟需用户确认）。两种模式都坚持乙方角色、都自建工作区。
+- **运行期数据只写 CP 自己的 Workspace**：`output_videos/<topic-en-slug>/`（视频）与 `design_assets/YYYY-MM-DD-<任务名>/`（设计）；不写进 main 的平台目录，也不让 main 代建。
+
+---
 
 ---
 
@@ -487,7 +546,7 @@ crews/<crew>/skills/expert-<platform>/tools/<platform>-style-profiler/
 ### Phase 4：DNA 工具链 + 多平台扩展（后续）
 
 - 每个平台专家包先落地同构 `<platform>-style-profiler`：统一 report / build / update 命令、DNA ID 存储和用户输入转译机制。
-- 平台架构完成后，与用户确认该平台独有的 DNA 提取与分析维度；维度可以与微信截然不同、不必对齐 17 维，但 template 开头两项（选题、标题（含封面图））通用。
+- 平台架构完成后，与用户确认该平台独有的 DNA 提取与分析维度；维度可以与微信截然不同、不必对齐 17 维。所有平台保持 template 开头两项（选题、标题（含封面图））通用；抖音 / 视频号 / 小红书 v2 按作品类型分框架，视频类 template 用 Brief 语义段（+ 可选口播文案段），图文类用写作语义段。
 - 维度确认后再接入内容生产、改稿等下游 workflow，并配齐 4.7 要求的 6 类 workflow 基线集。
 - 逐步沉淀更多 DNA：每个 DNA 持续追加 report，并通过 update 重聚合同步 DNA 文档与 template。
 

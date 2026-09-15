@@ -43,8 +43,8 @@ jobs:
         with:
           node-version: '24.15.0'
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10.30.2
+        # 不指定 version，action-setup v6 自动读 package.json 的 packageManager
+        # （显式 version 会与其冲突报 "Multiple versions of pnpm specified"）
 
       - name: Clone openclaw at pinned commit
         # 用完整 clone 而非 --depth=1 浅 clone：apply-addons.sh 跑 git apply --3way

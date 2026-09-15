@@ -40,6 +40,11 @@ function errExit(msg: string, code = 1): never {
   process.exit(code)
 }
 
+function unixToIso(seconds?: number): string {
+  if (!seconds || seconds <= 0) return ""
+  return new Date(seconds * 1000).toISOString()
+}
+
 function getTmpDir(contentId: string): string {
   // Honor OUTPUT_DIR env var (SKILL.md sets it to <platform>/ref/<slug>/references).
   // Fall back to a per-id tmp dir when unset.
@@ -56,26 +61,33 @@ async function extractKeyFrames(
   outputDir: string,
   segments: Array<{ start: number; end: number; text: string }>,
   noFrames: boolean,
+  durationSeconds = 0,
 ): Promise<string[]> {
   if (noFrames) return []
 
   const framesDir = join(outputDir, "frames")
   mkdirSync(framesDir, { recursive: true })
 
-  // Build list of timestamps: 0s, 3s, segment midpoints.
-  // Intentionally front-loaded (slice(0, 8) keeps the earliest 8): for short
-  // videos the opening is what matters most — the goal is to not let viewers
-  // scroll past the first few seconds.
+  // 采样点：开场（0s / 3s，看钩子与首帧包装）+ 各口播段中点（看画面与口播的对应）
+  // + 全片比例点 25% / 50% / 63% / 75% / 90%（看结构转折——反转植入类作品的反转点
+  // 通常落在 55%-76%，只采前几秒会完全错过）。去重后按时间排序，最多 12 张。
   const timestamps: number[] = [0, 3]
   for (const seg of segments) {
     const mid = Math.floor((seg.start + seg.end) / 2)
     if (!timestamps.includes(mid)) timestamps.push(mid)
   }
+  if (durationSeconds > 0) {
+    for (const ratio of [0.25, 0.5, 0.63, 0.75, 0.9]) {
+      const ts = Math.min(Math.floor(durationSeconds * ratio), Math.max(durationSeconds - 1, 0))
+      if (!timestamps.includes(ts)) timestamps.push(ts)
+    }
+  }
+  timestamps.sort((a, b) => a - b)
 
   const framePaths: string[] = []
   let frameIdx = 0
 
-  for (const ts of timestamps.slice(0, 8)) {  // max 8 frames, front-loaded
+  for (const ts of timestamps.slice(0, 12)) {  // max 12 frames, 覆盖全片
     const timeStr = new Date(ts * 1000).toISOString().substring(11, 19)
     const outPath = join(framesDir, `frame_${String(frameIdx).padStart(2, "0")}_${ts}s.jpg`)
     try {
@@ -154,6 +166,10 @@ async function main(): Promise<void> {
     coverUrl: string; durationMs?: number; durationSeconds?: number
     author: string; stats: Record<string, number>
     contentId: string; mediaFormat?: string
+    // DNA 采样补充字段（平台能给则给，缺失为 0 / 空）
+    width?: number; height?: number; ratio?: string
+    createTime?: number; authorSignature?: string; authorUid?: string
+    hashtags?: string[]; imageUrls?: string[]
   }
 
   try {
@@ -181,13 +197,55 @@ async function main(): Promise<void> {
     errExit(`获取视频信息失败: ${msg}`)
   }
 
+  const tmpDir = getTmpDir(contentId)
+  mkdirSync(tmpDir, { recursive: true })
+
+  // 4b. 图文作品分支（抖音图集笔记）：无播放地址但有图片列表时，只下载图片 +
+  //     输出文本与 meta，不做音频提取 / ASR / 抽帧。这类样本喂图文 DNA（note 框架），
+  //     视觉证据就是下载到的图片。
+  const imageUrls = videoInfo!.imageUrls ?? []
+  if (!videoInfo!.videoUrl && imageUrls.length) {
+    process.stderr.write(`[viral-chaser] 图文作品：下载 ${imageUrls.length} 张图片...\n`)
+    const imagePaths: string[] = []
+    for (let i = 0; i < imageUrls.length && i < 20; i++) {
+      const outName = `image_${String(i).padStart(2, "0")}.jpg`
+      try {
+        const r = await downloadVideo(imageUrls[i], tmpDir, outName, readUserAgent(sessionPlatform) || "")
+        if (r?.filePath) imagePaths.push(r.filePath)
+      } catch {
+        // 单张失败不致命：跳过继续
+      }
+    }
+    printJson({
+      ok: true,
+      platform,
+      kind: "note",
+      metadata: {
+        contentId,
+        title: videoInfo!.title,
+        desc: videoInfo!.desc,
+        author: videoInfo!.author,
+        authorSignature: videoInfo!.authorSignature ?? "",
+        publishTime: unixToIso(videoInfo!.createTime),
+        hashtags: videoInfo!.hashtags ?? [],
+        coverUrl: videoInfo!.coverUrl,
+        stats: videoInfo!.stats,
+        imageCount: imagePaths.length,
+      },
+      transcript: null,
+      frames: [],
+      images: imagePaths,
+      localPaths: { tmpDir },
+    })
+    process.stderr.write(`[viral-chaser] 完成（图文）。图片: ${imagePaths.length} 张\n`)
+    return
+  }
+
   if (!videoInfo!.videoUrl) {
     errExit("未能获取视频下载地址（可能需要登录或视频已删除）")
   }
 
   // 5. Download video
-  const tmpDir = getTmpDir(contentId)
-  mkdirSync(tmpDir, { recursive: true })
 
   process.stderr.write(`[viral-chaser] 开始下载视频...\n`)
   // UA 走独立 .ua.json 文件（原则 4：cookie + UA 同指纹同源）。
@@ -223,11 +281,15 @@ async function main(): Promise<void> {
 
   // 8. Extract key frames
   process.stderr.write(`[viral-chaser] 提取关键帧...\n`)
+  const durationForFrames =
+    videoInfo!.durationSeconds ??
+    (videoInfo!.durationMs ? Math.round(videoInfo!.durationMs / 1000) : audioResult!.durationSeconds)
   const framePaths = await extractKeyFrames(
     downloadResult!.filePath,
     tmpDir,
     transcript!.segments,
     noFrames,
+    durationForFrames,
   )
 
   // 9. Output result JSON to stdout
@@ -235,15 +297,29 @@ async function main(): Promise<void> {
     videoInfo!.durationSeconds ??
     (videoInfo!.durationMs ? Math.round(videoInfo!.durationMs / 1000) : audioResult!.durationSeconds)
 
+  const width = videoInfo!.width ?? 0
+  const height = videoInfo!.height ?? 0
+  const orientation =
+    width && height ? (height > width ? "vertical" : height < width ? "horizontal" : "square") : ""
+
   const result = {
     ok: true,
     platform,
+    kind: "video",
     metadata: {
       contentId,
       title: videoInfo!.title,
       desc: videoInfo!.desc,
       author: videoInfo!.author,
+      authorSignature: videoInfo!.authorSignature ?? "",
+      authorUid: videoInfo!.authorUid ?? "",
       durationSeconds,
+      width,
+      height,
+      orientation,          // vertical / horizontal / square —— DNA 制作规格维度用
+      ratio: videoInfo!.ratio ?? "",
+      publishTime: unixToIso(videoInfo!.createTime),
+      hashtags: videoInfo!.hashtags ?? [],
       coverUrl: videoInfo!.coverUrl,
       stats: videoInfo!.stats,
     },

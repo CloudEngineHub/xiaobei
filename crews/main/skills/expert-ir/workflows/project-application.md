@@ -1,8 +1,10 @@
 # Project Application（项目申报）
 
-帮用户准备、跟踪各类外部申报项目：高新技术企业认定、加速器申请、政府补贴、资质认证（软著 / 商标 / 专利配套）、行业奖项。涵盖材料生成 + 时间线管理 + 状态跟踪。
+帮用户准备、跟踪各类外部申报项目：高新技术企业认定、加速器申请、政府补贴、行业奖项。涵盖材料生成 + 时间线管理 + 状态跟踪。
 
-**依赖**：`swcr-register`（软著材料）、`market-research`（行业数据 / 竞品分析）、Investor Materials Workflow（BP / One-Pager）、`ir-record`（applications 表状态跟踪）。
+软著 / 商标 / 专利等知识产权申报不在本 workflow 范围，不承接。
+
+**依赖**：`market-research`（行业数据 / 竞品分析）、Investor Materials Workflow（BP / One-Pager）、`ir-record`（applications 表状态跟踪）。
 
 ## 适用场景
 
@@ -11,18 +13,15 @@
 - "我想申请高新技术企业认定 / 专精特新 / 科技型中小企业"
 - "我看到 X 加速器在招创业团队，能帮我准备申请吗"
 - "政府有 Y 补贴项目，截止日期 Z，能帮我看下材料吗"
-- "我想申请软著 / 商标 / 专利"
 - "我要申报 X 行业奖项"
 
 ## 常见申报类型
 
 | 类型 | 典型材料 | 材料协作 |
 |------|---------|---------|
-| 高新技术企业认定 | 知识产权 + 研发费用 + 人员名单 + 财务审计 | `swcr-register` + `market-research` |
+| 高新技术企业认定 | 知识产权 + 研发费用 + 人员名单 + 财务审计 | `market-research` |
 | 加速器申请 | BP + One-Pager + 团队介绍 + 牵引数据 | Investor Materials Workflow（包内） |
 | 政府补贴 | 申报书 + 财务报表 + 项目实施方案 | `market-research`（行业数据）|
-| 软著登记 | 源程序文档 + 操作手册 | `swcr-register` |
-| 商标 / 专利 | 技术交底书 + 权利要求书 | 直接走，不委派 |
 | 行业奖项 | 案例描述 + 客户证言 + 量化数据 | `market-research`（行业 baseline）|
 
 ---
@@ -44,7 +43,6 @@
 
 | 材料 | 委派给 |
 |------|--------|
-| 软著材料（源程序 + 操作手册）| `swcr-register` |
 | 行业市场数据 / 竞品分析 | `market-research` |
 | BP / One-Pager | Investor Materials Workflow（包内） |
 
@@ -83,7 +81,6 @@ ir-record update-application --id <rowid> --status <new>
 
 ## 与其他环节的关系
 
-- **`swcr-register`**（顶层技能）：软著专用（频繁需要的子材料，合规性边界）
 - **`market-research`**（顶层技能）：行业数据（多个申报类型需要）
 - **Investor Materials Workflow**（包内）：加速器申请等需要 BP / One-Pager
 - **商业模式打磨**（IR 模式 1）：申报前先打磨商业模式（很多申报材料要先有清晰的商业故事）
@@ -111,6 +108,5 @@ ir-record update-application --id <rowid> --status <new>
 
 ## Notes
 
-- 软著 / 商标 / 专利的"材料生成"严格走 `swcr-register` skill（合规性边界）
 - 财务审计报告、税务证明等"硬材料"由用户/会计师提供，AI 不替生成
 - 申报通过率不承诺，AI 只保证材料齐整 / 表达清晰 / 时间线追踪

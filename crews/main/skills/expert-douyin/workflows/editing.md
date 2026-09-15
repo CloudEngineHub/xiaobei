@@ -10,16 +10,16 @@
 
 | 用户的说法 | 改的层级 | 怎么走 |
 |-----------|---------|--------|
-| "改下标题 / 简介 / 话题" | 文案层 | 按 DNA template 标题与文案维度重写，直接给候选 |
+| "改下标题 / 简介 / 话题" | 文案层 | 按 DNA `title-cover` 重写，直接给候选 |
 | "剪紧一点 / 去口气词 / 把高光剪出来" | 轻剪层 | `talking-head-cut`（去口气词、结巴、静音，按发言内容剪高光） |
 | "加 BGM / 加字幕 / 补片头片尾 / 插一段素材" | 加工层 | `video-edit`（audio-mix / subtitles / extract / assemble） |
 | "结构调一下 / 把第二段提前 / 换个讲法" | 结构层 | 先出调整方案（新的段落顺序与时点）-> 确认 -> `video-edit` 重剪 |
-| "换个封面" | 封面层 | 成片抽帧或 `siliconflow-img-gen` 按 DNA template 封面规则重做 |
+| "换个封面" | 封面层 | 成片抽帧或 `siliconflow-img-gen` 按 DNA `production-spec`（画面风格）重做 |
 | "换个风格 / 方向不对" | 方向层 | 回到 `content-production.md` 从选题重新走 |
 
 ## 文案层
 
-标题、简介、话题标签按目标 DNA template 的标题与文案维度重写：
+标题、简介、话题标签按目标 DNA `title-cover` 重写：
 
 1. 目标 DNA 不确定时先确认（用户指定或默认 `dna-0`）。
 2. 标题 ≤ 30 字；简介与话题按 template 策略；禁止引流信息。
@@ -38,13 +38,13 @@
 ## 结构层
 
 先出结构调整方案（新的段落顺序、每段时点、删留内容），用户确认后再动剪。
-结构动了通常钩子和节奏也要跟着调——按目标 DNA template 的起、承、转、合重新核对各段任务，别只动骨架不换节奏。
+结构调整先核对 `content-idea`（内容创意）与 `video-form`（视频形态）；若口播文案子模块已启用，再按 `narration-script` 核对口播结构。不要把 DNA 扩写成逐镜规则——镜头与剪辑细节归 Content Producer。
 
 ## 换封面
 
 1. 用户直接指定封面图 -> 直接使用。
 2. 用户说"从片子里选一帧" -> 抽帧候选给用户挑。
-3. 用户说"重做一张" -> 按 DNA template 封面 / 首帧风格与 AIGC 提示词要素，用 `siliconflow-img-gen` 生成，用户确认后替换 `cover.jpg`。
+3. 用户说"重做一张" -> 按 DNA `production-spec`（画面风格）与本次标题/核心收益，用 `siliconflow-img-gen` 生成，用户确认后替换 `cover.jpg`。
 
 ## 改完必做
 
@@ -54,7 +54,7 @@
 
 ## 改后发布
 
-用户要求改完后发布 / 重新发布时，走 `content-production.md` 的发布与记录流程（Step 8-9）：
+用户要求改完后发布 / 重新发布时，走 `content-production.md` 的发布与记录流程（Step 6-7）：
 
 1. **发布**：`douyin-publish open-page` + 登录态判定后 `run`；标题与文案用改后版本。
 2. **记录**：`published-track record` 重新入库为新记录（新链接、新发布日期），`dna-meta.json` 沿用该视频目录的 DNA 绑定。

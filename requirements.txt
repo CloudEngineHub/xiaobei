@@ -7,7 +7,7 @@
 # 第三方包清单（被 skills/ crews/ 下脚本 import）：
 requests          # relay_sign.py / xhs-publish / youtube-publish / pexels / pixabay ...
 urllib3           # youtube-publish 重试策略
-Pillow            # wxwork-moments / xhs-publish / pitch-deck / process_images 自动缩放
+Pillow            # wxwork-moments / xhs-publish / pitch-deck / process_images 自动缩放 / expert-video motion-graphics 逐帧绘制
 websockets        # wechat-channels-publish 视频上传
 httpx             # wx-mp-hunter fetch（MicroMessenger UA 直访）
 zstandard         # wx-mp-hunter posts-list（49 号消息 Zstd 解压）

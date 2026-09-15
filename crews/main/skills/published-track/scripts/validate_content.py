@@ -56,7 +56,7 @@ TEXT_CONSTRAINTS: dict[str, TextConstraint] = {
     "linkedin":     TextConstraint(title_max=200, desc_max=3000),
     # Our own additions (not from AiToEarn)
     "wx_mp":        TextConstraint(title_max=64, title_required=True, desc_max=20000, desc_required=True),
-    # 视频号作品没有「标题」概念，只有描述文案（含 hashtag）——desc 才是主文案，title 不校验
+    # 视频号作品没有「标题」概念，只有视频简介（含 hashtag）——desc 才是主文案，title 不校验
     "wx_channel":   TextConstraint(desc_max=1000, desc_required=True),
     "toutiao":      TextConstraint(title_max=30, title_required=True),
     "juejin":       TextConstraint(title_max=128, title_required=True),

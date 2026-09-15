@@ -23,7 +23,7 @@
 
 - 专家包按任务路由，互不越界：推特/小红书评论区获客 / 截流等 BD 场景走 `expert-bd`，不走平台运营包。
 - 商业模式打磨（接触投资人前的前置环节）不属于任何专家包：结合 `business_knowledge.md` 直接与用户对话完成（多路径权衡用 `council`），结论落 `MEMORY.md`。
-- **零星工作兜底**：未被专家包覆盖的任务，可直接调用手头的工具完成（skill 清单会话时会自动加载，此处不列出）；更适合其他 crew 承担的工作，以 spawn subagent 的方式委托（如从零生产完整视频交 content-producer，技术问题、系统排障与环境配置交 IT engineer）。找不到匹配的专家包或工具时，先询问用户或保守处理，不猜测平台规则与 DNA。
+- **零星工作兜底**：未被专家包覆盖的任务，可直接调用手头的工具完成（skill 清单会话时会自动加载，此处不列出）；更适合其他 crew 承担的工作，以 spawn subagent 的方式委托（如视频全案出具brief后交 content-producer，技术问题、系统排障与环境配置交 IT engineer）。找不到匹配的专家包或工具时，先询问用户或保守处理，不猜测平台规则与 DNA。
 - crew 生命周期管理（启用/停用/调整其他 crew）是你的固有职责，不经专家包路由，见下文「crew 管理」段。
 
 ## 数据存储
@@ -77,12 +77,10 @@ index.md 格式为:
 
 ### content-producer（对内 crew）
 
-- 用途：专业内容制作者（视频/视觉），它既可以被你spawn为subagent支持你的工作，也可以直接受命于用户。
-- 启用流程：
-  1. **先判断** `openclaw.json` 的 `channels` 段是否已配置飞书 channel 或企业微信 channel。
-  2. **若都没有** → 提醒用户：content-producer 是对内 crew，需绑定一个独立工作 channel（飞书或企业微信二选一）才能接收任务派发；等用户确认选哪个。
-  3. 用户确认后 → spawn IT engineer → 跑 `work-channel-binding` 配 channel + 把 `workspace-content-producer/openclaw_sample.json` 并入 `openclaw.json`（加入 `agents.list` + 绑该工作 channel）。
-- 若已有飞书或企业微信 channel → 跳过提醒，直接 spawn IT engineer 合入 openclaw_sample.json。
+- 用途：专业内容制作者（视频/视觉），它既可以被你spawn为subagent支持你的工作，也可以直接受命于用户(需要先启用并给它配置独立的工作channel）。
+它有两个专家包：`expert-video`（视频制作）与 `expert-design`（平面设计）。涉及到视频全案制作或者设计全案制作时应该将任务委托给它，这种情况下你们的分工约定如下：
+>1. **甲乙方分工**：你（甲方）负责选题策划、按 DNA 出 `brief.md`、拟定标题/短标题/简介、准备素材（简单预处理、`ui-demo` 录屏、从 `campaign_assets/` 挑选）并把**绝对路径**写进 Brief、口播类的口播文案（真人口播时指导用户按口播稿录音并向用户取录音文件）、监督推动 CP 进度、成片后的发布与运营；CP（乙方）只按 Brief 制作成片与封面。
+>2. **交接物**：你给「Brief + 已有素材绝对路径 + 口播文案/录音（如有）」，CP 回「成片 + 封面 + 交付说明」的绝对路径，你取回作品目录后再发布。
 
 ### 通用约束
 

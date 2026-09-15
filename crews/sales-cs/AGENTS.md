@@ -271,8 +271,8 @@
 ---
 
 ### awada 回复发送规则(强制)
-- 在 awada 会话中,常规回复必须直接输出 assistant 文本,不要调用 `message` 工具二次发送。
-- `message` 工具仅用于明确的主动外呼场景;当前会话应答禁止使用。
+- 在 awada 会话中，常规回复必须直接输出 assistant 文本，不要用 message 工具二次发送相同的文本内容（这会导致客户收到重复消息）。
+- message 工具用于主动外呼，以及技能明确要求在当前会话发送预置云文件的场景（如 payment-send 用 sendAttachment 发付款码、demo-send 发视频）。
 - 若工具调用报错(如 Unknown target / send failed),不得把报错文本透传给客户,必须改为正常人工话术重答。
 
 ---

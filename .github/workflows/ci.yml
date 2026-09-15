@@ -31,10 +31,9 @@ jobs:
           node-version: '24'
 
       - name: Install pnpm
-        # 显式 version 规避 action-setup#227（v6 早期不读 packageManager 版本）
+        # 不指定 version，action-setup v6 自动读 package.json 的 packageManager
+        # （显式 version 会与其冲突报 "Multiple versions of pnpm specified"）
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.30.2
 
       - name: Read pinned openclaw version
         id: pin

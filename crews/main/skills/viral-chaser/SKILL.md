@@ -1,6 +1,6 @@
 ---
 name: viral-chaser
-description: 用户转发/分享抖音、B站、小红书视频链接(v.douyin.com / b23.tv / xhslink.com / xhslink.cn),要求拆解分析时使用（俗称「追爆」）：下载视频、ASR 转写、结构化拆解，产出拆解分析报告。仅产出报告，视频生产需另外委托 content-producer。
+description: 用户转发/分享抖音、B站、小红书视频链接(v.douyin.com / b23.tv / xhslink.com / xhslink.cn),要求拆解分析时使用（俗称「追爆」）：下载视频、ASR 转写、全片关键帧抽取、结构化拆解，产出拆解分析报告（含视频 meta、逐帧画面分析、结构占比、内容形态与制作指向）。也是各平台 DNA 采样的取数主力：可按 DNA 样本格式归档转录稿。抖音图集（图文作品）只下载图片与文本，不做转写。仅产出报告，视频生产需另外委托 content-producer。
 metadata:
   openclaw:
     emoji: 🎯
@@ -49,7 +49,7 @@ Use this skill when:
 
 **本技能仅产出追爆报告**，不生成脚本，不制作视频。如需据此生成视频，需另行委托 `content-producer` （spawn subagent）执行。
 
-**Supported platforms:** 抖音（Douyin）、B 站（Bilibili）、小红书（XHS — 仅视频笔记, 如果是图文的话则转向执行 `xhs-content-ops` 技能。）
+**Supported platforms:** 抖音（Douyin — 视频作品 + 图集图文作品）、B 站（Bilibili）、小红书（XHS — 仅视频笔记, 如果是图文的话则转向执行 `xhs-content-ops` 技能。）
 
 **Not supported:** 微信视频号、TikTok
 
@@ -102,14 +102,23 @@ The script outputs a **JSON object to stdout**. Read it and proceed with analysi
 {
   "ok": true,
   "platform": "douyin",
+  "kind": "video",
   "metadata": {
     "contentId": "...",
     "title": "...",
     "desc": "...",
     "author": "...",
-    "durationSeconds": 89,
+    "authorSignature": "账号简介（对标账号样本的 account-bio 维度用）",
+    "authorUid": "...",
+    "durationSeconds": 36,
+    "width": 1080,
+    "height": 1920,
+    "orientation": "vertical",
+    "ratio": "vertical",
+    "publishTime": "2026-09-04T10:12:00.000Z",
+    "hashtags": ["话题1", "话题2"],
     "coverUrl": "...",
-    "stats": { "playCount": 0, "likeCount": 0, "commentCount": 0 }
+    "stats": { "playCount": 0, "likeCount": 12, "commentCount": 0, "shareCount": 0, "collectCount": 0 }
   },
   "transcript": {
     "text": "全文转录...",
@@ -124,6 +133,11 @@ The script outputs a **JSON object to stdout**. Read it and proceed with analysi
   }
 }
 ```
+
+- `kind`: `video`（正常视频作品）或 `note`（抖音图集图文作品）。`note` 时 `transcript` 为 `null`、`frames` 为空，另给 `images: [".../image_00.jpg", ...]`（最多 20 张）与 `metadata.imageCount`；图文样本的视觉证据就是这些图片。
+- `metadata.orientation`: 由 width/height 推出的 `vertical` / `horizontal` / `square`；平台拿不到宽高时为空串，必须自己 `ffprobe` 本地成片补齐，不得猜。
+- 各字段平台支持度不同：抖音给全套；小红书 HTML 路线给 `hashtags` 与互动计数（无播放数、无发布时间）；B 站给时长与三项互动。缺失一律在报告里写「接口未返回」，不编造。
+- `frames`: 最多 12 张，覆盖开场（0s / 3s）、各口播段中点与全片比例点（25% / 50% / 63% / 75% / 90%）——**反转植入类作品的反转点通常在 55%-76%，只抽前几秒会完全错过**。
 
 - `transcript.estimated`: `false` 表示 `segments` 是火山 ASR 返回的**真实时间戳**（utterance 级，毫秒精度转秒）；`true` 仅在接口异常未返回 utterances 时出现，此时按句切分全文并按字数比例在音频时长上估算分段，时间区间为近似值。正常情况下始终为 `false`。
 
@@ -146,29 +160,98 @@ Read: <platform>/ref/<slug>/references/frames/frame_01_3s.jpg
 
 ## Analysis Framework
 
-After receiving the JSON output and reading the frames, generate a **追爆报告** in Markdown and save it to `<platform>/ref/<slug>/raw_article.md`.
+读完 JSON 与全部关键帧后，产出**追爆报告**，保存到 `<platform>/ref/<slug>/raw_article.md`。报告既要能给人看，也要能直接喂 DNA 采样（见最后一节）。
 
-### 1. 内容摘要
-1–2 sentences: what core value does this video deliver to viewers?
+### 1. 作品 meta 信息
 
-### 2. 开头钩子分析（前 0–10 秒）
-Based on `transcript.segments` where `start < 10`:
-- **钩子类型**: 提问型 / 冲突型 / 反转型 / 数字型 / 悬念型 / 痛点型 / 利益型
-- **具体文案**: quote the exact opening line(s)
-- **效果评估**: why this hook works (or doesn't)
+| 项 | 内容 |
+|----|------|
+| 作品类型 | 视频 / 图文（`kind`） |
+| 时长 | xx s（`durationSeconds`） |
+| 画幅 | 竖屏 9:16 / 横屏 16:9（`orientation` + `width`×`height`） |
+| 发布时间 | `publishTime`（接口未返回时写「未返回」） |
+| 作者与简介 | `author` + `authorSignature`（对标账号样本必记） |
+| 话题标签 | `hashtags` |
+| 互动数据 | 播放 / 点赞 / 评论 / 分享 / 收藏（逐项写；接口未返回的项注明） |
+| 来源 | 原视频 URL + 内容 ID + 抓取日期 |
 
-### 3. 内容结构拆解
-Based on transcript segments, divide into logical sections:
+### 2. 内容摘要
 
-| 段落 | 时间区间 | 功能 | 核心内容 |
-|------|---------|------|---------|
-| 开场 | 0–Xs | 钩子/引入 | ... |
-| 主体一 | X–Ys | 价值/信息传递 | ... |
-| 主体二 | Y–Zs | 深化/转折 | ... |
-| 收尾 | Z–结束 | CTA/情绪收尾 | ... |
+1–2 句：这条作品给观众的核心价值或核心情绪是什么。
 
-### 4. 爆款元素评估
-Rate each element as **强 / 中 / 弱** with a one-line explanation:
+### 3. 开头钩子分析（前 0–10 秒）
+
+基于 `transcript.segments` 中 `start < 10` 的段：
+
+- **钩子类型**：提问型 / 冲突型 / 反转型 / 数字型 / 悬念型 / 痛点型 / 利益型
+- **具体文案**：逐字摘录开场句
+- **声画是否同步**：画面、字幕、口播是否在同一秒传递同一个重点
+- **效果评估**：这个钩子为什么留人（或为什么不留）
+
+### 4. 结构拆解（按时间占比）
+
+按功能把全片切段，**每段给时间区间与占全片百分比**：
+
+| 段落 | 时间区间 | 占比 | 功能 | 核心内容 |
+|------|---------|------|------|---------|
+| 开场 | 0–Xs | xx% | 钩子/引入 | ... |
+| 主体一 | X–Ys | xx% | 信息/剧情推进 | ... |
+| 转折 | Y–Zs | xx% | 反转/揭示 | ... |
+| 收尾 | Z–结束 | xx% | CTA/情绪收尾 | ... |
+
+必须额外标注：
+
+- **反转点位置**（若有）：占总时长的百分比，以及反转是靠什么衔接的（口播因果句 / 意象复用 / 身份彩蛋 / 戏中戏）。
+- **植入或转化段占比**（若有）：产品/服务出现在哪一段、占比多少、是否集中。
+- **主悬念**：一句话复述贯穿全片的悬念；说明它在哪一秒被回答。
+
+### 5. 关键帧逐帧分析
+
+对 `frames` 里每一张都用视觉模型读取，逐帧一行（不要只看首帧）：
+
+| 帧 | 时间码 / 占比 | 画面内容 | 字幕或贴图文字 | 景别与构图 | 色调与质感 | 品牌/产品是否出现 | 可否作封面 |
+|----|--------------|----------|---------------|-----------|-----------|------------------|-----------|
+| frame_00 | 0s / 0% | ... | ...（逐字抄） | 近景/中景/远景、主体位置 | 冷暖、饱和、颗粒 | 是/否 | 是/否 |
+
+`--no-frames` 或 frames 为空时注明：「（跳过视觉分析，请重新运行不带 --no-frames 参数）」。
+
+### 6. 视觉与声音风格汇总
+
+基于逐帧结果与转录：
+
+- **色调风格**：暖/冷、高饱和/低饱和、黑白；是否有明显的两段式对比（如解说段冷暗、植入段明亮）
+- **画面形态**：实拍 / 影视或开源片源 / 录屏 / 图文卡片 / AIGC / 混剪
+- **字幕与贴图**：字体粗细、位置、背景框、箭头标注、重点字变色放大
+- **声音形态**：原声口播 / TTS 旁白 / 纯画面 + 字幕；BGM 类型与主从关系；音效使用（如反转处 whoosh）
+- **整体视觉标签**：3–5 个关键词
+
+### 7. 内容形态判定与制作指向
+
+判定这条作品属于哪种视频内容形态，并给出**制作指向**——只能写真实存在的资源名：
+
+| 观测到的形态 | 制作指向 |
+|-------------|----------|
+| 影视解说 / 剧情解说 + 反转植入（「万万没想到」式） | Content Producer `expert-video` → Reversal Ad workflow |
+| 口播类（真人口播出镜，或旁白 + 画面） | Content Producer `expert-video` → Narration Video workflow |
+| 一句文稿转视觉隐喻的纸拼贴动画 | Content Producer `expert-video` → Collage B-roll workflow |
+| 纯 AIGC 动画 / 剧情短片 / 蒙太奇（需从零出脚本分镜） | Content Producer `expert-video` → **不指定类型 workflow**（CP 按其通用制作流程做，Stage 1 定档位：narrative / motion / montage） |
+| 已有素材简单拼接、加旁白、烧字幕 | main `video-edit` |
+| 已有真人口播素材去口气词、剪高光 | main `talking-head-cut` |
+| 产品操作录屏 | main `ui-demo` |
+| 图文笔记 | main 直接生产（图文不走 CP） |
+
+判定要写依据：口播占比、素材来源、画面是否连续叙事、有无产品段。
+
+### 8. 内容创意
+
+- **创意内核**：一句话说清这条作品的创意是什么
+- **展开逻辑**：悬念 / 反转 / 递进 / 对比 / 清单 / 实测
+- **记忆点**：观众会记住或复述的那一个点
+- **可复用套路**：换成别的主题还能怎么用（这是 DNA 的 `content-idea` 维度要的）
+
+### 9. 爆款元素评估
+
+每项评 **强 / 中 / 弱** + 一句说明：
 
 | 元素 | 评级 | 说明 |
 |------|:----:|------|
@@ -181,22 +264,43 @@ Rate each element as **强 / 中 / 弱** with a one-line explanation:
 | 视觉冲击（基于关键帧） | | |
 | 节奏把控 | | |
 
-### 5. 视觉风格分析（基于关键帧图片）
-After reading the frame images:
-- **色调风格**: 暖色系/冷色系/高饱和/低饱和/黑白
-- **构图类型**: 人脸近景 / 产品展示 / 场景空镜 / 文字卡片 / 混合
-- **字幕/文字覆盖**: 字体粗细、位置、是否有背景框、动画感
-- **整体视觉标签**: 3–5 个关键词（如：「真实感」「强对比」「高信息密度」）
+### 10. 可借鉴点与目标受众
 
-If `--no-frames` was used or frames is empty, note: "（跳过视觉分析，请重新运行不带 --no-frames 参数）"
+- **可借鉴点**：3–5 条，每条一句、可直接执行。
+- **目标受众**：一句话人群画像。
+- **ASR 校正注记**：转写与画面字幕不一致时（谐音、专有名词、案名），逐条列出原文与校正依据（哪一帧的字幕）。
 
-### 6. 可借鉴点
-3–5 concise, directly actionable techniques. One sentence each.
+### 11. DNA 样本归档（喂 style-profiler 用）
 
-### 7. 目标受众
-One sentence describing the primary audience persona.
+这条作品要进 DNA 时，把报告转成一份**样本文字稿**，落 `<platform>/ref/<dna-id>/transcripts/<sample-id>.md`，格式如下（`<platform>-style-profiler report --input` 直接吃这个文件：首个一级标题即作品标题）：
 
----
+```markdown
+# 样本文字稿：<作品标题>（sample-id: <sample-id>）
+
+> 来源：<对标账号名 + 账号 ID / 用户提供>
+> 原视频 URL：<url>（内容 ID <id>）
+> 时长：xxs ｜ 画幅：竖屏 9:16 ｜ 点赞 x ｜ 评论 x ｜ 播放量：<数值或「接口未返回」>
+> 发布时间：<publishTime 或「未返回」> ｜ 抓取日期：YYYY-MM-DD ｜ 拆解报告：<platform>/ref/<slug>/raw_article.md
+> ASR 说明：火山引擎极速版，真实时间戳（estimated=false）
+> ⚠️ ASR 谐音校正：<逐条列出，注明依据的画面字幕帧；无则写「无」>
+> 转录约定：逐字引语为原话引用（含时间戳）；标注 [剧情概括] 的段为报告中段转述，非逐字。
+
+## 口播全文（含时间戳）
+
+- 0.04–5.32s：<逐字>
+- 5.36–8.84s：<逐字>
+- 8.9–14.3s：[剧情概括] <转述>
+
+## 结构标注（取自拆解报告）
+
+- 0–24.6s（≈71%）：<段功能与内容>
+- 24.7–25.7s（≈3%）：<反转过渡>
+- 25.7–35.3s（≈26.5%）：<植入段>
+```
+
+- 图文作品（`kind: "note"`）没有口播全文：把正文原样抄进「## 正文全文」，图片路径列在「## 图组」下，其余元信息与结构标注照写。
+- 逐字引语与转述必须分开标注，不得把概括写成原话。
+- 拿不到的字段写「接口未返回」或「未观测」，不编造。
 
 ## Notes
 

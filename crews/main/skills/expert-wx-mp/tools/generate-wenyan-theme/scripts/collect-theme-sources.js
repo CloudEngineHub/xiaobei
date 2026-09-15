@@ -4,9 +4,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { access, mkdir, open, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_OUTPUT = "wenyan-theme-sources.json";
@@ -35,9 +36,25 @@ function usage() {
       "  --max-scan N     关键词筛选最多扫描文章数，默认 100",
       "",
       "Output:",
-      "  --output 工作区内相对 .json 路径（可含子目录，如 wenyan-theme/sources.json）；禁止绝对路径 / .. 上跳。",
+      "  --output 工作区内相对 .json 路径（可含子目录，如 wx_mp/wenyan-theme/sources.json）；禁止绝对路径 / .. 上跳。",
     ].join("\n") + "\n"
   );
+}
+
+function findExecutableOnPathSync(name) {
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    if (!dir) continue;
+    const candidate = join(dir, name);
+    try {
+      const info = statSync(candidate);
+      if (!info.isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Not here; keep scanning.
+    }
+  }
+  return null;
 }
 
 function readFlag(args, flag) {
@@ -62,13 +79,42 @@ function parseKeywords(raw) {
     .filter(Boolean);
 }
 
-function defaultWxHunterPath() {
-  const currentFile = fileURLToPath(import.meta.url);
-  // Script lives at: crews/main/skills/generate-wenyan-theme/scripts/
-  // wx-mp-hunter is a sibling skill under crews/main/skills/, so go up 2
-  // levels to reach crews/main/skills/, then into the wx-mp-hunter tree.
-  const skillsRoot = resolve(dirname(currentFile), "../..");
-  return join(skillsRoot, "wx-mp-hunter", "scripts", "wx-mp-hunter.sh");
+// wx-mp-hunter wrapper resolution (D21 convention):
+// 1. Prefer the PATH-exposed wrapper (~/.openclaw/bin/wx-mp-hunter, equivalent to
+//    `command -v wx-mp-hunter`), so callers never depend on where this tool lives.
+// 2. Fall back to probing sibling skills: walk up from this script's directory
+//    looking for a wx-mp-hunter skill dir (top-level <skill>.sh wrapper per D21,
+//    legacy scripts/wx-mp-hunter.sh as a compat candidate).
+function candidateWxHunterPaths() {
+  const candidates = [];
+  let dir = dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    // D21 layout: <skills_root>/wx-mp-hunter/wx-mp-hunter.sh
+    candidates.push(join(dir, "wx-mp-hunter", "wx-mp-hunter.sh"));
+    // Legacy pre-D21 layout: <skills_root>/wx-mp-hunter/scripts/wx-mp-hunter.sh
+    candidates.push(join(dir, "wx-mp-hunter", "scripts", "wx-mp-hunter.sh"));
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Belt-and-braces: D21 exposes wrappers at ~/.openclaw/bin even if PATH lacks it.
+  candidates.push(join(homedir(), ".openclaw", "bin", "wx-mp-hunter"));
+  return candidates;
+}
+
+async function resolveWxHunterPath() {
+  const onPath = findExecutableOnPathSync("wx-mp-hunter");
+  if (onPath) return { path: onPath, via: "PATH" };
+  for (const candidate of candidateWxHunterPaths()) {
+    const info = await stat(candidate).catch(() => null);
+    if (!info?.isFile()) continue;
+    const executable = await access(candidate, constants.X_OK).then(
+      () => true,
+      () => false
+    );
+    if (executable) return { path: candidate, via: "probe" };
+  }
+  return null;
 }
 
 function isWechatArticleUrl(value) {
@@ -102,7 +148,6 @@ function parseArgs() {
     scanBatch: Math.min(readNumberFlag(args, "--scan-batch", DEFAULT_SCAN_BATCH), DEFAULT_SCAN_BATCH),
     maxScan: readNumberFlag(args, "--max-scan", DEFAULT_MAX_SCAN),
     output: readFlag(args, "--output") ?? DEFAULT_OUTPUT,
-    wxHunter: defaultWxHunterPath(),
   };
 }
 
@@ -309,6 +354,13 @@ async function collectByAccount(options) {
 
 async function main() {
   const options = parseArgs();
+  const wxHunter = await resolveWxHunterPath();
+  if (!wxHunter) {
+    fail(
+      `找不到 wx-mp-hunter wrapper（PATH 及候选路径均未命中；已探测:\n${candidateWxHunterPaths().map((item) => `  - ${item}`).join("\n")}`
+    );
+  }
+  options.wxHunter = wxHunter.path;
   await assertExecutableFile(options.wxHunter, "wx-mp-hunter wrapper");
 
   if (options.mode === "url") {

@@ -30,8 +30,42 @@ PUBLISHER_DIR = SCRIPT_DIR.parent
 TOOLS_DIR = PUBLISHER_DIR.parent
 EXPERT_PACK_DIR = TOOLS_DIR.parent
 SKILLS_DIR = EXPERT_PACK_DIR.parent
-CREW_WORKSPACE = SKILLS_DIR.parent
-THEME_ROOT = CREW_WORKSPACE / "wenyan-theme"
+
+
+def _detect_crew_workspace() -> Path:
+    """定位真实运行工作区（wx_mp/ 等运行时数据的根目录）。
+
+    技能有两种部署形态：
+      A. 直接部署：技能本体就在 ~/.openclaw/workspace-<crew>/skills/ 下，
+         SKILLS_DIR.parent 即工作区。
+      B. 软链部署（D21）：~/.openclaw/workspace-<crew>/skills/expert-wx-mp →
+         ~/wiseflow/crews/<crew>/skills/expert-wx-mp。__file__ resolve() 后落在
+         代码仓，但主题注册表等运行时数据只在 ~/.openclaw/workspace-<crew>/wx_mp/
+         下，因此按 crews/<crew> 映射回 ~/.openclaw/workspace-<crew>/。
+    兜底：向上探测含 wx_mp/wenyan-theme/ 或 db/published_track.db 的目录；
+    都找不到时退回旧推导（SKILLS_DIR.parent），注册表缺失时仍走内置主题兜底。
+    """
+    if (
+        SKILLS_DIR.parent.name.startswith("workspace-")
+        and SKILLS_DIR.parent.parent.name == ".openclaw"
+        and SKILLS_DIR.parent.is_dir()
+    ):
+        return SKILLS_DIR.parent
+    parts = SKILLS_DIR.parts
+    if "crews" in parts:
+        i = len(parts) - 1 - parts[::-1].index("crews")
+        if i + 1 < len(parts):
+            mapped = Path.home() / ".openclaw" / f"workspace-{parts[i + 1]}"
+            if mapped.is_dir():
+                return mapped
+    for cand in (SKILLS_DIR, *SKILLS_DIR.parents):
+        if (cand / "wx_mp" / "wenyan-theme").is_dir() or (cand / "db" / "published_track.db").is_file():
+            return cand
+    return SKILLS_DIR.parent
+
+
+CREW_WORKSPACE = _detect_crew_workspace()
+THEME_ROOT = CREW_WORKSPACE / "wx_mp" / "wenyan-theme"
 THEME_INDEX = THEME_ROOT / "index.json"
 DEFAULT_RELAY_BASE_URL = "https://relay.openclaw-for-business.com"
 ENDPOINT = "/api/v1/wx-mp/publish"
@@ -105,10 +139,11 @@ def relay_env() -> tuple[str, str]:
 # ── 主题解析 ──────────────────────────────────────────────────────────────────
 
 def _resolve_registered_theme_path(theme_id: str) -> Path | None:
-    """从 wenyan-theme/index.json 查登记的主题 id，返回受控 CSS 路径或 None。
+    """从 <workspace>/wx_mp/wenyan-theme/index.json 查登记的主题 id，返回受控 CSS 路径或 None。
 
     注册表结构：
-      {"version": 1, "themes": [{"id": "...", "css": "wenyan-theme/....css", ...}]}
+      {"version": 1, "themes": [{"id": "...", "css": "wx_mp/wenyan-theme/....css", ...}]}
+    css 为相对工作区根的路径；兼容旧的 "wenyan-theme/<id>.css" 写法（落到主题目录下同名文件）。
     """
     if not THEME_INDEX.exists():
         return None
@@ -130,16 +165,26 @@ def _resolve_registered_theme_path(theme_id: str) -> Path | None:
             die(f"主题 {theme_id!r} 缺少 css 路径: {THEME_INDEX}")
         css_path = Path(css)
         if css_path.is_absolute() or css_path.suffix != ".css":
-            die(f"主题 {theme_id!r} 的 css 必须是 wenyan-theme/ 下的相对 .css 路径")
-        resolved_root = THEME_ROOT.resolve()
-        resolved_path = (CREW_WORKSPACE / css_path).resolve()
-        try:
-            resolved_path.relative_to(resolved_root)
-        except ValueError:
-            die(f"主题 {theme_id!r} 的 css 路径越界: {css}")
-        if not resolved_path.is_file():
-            die(f"主题 {theme_id!r} 的 CSS 文件不存在: {resolved_path}")
-        return resolved_path
+            die(
+                f"主题 {theme_id!r} 的 css 必须是相对工作区的 .css 路径"
+                f"（如 wx_mp/wenyan-theme/{theme_id}.css）: {THEME_INDEX}"
+            )
+        root = THEME_ROOT.resolve()
+        # 候选解析（每个候选都先做 THEME_ROOT 包含校验，防止越界）：
+        #   新约定：相对工作区根，如 "wx_mp/wenyan-theme/<id>.css"
+        #   旧约定："wenyan-theme/<id>.css" 或裸 "<id>.css" → 落到主题目录下同名文件
+        for cand in (CREW_WORKSPACE / css_path, THEME_ROOT / css_path.name):
+            resolved = cand.resolve()
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                continue
+            if resolved.is_file():
+                return resolved
+        die(
+            f"主题 {theme_id!r} 的 CSS 文件不存在或路径越界: {css}"
+            f"（注册表: {THEME_INDEX}，主题目录: {THEME_ROOT}）"
+        )
     return None
 
 
@@ -149,7 +194,7 @@ def resolve_theme(theme_arg: str | None) -> tuple[str, str] | None:
     解析顺序：
       1. theme_arg 为空 → None
       2. 以 .css 结尾且是本地文件 → custom_theme（CSS 文本）
-      3. wenyan-theme/index.json 登记的自定义 id → 解析 CSS 路径 → custom_theme
+      3. wx_mp/wenyan-theme/index.json 登记的自定义 id → 解析 CSS 路径 → custom_theme
       4. 其它 → 内置主题 id，原样作为 theme
     """
     if not theme_arg:
@@ -336,7 +381,7 @@ def main() -> None:
     parser.add_argument("markdown_file", help="Markdown 文件路径")
     parser.add_argument(
         "theme", nargs="?", default=None,
-        help="主题：内置 id（pie/lapis/default/…）/ 本地 .css 路径 / wenyan-theme/index.json 登记的自定义 id",
+        help="主题：内置 id（pie/lapis/default/…）/ 本地 .css 路径 / wx_mp/wenyan-theme/index.json 登记的自定义 id",
     )
     parser.add_argument("--account", default=None, help="指定公众号 alias（缺省用 accounts.json 的 default）")
     args = parser.parse_args()

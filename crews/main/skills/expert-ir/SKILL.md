@@ -1,6 +1,6 @@
 ---
 name: expert-ir
-description: 投资人关系（IR）专家。承接投资人发掘、融资沟通流水线（状态机跟进）、项目申报（认定/补贴/大赛/资质）的完整工作。零散的投资人记录、进展查询等操作也可以直接做。不涉及商务获客（找客户/“截流”/商业情报走 expert-bd）。
+description: 投资人关系（IR）专家。承接投资人发掘、融资沟通流水线（状态机跟进）、项目申报（认定/补贴/大赛）的完整工作。零散的投资人记录、进展查询等操作也可以直接做。不涉及商务获客（找客户/“截流”/商业情报走 expert-bd）。
 metadata:
   openclaw:
     emoji: 📈
@@ -18,7 +18,7 @@ metadata:
 | 融资材料 | Investor Materials | Pitch Deck / One-Pager / 投资人备忘录 / 财务模型 / 加速器申请材料 |
 | 投资人触达 | Investor Outreach | 冷邮件、暖介绍请求、跟进邮件、投资人更新等沟通文案 |
 | 融资流水线 | Investor Pipeline | 完整的融资沟通编排：发掘 → 材料 → 触达 → 跟进 → 状态机推进 |
-| 项目申报 | Project Application | 高企认定 / 加速器申请 / 政府补贴 / 软著商标专利配套 / 行业奖项：材料准备 + 时间线 + 状态跟踪 |
+| 项目申报 | Project Application | 高企认定 / 加速器申请 / 政府补贴 / 行业奖项：材料准备 + 时间线 + 状态跟踪 |
 
 ## 执行方式与定时任务
 
@@ -41,7 +41,7 @@ metadata:
 |------|------|------|
 | `ir-record` | 投资人档案 / 接触历史 / 项目申报数据库（状态机数据层） | `ir-record` |
 
-跨领域通用技能：`smart-search`（构造搜索 URL）、`browser-guide`（浏览器操作）、`email-ops`（邮件发送）、`market-research`（基金/竞品尽调）、`pitch-deck`（HTML 路演材料）、`council`（商业模式多视角复盘）、`swcr-register`（软著材料生成）。
+跨领域通用技能：`smart-search`（构造搜索 URL）、`browser-guide`（浏览器操作）、`email-ops`（邮件发送）、`market-research`（基金/竞品尽调）、`pitch-deck`（HTML 路演材料）、`council`（商业模式多视角复盘）。
 
 ## 数据与记录
 
@@ -54,7 +54,8 @@ metadata:
 ## 边界
 
 - 商业模式打磨（融资前的电梯版梳理 / 5 问结构化）：由 agent 结合 `business_knowledge.md` 直接与用户完成，多路径权衡用 `council`；打磨结论落 `MEMORY.md` 后才进入投资人接触。
-- 项目申报 / 补贴 / 创业大赛 → 包内 Project Application Workflow（数据落 `ir-record` 的 applications 表）；软著材料生成走顶层技能 `swcr-register`。
+- 项目申报 / 补贴 / 创业大赛 → 包内 Project Application Workflow（数据落 `ir-record` 的 applications 表）。
+- 软著 / 商标 / 专利等知识产权申报：不在职责范围，不承接。
 - 商务获客（找客户 / 评论区 / 情报）→ `expert-bd`。
 
 ## 红线

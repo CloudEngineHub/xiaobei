@@ -51,7 +51,35 @@ camoufox-cli --session twitter --persistent --headed --json open "https://x.com/
 ## 通用约束
 
 - 文件上传用 forked camoufox-cli 的 `upload` 命令（`camoufox-cli --session <s> --persistent --json upload <ref> <file>`，底层 Playwright `setInputFiles`，无需 DataTransfer hack）
-- 正文输入使用 `type` + `slowly: true`，不要用 `fill()`
+- 正文输入：**CJK（中文/日文/韩文）内容禁用 `type` 命令**——camoufox-cli `type` 逐字符按键流与 X 编辑器（Draft.js）异步处理存在竞态，中文实测丢字+乱序（2026-09-13 事故，首字被挪到结尾、中段整段消失，含分段 type+停顿仍错乱）。CJK 正文一律走下方「CJK 正文输入与校验闸门」的 eval + `document.execCommand("insertText")` 整段插入；纯 ASCII 短文本仍可用 `type`。**不要用 `fill()`**
+
+### CJK 正文输入与校验闸门
+
+含中文 / 日文 / 韩文的正文必须走本节的 insertText 方案 + 校验闸门；纯 ASCII 短文本可用 `type`，但**发布前校验闸门**与**发布后终验**对**所有正文**强制执行。
+
+**1. 清空回填草稿（open compose 后必做）**：X 重新打开 compose 页可能回填上次草稿，直接 insertText 会叠成两份：
+
+```bash
+camoufox-cli --session twitter --json eval '(function(){var el=document.querySelector("[data-testid=tweetTextarea_0]");if(!el){return "NO_BOX";}el.focus();var s=document.execCommand("selectAll",false);var d=document.execCommand("delete",false);return (s&&d)?"CLEARED":"CLEAR_FAILED";})()'
+```
+
+**2. 插入正文**（CJK 用 insertText 整段插入；正文含单引号或反斜杠时先转义，避免破坏命令引号）：
+
+```bash
+camoufox-cli --session twitter --json eval '(function(){var el=document.querySelector("[data-testid=tweetTextarea_0]");if(!el){return "NO_BOX";}el.focus();var ok=document.execCommand("insertText",false,"<正文>");return ok?"INSERTED":"EXEC_FAILED";})()'
+```
+
+**3. 发布前校验闸门（强制——点击 Post / Reply 之前必须执行，非 MATCH 一律不发布）**：
+
+```bash
+camoufox-cli --session twitter --json eval '(function(){var el=document.querySelector("[data-testid=tweetTextarea_0]");var t=el?el.innerText:"NO_BOX";var target="<正文>";return t===target?"MATCH":"MISMATCH:"+t;})()'
+```
+
+- **选择器必须精确匹配 `[data-testid=tweetTextarea_0]`**——`[data-testid^=tweetTextarea]` 前缀匹配会同时命中 `tweetTextarea_0_label`（占位符层），读到占位符文本、误报 MISMATCH。
+- **插入与校验必须分两次 eval 调用（间隔 ≥1s）**——写在同一 eval 里同步执行时，React 未及重渲染，innerText 会混入「What's happening?」占位符（占位符假警报）。MISMATCH 先看是否混有占位符再定性。
+- **emoji 是 `<img>` 不是丢字**：✅ 等 emoji 在 DOM 里渲染为 `<img>`，`innerText` 提取时只显示周围空格——校验按「剔除 img 节点后的文本」比对。
+
+**4. 发布后终验（强化，所有发布流程共用）**：点 Post 后导航 profile 页，读最新推文 `[data-testid=tweetText]` innerText 与 status 链接，与目标正文比对（剔除 emoji img 因素）后才算发布成功；不符立即走删除流程（More → Delete → confirmationSheetConfirm）。
 
 ### 字符计数规则（X 平台特殊）
 
@@ -88,14 +116,16 @@ camoufox-cli --session twitter --persistent --headed --json open "https://x.com/
 ```
 1. Navigate to https://x.com/compose/post
 2. Wait for the compose box to load
-3. Click into the text area and type the content
+3. 按「通用约束 → CJK 正文输入与校验闸门」输入正文（CJK 走 insertText；纯 ASCII 可 type）
    - Plain text only (no Markdown)
    - Max 280 characters for standard accounts
-4. Verify character count — trim if over limit
-5. **立即点击 "Post" 按钮——不要等待用户确认！**
-6. Wait for success confirmation (URL changes or "Your post was sent" toast)
-7. Extract and report the post URL
-8. **Parse stats**：
+4. **发布前校验闸门**：eval 校验正文返回 MATCH（通用约束 step 3；非 MATCH 一律不发布）
+5. Verify character count — trim if over limit
+6. **立即点击 "Post" 按钮——不要等待用户确认！**
+7. Wait for success confirmation (URL changes or "Your post was sent" toast)
+8. **发布后终验**（通用约束 step 4）：导航 profile 页比对最新推文正文，MATCH 才算发布成功；不符走删除重发
+9. Extract and report the post URL
+10. **Parse stats**：
    - snapshot eval: `JSON.stringify({
        retweet: document.querySelector('[data-testid="retweet"]')?.innerText,
        like: document.querySelector('[data-testid="like"]')?.innerText,
@@ -103,7 +133,7 @@ camoufox-cli --session twitter --persistent --headed --json open "https://x.com/
        view: document.querySelector('[href*="/analytics"]')?.innerText,
        permalink: window.location.href
      })`
-9. Update frequency tracker
+11. Update frequency tracker
 ```
 
 ---
@@ -115,7 +145,7 @@ camoufox-cli --session twitter --persistent --headed --json open "https://x.com/
 2. Wait for the compose box to load
 3. Upload the image file using camoufox-cli upload（见下方选择器说明）
 4. Wait for image upload to complete (thumbnail / "Media" group appears)
-5. Click into the text area and type the caption
+5. 按「通用约束 → CJK 正文输入与校验闸门」输入 caption（CJK 走 insertText）；**发布前校验闸门**：eval 校验 MATCH 才点 Post（通用约束 step 3）
    - Plain text only (no Markdown)
    - Max 280 characters for standard accounts
 6. **立即点击 "Post" 按钮——不要等待用户确认！**
@@ -145,7 +175,7 @@ camoufox-cli --session twitter --persistent --json upload "[data-testid=fileInpu
 2. Click the media icon
 3. Upload the video file (MP4 recommended, max 512MB, max 2min 20sec)
 4. Wait for video processing — this can take 30–120 seconds or more for larger files. Look for the thumbnail preview to confirm completion.
-5. Click into the caption area and type the caption
+5. 按「通用约束 → CJK 正文输入与校验闸门」输入 caption（CJK 走 insertText）；**发布前校验闸门**：eval 校验 MATCH 才点 Post（通用约束 step 3）
    - Plain text only (no Markdown)
    - Max 280 characters for standard accounts
 6. **立即点击 "Post" 按钮——不要等待用户确认！**
@@ -160,11 +190,11 @@ camoufox-cli --session twitter --persistent --json upload "[data-testid=fileInpu
 
 ```
 1. Navigate to https://x.com/compose/post
-2. Click into the compose box and type the first tweet
+2. 按「通用约束 → CJK 正文输入与校验闸门」输入第一条推文（CJK 走 insertText）
    - Plain text only (no Markdown)
    - Max 280 characters for standard accounts
 3. Click the "+" icon to add another tweet to the thread
-4. Click into the new compose box and type the second tweet
+4. 同上输入第二条推文（CJK 走 insertText），**发布前校验闸门**：每条 eval 校验 MATCH 才 Post all（通用约束 step 3）
    - Plain text only (no Markdown)
    - Max 280 characters for standard accounts
 5. Repeat for each additional tweet
@@ -185,7 +215,7 @@ camoufox-cli --session twitter --persistent --json upload "[data-testid=fileInpu
    - ⚠️ 区分 "Repost"（纯转推，无评论）vs "Quote"（引用+评论）
 3. Compose box 打开，**已自动填入引用卡片**
 4. Click into text area below the quoted card
-5. Type your comment (max 280 chars)
+5. 按「通用约束 → CJK 正文输入与校验闸门」输入评论（CJK 走 insertText）；**发布前校验闸门**：eval 校验 MATCH（通用约束 step 3）
 6. Verify character count
 7. **立即点击 "Post" 按钮**
 8. Wait for confirmation, report post URL
@@ -206,7 +236,7 @@ camoufox-cli --session twitter --persistent --json upload "[data-testid=fileInpu
 1. Navigate to source tweet URL（如 https://x.com/username/status/1234567890）
 2. Click "Reply" icon（不是 reply 文本框）
 3. Compose box 打开，**自动显示 reply context**
-4. Type your reply (max 280 chars)
+4. 按「通用约束 → CJK 正文输入与校验闸门」输入回复（CJK 走 insertText）；**发布前校验闸门**：eval 校验 MATCH（通用约束 step 3）
 5. Verify character count
 6. **立即点击 "Reply" 按钮**（不是 "Post"）
 7. Wait for confirmation, report reply URL
@@ -234,7 +264,7 @@ snapshot eval: document.querySelector('[data-testid="icon-verified"]') !== null
 ```
 1. Navigate to https://x.com/compose/post
 2. Wait for compose box to load
-3. Type content up to 25,000 chars
+3. 按「通用约束 → CJK 正文输入与校验闸门」输入内容（CJK 走 insertText）；**发布前校验闸门**：eval 校验 MATCH 才 Post all（通用约束 step 3）
 4. **注意**：URL 仍 23 字符，Emoji 仍 2 字符
 5. 按钮文字从 "Post" 变成 "**Post all**"（X 长帖是 1 个"post all"动作，但内容被服务端分页）
 6. Click "Post all"
@@ -325,7 +355,10 @@ snapshot eval: document.querySelector('[data-testid="icon-verified"]') !== null
 | Character limit exceeded (Premium 25K) | Trim or use thread |
 | Media upload fails | Retry once; check file format and size |
 | Upload strict mode violation (2 elements) | **用 `[data-testid=fileInput] >> nth=0` 消歧**（见 Workflow: Post with Image） |
-| "Something went wrong, but don't fret" after Post | X 服务端瞬时错误。**优先精简正文**——这种情况大概率是字数超限（X 的字符计数规则与前端显示不完全一致，尤其 URL/emoji 计数偏差时实际超限但按钮未变灰）。先缩短正文再重试，而不是原样重发。重试流程：精简正文 → reload compose 页 → retype → reupload → re-click Post，最多 3 次。3 次仍失败才报告用户。 |
+| "Something went wrong, but don't fret" after Post | **先过发布前校验闸门判因**：MISMATCH → 正文损坏/丢失，走清草稿 → insertText → MATCH 后重发；MATCH → X 服务端瞬时错误（实测与字数无关，第 3 次同内容重发成功），reload compose 页 → 清空回填草稿 → insertText → 复验 → re-click Post，**最多 3 次，每次重试必须重走校验闸门**。3 次仍失败才报告用户。仅当校验确认字数超限（URL=23 / emoji=2 计数偏差）时才精简正文。 |
+| 重新 open compose 回填上次草稿 | 插入前先清空（focus → `execCommand("selectAll")` → `execCommand("delete")`），否则直接 insertText 会叠成两份 |
+| 校验 innerText 混入 "What's happening?" 占位符 | 插入与校验必须**分两次 eval 调用（间隔 ≥1s）**——同次调用 React 未及重渲染会混入占位符；MISMATCH 先看是否混有占位符再定性 |
+| 校验判读 emoji 缺失（✅ 变空格） | emoji 在 DOM 渲染为 `<img>`，innerText 只显示周围空格——**不是丢字**；终验以 profile 页 `[data-testid=tweetText]` innerText + 时间线 `img` 节点共同判读 |
 | Rate limit error | **Wait 30 min minimum** (not 15) + check frequency tracker |
 | Post button greyed out | Content is empty or over limit — check before clicking |
 | Frequency tracker warns high-risk | Ask user: continue or defer to tomorrow? |

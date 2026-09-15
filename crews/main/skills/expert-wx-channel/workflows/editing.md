@@ -9,11 +9,11 @@
 | 用户的说法 | 改的层级 | 怎么走 |
 |-----------|---------|--------|
 | “润色一下” / “口播顺一顺” | 口播措辞层 | 轻改，直接上手 |
-| “开头不行 / 换个钩子” | 钩子层 | 按目标 DNA 的 hook-design / opening-pace 维度重做前 3 秒 |
-| “换个语气” / “更接地气” | 内容风格层 | 选目标 DNA -> 按 template 改 -> 自检 |
+| “开头不行 / 换个钩子” | 口播层 | 口播文案子模块已启用时按 `narration-script` 重做；未启用时按用户要求与内容形式重做，不虚构 DNA 规则 |
+| “换个语气” / “更接地气” | 内容风格层 | 核对 `topic-angle`、`content-idea`、`narration-script` 与用户要求 -> 改稿 -> 自检 |
 | “结构调一下” / “时间分配不对” | 结构层 | 先出调整方案（新分段 / 时间轴）-> 确认 -> 改 |
 | “方向不对，重做” | 方向层 | 回到 content-production.md 从选题重新走 |
-| “换个封面” | 封面层 | 按目标 DNA 的封面图维度重出候选 -> 确认 |
+| “换个封面” | 封面层 | 按 `title-cover`（短标题与视频描述）与 `production-spec` 重出候选 -> 确认 |
 | “压缩到 X 秒” / “展开到 X 秒” | 时长层 | 先问清楚保留什么砍掉什么 |
 
 ## 轻改（口播措辞 / 润色 / 去 AI 腔）
@@ -26,8 +26,8 @@
 
 只重做前 3 秒，不动正文：
 
-1. 读目标 DNA 的 hook-design 与 opening-pace 维度（目标 DNA 默认当前绑定的 DNA；用户说“照着这条的钩子来”时先按 `style-dna.md` 提炼该条的钩子信号）。
-2. 按钩子类型（矛盾前置 / 数据冲击 / 场景代入 / 悬念留白 / 结果反差）给 2-3 个候选，标明每个候选的冲突点和身份信号。
+1. 读目标 DNA 的 `narration-script`；未启用时先记录「口播文案子模块未启用」，以用户要求和本条事实为准。
+2. 给 2-3 个候选，标明每个候选的冲突点、身份信号与核心传达。
 3. 用户选定后同步改脚本对应段落与封面文案（如封面承载了旧钩子）。
 
 ## 换风格
@@ -38,17 +38,17 @@
 - 用户给了对标账号 -> 用那个号的 DNA（如果有，没有的话，通过 `style-dna` 新建）
 
 改完先给开头（前 3 秒 + 共情段）预览，用户觉得味道对了再全文改，省得返工。
-全文改完对照目标 DNA template 逐项自检（无数字打分环节；发布后表现由 DNA 表现评估闭环跟踪）。
+全文改完对照定位、选题包装、内容形式、社交分享目标与口播 DNA（如启用）自检；发布后表现由 DNA 表现评估闭环跟踪。
 
 ## 换结构
 
 先出结构调整方案（新的分段、时间轴、素材位置），用户确认后再改脚本。
 结构动了通常风格也要跟着调——别只动骨架不换肉。
-结构调整按 DNA template 的脚本分段重新出大纲（分段时间分配、口播任务、画面/字幕位置）。
+结构调整按核心传达、内容形式与口播 DNA（如启用）重新出大纲；具体分镜与画面位置属于制作执行，不在账号 DNA 中规定。
 
 ## 换封面
 
-1. 读目标 DNA 的封面图维度（封面三要素：身份 + 痛点 + 解决方案）。
+1. 读目标 DNA 的 `title-cover` 与 `production-spec`，保留封面三要素：身份 + 痛点 + 解决方案。
 2. 按新主题出 2-3 个候选：素材截帧优先，无合适素材走 `siliconflow-img-gen` 生成。
 3. 用户确认后替换 `wx_channel/outputs/<video-name>/cover.jpg`。
 
@@ -67,8 +67,8 @@
 
 ## 改后发布
 
-用户要求改完后发布 / 重新发布时，走 `content-production.md` 的成片后流程（Step 7-10）：
+用户要求改完后发布 / 重新发布时，走 `content-production.md` 的成片后流程（Step 5-7）：
 
-1. **成片同步**：脚本改动涉及画面或口播的，按 `content-production.md` Step 7 重新走视频制作（已有成片只需轻剪辑时走 `talking-head-cut` / `video-edit`）。
-2. **存文件**：脚本与成片归位 `wx_channel/outputs/<video-name>/`，同步更新 `script.md`、`cover.jpg` 与 `dna-meta.json`。
-3. **发布 + 入库**：按 `wechat-channels-publish` 工具说明发布，再按 `content-production.md` Step 10 调 `published-track record` 入库——`--title` 仍传完整描述文案；描述文案改过的，用新文案重跑记录。
+1. **成片同步**：脚本改动涉及画面或口播的，按 `content-production.md` Step 5 重新走视频制作（已有成片只需轻剪辑时走 `talking-head-cut` / `video-edit`）。
+2. **存文件**：稿件与成片归位 `wx_channel/outputs/<video-name>/`，同步更新 `brief.md`、`voiceover.md`（如有）、`cover.jpg` 与 `dna-meta.json`。
+3. **发布 + 入库**：按 `wechat-channels-publish` 工具说明发布，再按 `content-production.md` Step 7 调 `published-track record` 入库——`--title` 仍传完整视频描述；视频描述改过的，用新文案重跑记录。

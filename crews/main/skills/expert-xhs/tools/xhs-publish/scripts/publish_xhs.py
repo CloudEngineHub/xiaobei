@@ -16,8 +16,9 @@ from pathlib import Path
 
 import requests
 
-# relay_sign 在 skills/_shared/，本脚本在 skills/xhs-publish/scripts/
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "_shared"))
+# relay_sign 在 skills/_shared/，本脚本在 skills/expert-xhs/tools/xhs-publish/scripts/
+# 向上 5 层（parents[4]）解析到 skills/，再拼 _shared
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared"))
 from relay_sign import xhs_headers  # noqa: E402
 
 LOGINS_DIR = Path.home() / ".openclaw" / "logins"

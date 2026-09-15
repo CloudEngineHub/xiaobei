@@ -8,9 +8,9 @@
 #   bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
 #   bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)" -s -- [options]
 #
-# 与 update.sh 区别：
-#   - install-atomgit.sh = 首装路线（拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
-#   - update.sh  = 已装用户的升级路线（拉新 tarball → pnpm install --prod → daemon reload）
+# 与 update.sh 区别（两条互不混用的分发路线）：
+#   - install-atomgit.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → 交互收 AWK_API_KEY + daemon install，全程无需用户预装 Node/git/pnpm）
+#   - update.sh          = git clone 源码用户的升级路线（git fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
 # 执行流程：
 #   1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
@@ -24,6 +24,7 @@
 #   9. setup-crew.sh（裸跑，无 --force；--force 只用户手动修复用；crew 模板来自 WISEFLOW_ROOT/crews，workspace 落 OPENCLAW_HOME）
 #   10. camoufox-cli：npm install -g 本地 fork（ship 的 portable node）+ camoufox-cli install 下 Firefox
 #   11. openclaw-weixin 插件：openclaw plugins install @tencent-weixin/openclaw-weixin@<pin> --pin（npmmirror）
+#       幂等按**版本**判定：已装版本 == pin 才跳过，不等则 --force 升级到 pin
 #   12. 交互问 AWK_API_KEY → 写 gateway env（Linux daemon.env / Darwin service-env/ai.openclaw.gateway.env，均落 OPENCLAW_HOME）
 #       → openclaw daemon install + restart（唯一人工输入点；不走 onboard，小白友好）
 #   13. 打印访问指引
@@ -502,14 +503,6 @@ install_python_deps() {
     ui_success "Python deps done"
 }
 
-run_remote_bash() {
-    local url="$1"
-    local tmp
-    tmp="$(mktempfile)"
-    download_file "$url" "$tmp"
-    /bin/bash "$tmp"
-}
-
 # ═══════════════════════════════════════════════════════════════════
 # UI helpers
 # ═══════════════════════════════════════════════════════════════════
@@ -694,10 +687,6 @@ run_required_step() {
     exit 1
 }
 
-refresh_shell_command_cache() {
-    hash -r 2>/dev/null || true
-}
-
 is_promptable() {
     if [[ "$NO_PROMPT" == "1" ]]; then
         return 1
@@ -706,20 +695,6 @@ is_promptable() {
         return 0
     fi
     return 1
-}
-
-is_root() {
-    [[ "$(id -u 2>/dev/null || echo 1)" -eq 0 ]]
-}
-
-require_sudo() {
-    if is_root; then
-        return 0
-    fi
-    if ! command -v sudo >/dev/null 2>&1; then
-        ui_error "sudo required but not available"
-        exit 1
-    fi
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -759,9 +734,39 @@ install_camoufox_cli() {
     ui_success "camoufox-cli ready"
 }
 
+# 读已装 openclaw-weixin 的版本号；读不到返回非零。
+# 优先 `plugins list --json`（字段 id / name / version），回落到 npm projects 下实装 package.json。
+weixin_installed_version() {
+    local claw_cmd="$1" pkg="$2" oc_home="${OPENCLAW_HOME:-$HOME/.openclaw}"
+    local v f
+    v="$("$claw_cmd" plugins list --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for p in d.get('plugins', []):
+    if p.get('id') == 'openclaw-weixin' or p.get('name') == '$pkg':
+        print(p.get('version') or '')
+        break
+" 2>/dev/null)"
+    if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
+    # 回落：CLI/JSON 不可用时直接读实装 package.json（目录名带 hash，只能 glob）
+    for f in "$oc_home"/npm/projects/*/node_modules/"$pkg"/package.json; do
+        [[ -f "$f" ]] || continue
+        v="$(python3 -c "import json;print(json.load(open('$f')).get('version',''))" 2>/dev/null)"
+        if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
+    done
+    return 1
+}
+
 # 装 openclaw-weixin 插件（config template 已预置 channel，但插件本体要 openclaw plugins install）
 # 读 tarball 内 openclaw-weixin.version.json 的 pin，走国内 npmmirror。
-# 幂等：openclaw plugins list 含 openclaw-weixin 则跳过。
+# 幂等：**已装版本 == pin 版本**才跳过；已装版本 ≠ pin 则 `--force` 升级到 pin。
+# （旧逻辑只 grep 插件名就 return，导致 bump pin 后已装实例永远停在旧版；
+#   `plugins install --force` = "Overwrite an existing installed plugin"，7.1-2 起就有该 flag。
+#   升级只换 npm/projects 下的包，登录态在 $OPENCLAW_HOME/openclaw-weixin/ 数据目录，不受影响。
+#   升级后需 gateway 重启才生效——更新路线在后面 refresh_gateway_env_only 里会重启。）
 install_weixin_plugin() {
     local claw_cmd="$WISEFLOW_ROOT/bin/openclaw"
     local pin_file="$WISEFLOW_ROOT/openclaw-weixin.version.json"
@@ -772,17 +777,27 @@ install_weixin_plugin() {
         ver=$(python3 -c "import json;print(json.load(open('$pin_file'))['openclaw-weixin']['version'])" 2>/dev/null || true)
     fi
     pkg="${pkg:-@tencent-weixin/openclaw-weixin}"
-    ver="${ver:-2.4.6}"
-    # 幂等检查：plugins list 已含则跳过
-    if "$claw_cmd" plugins list 2>/dev/null | grep -q "openclaw-weixin"; then
-        ui_success "openclaw-weixin plugin already installed"
+    ver="${ver:-2.4.8}"
+    # 幂等检查：已装版本 == pin 才跳过
+    local installed force_flag=""
+    installed="$(weixin_installed_version "$claw_cmd" "$pkg" || true)"
+    if [[ -n "$installed" && "$installed" == "$ver" ]]; then
+        ui_success "openclaw-weixin plugin already installed (${ver})"
         return 0
     fi
+    if [[ -n "$installed" ]]; then
+        ui_info "openclaw-weixin 已装 ${installed}，pin=${ver} → --force 升级"
+        force_flag="--force"
+    elif "$claw_cmd" plugins list 2>/dev/null | grep -q "openclaw-weixin"; then
+        # 插件在但版本读不到（CLI/JSON 异常）：按 pin 强制重装，保证与 pin 一致
+        ui_warn "openclaw-weixin 已装但版本读不到；按 pin ${ver} 强制重装"
+        force_flag="--force"
+    fi
     ui_info "Installing openclaw-weixin plugin (${pkg}@${ver}) via npmmirror"
-    if npm_config_registry=https://registry.npmmirror.com "$claw_cmd" plugins install "${pkg}@${ver}" --pin 2>/dev/null; then
-        ui_success "openclaw-weixin plugin installed"
+    if npm_config_registry=https://registry.npmmirror.com "$claw_cmd" plugins install "${pkg}@${ver}" --pin $force_flag 2>/dev/null; then
+        ui_success "openclaw-weixin plugin installed (${ver})"
     else
-        ui_warn "openclaw-weixin 插件安装失败；可后续手动：npm_config_registry=https://registry.npmmirror.com $claw_cmd plugins install ${pkg}@${ver} --pin"
+        ui_warn "openclaw-weixin 插件安装失败；可后续手动：npm_config_registry=https://registry.npmmirror.com $claw_cmd plugins install ${pkg}@${ver} --pin $force_flag"
     fi
 }
 
@@ -907,7 +922,6 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
 VERBOSE=0
 NO_PROMPT=0
-USE_LOCAL=false
 FORCE_RUNTIME=false
 SKIP_WEIXIN_BIND=false
 SKIP_BROWSER=false
@@ -928,12 +942,6 @@ parse_args() {
                 # 强覆盖已有运行数据（~/.openclaw/openclaw.json + workspace-* + daemon.env）
                 # 默认已装机器重跑 install 只更新 program（tarball）+ rebuild deps，不碰运行数据
                 FORCE_RUNTIME=true
-                shift
-                ;;
-            --use-local)
-                # 复用 WISEFLOW_ROOT 已有的本地 wiseflow checkout，跳 clone/fetch，保本地改动
-                # 主要给开发/调试场景：在仓内跑 install.sh 验流程，不想被 fetch+reset 盖掉改动
-                USE_LOCAL=true
                 shift
                 ;;
             --skip-bind)

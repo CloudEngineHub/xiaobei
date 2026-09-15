@@ -20,10 +20,8 @@
     "smart-search",
     "video-review",
     "wxwork-drive",
-    "video-producer",
-    "collage-broll",
-    "manim-explainer",
-    "design-full"
+    "expert-video",
+    "expert-design"
   ],
   "subagents": {
     "allowAgents": [

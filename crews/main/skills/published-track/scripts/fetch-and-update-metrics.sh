@@ -185,7 +185,7 @@ if [ "$NEEDS_COOKIE" = true ]; then
   CHECK_EXIT=${CHECK_EXIT:-0}
   if [ "$CHECK_EXIT" -eq 2 ]; then
     CHECK_REASON=$(printf '%s' "$CHECK_OUT" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).reason||"")}catch{}})' 2>/dev/null)
-    echo "{\"ok\":false,\"error\":\"SESSION_EXPIRED\",\"platform\":\"$PLATFORM\",\"login_platform\":\"$LM_PLATFORM\",\"method\":\"script\",\"reason\":\"$CHECK_REASON\",\"hint\":\"Cookie 关键字段缺失/过期，请使用 login-manager 技能引导用户重新登录 $LM_PLATFORM（camoufox-cli --session $LM_PLATFORM --persistent --headed open $PLATFORM_HOME → 用户手动登录 → cookies export + identity export 落中央存储）\"}"
+    echo "{\"ok\":false,\"error\":\"SESSION_EXPIRED\",\"platform\":\"$PLATFORM\",\"login_platform\":\"$LM_PLATFORM\",\"method\":\"script\",\"reason\":\"$CHECK_REASON\",\"hint\":\"登录态探活未通过（具体原因见 reason）：cookie 关键字段缺失/过期，或 pong 明确返回未登录。请使用 login-manager 技能引导用户重新登录 $LM_PLATFORM（camoufox-cli --session $LM_PLATFORM --persistent --headed open $PLATFORM_HOME → 用户手动登录 → cookies export + identity export 落中央存储）\"}"
     exit 2
   fi
   if [ "$CHECK_EXIT" -ne 0 ]; then

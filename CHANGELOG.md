@@ -1,3 +1,73 @@
+# v5.7.1 (2026-09-15)
+
+### 第三方插件 pin 升级（openclaw-weixin 2.4.8 / wecom-openclaw-cli 1.1.1）
+
+> openclaw 基座保持 `2026.7.1-2`（`0790d9f593`）不变。本轮只动第三方插件 pin，**不触碰本机部署实例**。
+
+- **`@tencent-weixin/openclaw-weixin` 2.4.6 → 2.4.8**：上游 2.4.7/2.4.8 的唯一实质改动是一行 import——`createTypingCallbacks` 从已被 OpenClaw 2026.8.1 删除的兼容子路径 `openclaw/plugin-sdk/channel-runtime` 改到 `openclaw/plugin-sdk/channel-message`（上游声明新路径仍兼容最低宿主 2026.5.12）。其余为版本号与 CHANGELOG。
+  - **对 7.1-2 宿主已实测兼容**（不是照抄上游声明）：2.4.8 用到的 11 个 `openclaw/plugin-sdk/*` 子路径在 7.1-2 的 `package.json` exports 里全部存在；18 个具名导入逐个对 7.1-2 已 build 的 `dist/` 做运行时校验，12 个 value import 全部命中（含关键的 `channel-message :: createTypingCallbacks`），6 个 type-only import 在 7.1-2 的 `.d.ts` 中也都在。
+  - pin 的 `integrity` 用本地 `npm pack` 下来的 tarball 算 sha512 与 npm `dist.integrity` 对账一致（`update.sh` / `install-wecom-channel.sh` 都是按 tarball sha512 校验）。
+- **`@wecom/wecom-openclaw-cli` 1.1.0 → 1.1.1**：安装流程更稳健——`openclaw plugins install` 支持透传 `--force`（7.1-2 的 `plugins-cli` 已有该 flag：Overwrite an existing installed plugin）、多 npm 源 failover 时不再顺手删插件目录、`channels.wecom` 配置备份与描述对缺失 `botId` 更宽容、移除废弃的 `getNpmPluginPath` / `hasValidChannelConfig`。
+- **`@tencent-weixin/openclaw-weixin-cli` 2.1.4 不变**：仍是 npm latest，integrity 已复核与 registry 一致。
+- 同步把 `scripts/install.sh` / `scripts/install-atomgit.sh` / `docker/docker-bootstrap.sh` 中「pin 文件缺失时」的兜底版本 `2.4.6 → 2.4.8`（三处，避免兜底路径装到旧版）。
+
+---
+
+### 安装与升级链路修复（插件幂等 / pnpm 守卫 / 死代码清理）
+
+> 起因：pin bump 后老用户升级不生效、新机 pnpm 版本不符致 `apply-addons` 直接炸。四个 installer + docker bootstrap 行为对齐，避免裸机 / atomgit / Windows / Docker 四条路线分叉。
+
+- **openclaw-weixin 幂等判断改为按版本比对**：原 `plugins list | grep` 已装即 return，pin bump 后已装实例永远停在旧版，必须人工跑 `plugins install --force` 才升得上去。新增 `weixin_installed_version()`（主路径 `plugins list --json` 取 version，回落到 `$OPENCLAW_HOME/npm/projects/*/node_modules/<pkg>/package.json` glob——目录名带 hash 只能 glob）；判定：已装 == pin → 跳过、!= pin → `--force` 升级、插件在但版本读不到 → 也 `--force` 重装（正确性优先）。三处同源实现一起改（`scripts/install.sh` / `scripts/install-atomgit.sh` / `docker/docker-bootstrap.sh`）——docker 侧 `/root/.openclaw` 是持久卷，镜像升级后插件不会跟着 pin 走，同样需要比版本。升级只换 `npm/projects` 下的包，登录态在 `$OPENCLAW_HOME/openclaw-weixin/` 数据目录不受影响。
+- **Windows 安装器补齐同一逻辑**：`install.ps1` / `install-atomgit.ps1` 的 `Install-WeixinPlugin` 仍是旧判断（匹配到插件名即 return），Windows 老用户重跑安装器永远停在旧版。新增 `Get-WeixinInstalledVersion`（主路径 `plugins list --json`，沿用 Capture-Streamed 的 EAP Continue 模式规避 PS 5.1 NativeCommandError；回落 npm/projects glob，与 bash 版逐分支对齐）；判定与 bash 版一致，失败提示同步带 `--force`。便携 pwsh 7.6.6 下 AST 抽真实函数 + 假 openclaw 跑 6 场景全过（裸装 / 同版跳过 / 2.4.6→2.4.8 升级 / JSON 损坏走 glob 回落 / 版本读不到重装 / stderr 噪音不污染主路径）。
+- **`update.sh` bundled tarball 路径补 `--force`**：`vendor/openclaw-plugins/*.tgz` 每次都装、没有幂等跳过，但不带 `--force` 时在已装实例上会失败，进而触发紧随的 `exit 1` 把整次 update 打断。在线路径（`npx openclaw-weixin-cli install`）未动——该 CLI 遇到固定版本 spec 会自行跳过升级，要修得改调用方式，按决定暂不处理。
+- **pnpm 版本守卫**：pnpm 10.x 的 install CLI 不认 `--fetch-retries`（`apply-addons.sh` 依赖同步直接 unknown argument 炸掉），而 `update.sh` 零预检、`install.sh` 的 `install_pnpm()` 只判断存在即跳过，报错完全不指向真因。`update.sh` 步骤 1.5 加大版本预检（读 `openclaw/package.json` 的 packageManager pin；版本探测在 `/` 下做，避开 pnpm ≥11 在带 pin 目录返回假版本）；`install.sh` 定义 `PNPM_VERSION`（此前从未定义，真走到安装分支会执行 `npm install -g pnpm@` 空版本）并加 major 守卫（低于要求版本则升级而非跳过）；仓根 `package.json` 的 packageManager 从 4 月遗留的 `10.30.2` 对齐 `11.2.2`。
+- **install.sh / install-atomgit.sh 删旧源码路线死代码**：tarball 路线 `main()` 从不调用系统依赖 bootstrap（install_node / install_git / install_pnpm）与 git clone（clone_wiseflow / checkout_openclaw_at_pin），是 tarball 定案前旧 curl-源码路线的遗留。`install.sh` 删 19 个零调用者函数（含 require_sudo / install_homebrew / node 版本解析链等传递死代码）+ `USE_LOCAL`/`--use-local`；`install-atomgit.sh` 删同款死 helper 与 `--use-local` no-op 分支；两脚本头注释对齐（`update.sh` 原写「拉新 tarball」，实为 git clone 源码升级路线）。README 删 `--use-local` 行（该 flag 由静默 no-op 变为明确 Unknown option）。ps1 未动（本就 pnpm 11 原生）。
+- **`setup-crew` 只为对外 crew 生成 ALLOWED_COMMANDS**：internal crew → `security:full`，`apply_exec_tiers` 本就不读该文件（权限模型在 exec-tiers.sh），4b/4b.5 加 crew-type 闸门（以 workspace SOUL.md 为准，与 4c 一致），避免对内 crew 生成死文件并误导成受白名单约束。SOUL.md 缺失时 `resolve_crew_type` 兜底 external 照常生成，保持 fail-closed。已存在的旧文件不删（可能含用户手工添加的私有条目，运行时无副作用）。
+
+### expert-video 工具链补齐（消除主打形态被迫手写脚本的结构性缺口）
+
+> 按 content-producer 提交的 toolchain-proposal 实施（P0×2 / P1 / P2）。功能实测 50/50 通过（守卫失败路径、checkpoint 续渲、spec 错误拒绝、burn-srt/normalize 全链互操作、1080p 生产规格冒烟、渲染帧目检）；code-review 1 HIGH / 2 MEDIUM / 7 LOW 全部修复并附回归测试。
+
+- **`narration-layout`（P0，新增）**：逐句旁白排布 + 防重叠守卫 + 逐句/末句越界断言 + SRT + 可选混音（内部 subprocess 复用 audio-mix）；`force_style` 落 `abs_starts.json` 供 burn-srt 引用；首句 min_gap 哨兵、lead_in 非负校验；产物按 hard 直拼排布（docstring 与 SKILL.md 均声明转场约束）。
+- **`motion-graphics`（P0，新增）**：声明式 spec 驱动 PIL 逐帧动画，Stage 10 第二条渲染路径（与 render-shot 并列）；内置四件套模板（dimension_grid / scroll_cards / crew_panel / rec_highlight，收编 v4 已验证组件）+ 8 类基础元素（必填字段 load_spec 统一校验）+ `custom` 插件逃生舱（编码/checkpoint/校验留在子命令）；帧级 checkpoint + `--force`；时长/分辨率/帧率三重断言（`fit=none` 错画幅不再静默）；缺 ffmpeg/字体 exit 2。`_mg_lib` / `_mg_templates` 为非子命令库。
+- **`clip-trim`（P1）**：新增 `--normalize WxH@FPS` / `--grade warm` / `--windows` 多窗 / `--zoompan` 定帧缓推 / `--duration` / `--low-load` / `--force`。**切片起点改 input seek**——修 output seek 在倍速链下被静默放大 speed 倍的内容错位（视频音频流统一）；多窗/定帧工作目录带参数指纹，改参自动重切、不静默复用陈旧内容；顺带修 `.mp3` 容器封 aac 的存量 bug（改为按输出扩展名选编码器）。
+- **`assemble`（P1）**：新增 `--manifest` 显式有序段清单（绕开 shot-NN 命名约定）/ `--verify-fps` 拼接后帧率断言（checkpoint 命中重跑同样生效）/ `--expect-durations` 逐段时长校验（list/segments/beats 三形态兼容，全量违例收集）；段名含 `/` 时 unify 落盘名打平。
+- **`audio-mix`（P2）**：逐轨 `--fadein`/`--fadeout`（afade 在 adelay 前，fadeout 锚定 `min(轨长, duration-delay)`，超限报错）；`--duration` 硬上限语义写明；修 adelay 缺 `:all=1` 立体声只延左声道的存量 bug。
+- **文档同步**：wrapper help、video-producer 与 expert-video 两份 SKILL.md（阶段链 + Stage 12 组合套路新增逐句排布与动态图形配方）、reversal-ad / narration-video 护栏条款、`requirements.txt` 的 Pillow 注释补 motion-graphics；顺带清 audio-mix.py / delivery-promise-lock.py 的 U+FFFD 乱码。
+
+### expert-video 定位纠正 + crew 级后期脚本合入
+
+- **crew 级后期脚本合入 expert-video**：`crews/content-producer/scripts/` 的五个后期脚本（normalize / burn-srt / duck / denoise / interp）经排查只被 CP 自己的三份文档引用（main 侧、install / setup-crew / apply-addons、docker、allowlist 全无引用），本该合。移到 `skills/expert-video/tools/video-producer/scripts/`，自动获得 wrapper 子命令形态（`video-producer normalize|burn-srt|duck|denoise|interp`），与注入的 exec 规范（一律绝对路径、禁 `cd` 前缀）对齐——原调用方式是 workspace 根相对路径 `python3 scripts/x.py`，本来就冲突。顺带修掉 crew 级目录的两个结构性问题：`setup-crew` 对 `crews/<id>/` 是 `cp -R` 拷贝（技能是软链改了即生效，crew 级 scripts 改了要重跑部署才生效），以及同一批脚本被三处文档重复描述——现在唯一权威落点是 `video-producer/SKILL.md` 的「后期处理子命令」段，`scripts/README.md` 删除。
+- **SKILL.md 重写（296 → 217 行）**：纠正「通用制作流程」的定位——它不是与类型 workflow 并列的第四条路，也不是 Brief 未指定类型时的 fallback，而是**做任何视频制作工作都必须遵循的基准准则**，reversal-ad / narration-video / collage-broll 只是在其上对特定类型的进一步细化。原「Workflow 清单（按视频类型选）」表里把「通用制作流程」当成一行选项，已删除该行，改为「这个包怎么读（三层）」：通用制作流程 = 基准 / 类型 workflow = 细化 / 工具说明 = 子命令参数，冲突时以 workflow 为准但闸门与护栏不让步。「本包」全部改「我」（与 AGENTS.md 第一人称口径一致）；瘦身去重（Stage 12 参数表删掉只留八个场景化组合套路、依赖表 11 行压成两段），硬规则一条没丢。全仓同步该错误提法：三份 DNA 框架的制作指向表、三份 `build_style_profile.py` 的 video-form 提取提示、三平台 content-production、viral-chaser、CP AGENTS.md、`docs/expert-pack-dna-architecture.md` 4.7/4.9。
+- **reversal-ad 工作流增强**：`workflows/reversal-ad.md` 依实战补强（+44/−17），SKILL.md 输入表同步。
+- **注（需部署动作，本仓未做）**：`~/.openclaw/workspace-content-producer/` 仍是 09-08 的四条悬挂软链（collage-broll / design-full / manim-explainer / video-producer），expert-video 与 expert-design 尚未链入，`~/.openclaw/bin` 下同名 wrapper 也是悬挂；需重跑 `./scripts/setup-crew.sh`（会 prune 悬挂链、重建软链与 wrapper），`workspace-content-producer/scripts/` 里的五个旧拷贝可一并手工清掉。
+
+### DNA（内容风格 DNA）补「业务植入」与「互动引导与 CTA」两维
+
+- 三个平台（抖音 / 小红书 / 视频号）共 5 份框架各补两维：`biz-implant` 业务植入套路（是否植入 / 位置与时机 / 载体 / 方式原型（反转植入 / 痛点→方案 / 场景带入 / 实测对比 / 清单第 N 项 / 身份认同 / 口碑故事 / 教程内嵌 / 硬广直给）/ 衔接句 / 密度与占比 / 品牌词出现方式）、`interaction-cta` 互动引导与 CTA（行动目标与主目标 / 位置与时机 / 句式与原文摘录 / 行动数量 / 诱因设计 / 与转化目标对应 / 平台组件与合规边界）。
+- 与 `narration-script` 划界（口播子模块的「合」只记收束方式，CTA 目标与句式归 `interaction-cta`）、与 `video-form` 划界（形态层面的「影视解说 + 反转植入」记形态与制作指向，本维度记植入怎么设计）。聚合规则补硬要求：两维必须给出「位置 + 载体 + 原文摘录」三样证据，只写「自然植入」「引导关注」不算提取完成；无植入写「无植入（纯内容）」。
+- 维度数变为 抖音视频 10 / 图文 9、小红书视频 11 / 图文 10、视频号 10，三份 `build_style_profile.py` 的 DIMENSION_GROUPS / 报告提示 / TEMPLATE_STAGES 等同步，template 新增「[业务植入与 CTA部分]」（图文侧取代原「互动与标签」段）。
+- **删「统计与分词」死代码**：分词（相邻二字组合）在脚本里算完从未渲染进 report 或 DNA 文档，统计口径合并进「职责边界」一行；脚本移除 `extract_terms` / `STOP_TERMS` 及相关未使用导入，同样从未被读取的 `weighted_coverage` 聚合项一并删掉。
+- **xhs 作品类型表纠正**：默认 `--kind` 是 note，但表里把 `dna-0` 挂在 video、`dna-0-note` 挂在 note，与脚本 `KIND_SUFFIX_HINT`、框架文档、style-dna.md、专家包 SKILL.md 全部相反——改为 note（默认）→ `dna-0`、video → `dna-0-video`，默认 kind 排表格首行。
+- **视频号 content-production.md 按抖音版重写**：补 Step 0「识别制作路线」（素材组装 / 从零制作 / 脚本制作）与素材模式、脚本模式入口；Step 编号连续（原 Step 6 之后直接跳到 8/9/10）；制作合并为 Step 5（路线 A main 直接做轻加工 / 路线 B、C 出 Brief 委托 CP）；确认节点回到三个（选题 / 短标题与视频描述 / 成片与封面——原「第四个必停节点」编号错且缺成片确认）。视频号特有约束全部保留：短标题 + 视频描述双字段、取数与入库只用视频描述、短标题不写库、无公开下载路径、30-55 人群与真人出镜占比、转发动机、session 正忙与扫码登录、sph 链接。
+- 顺带清掉写给开发者的元叙述（「DNA 不是『平台级 DNA』」等），改为正向表述；Brief 新字段同步到三平台 content-production、CP 侧交接契约与 `account-benchmark` / `style-dna` / `review` 的归因表。
+
+### 平台实操路径回写（视频号发布 / 小红书 / X）
+
+- **wechat-channels-publish 实测路径回写**（来源：小贝 2026-09-14 实战提案，eval 片段取自当日发布实录并通过 `node --check`）：snapshot 一律 `-s "wujie-app"`（整页 snapshot 撞 wujie 双 body 报 strict violation）；Step 3 视频上传改直连 `input[type=file]` 选择器（click 触发按钮路线拿不到 ref）；新增「设置封面」步骤（编辑入口 / 上传封面 / `accept*=image` 精确选择器防双 file input 冲突 / 裁剪确认）；描述框改 eval 四步（聚焦 → insertText → insertParagraph → innerText 校验，contenteditable 空串致 aria 无独立 ref）；短标题 fill + eval 读 `.value` 校验（aria 占位文本填后不消失，snapshot 复核不可信）。新增 4 个 pitfall + 错误处理表 3 行；content-production.md 发布清单补「设置封面」项。
+- **`publish_xhs.py` 路径解析修复**：`_shared` 上溯按 D8 拆分前布局写死 `parents[3]`，拆分后（`skills/expert-xhs/tools/xhs-publish/scripts/`）只到 `tools/`，`relay_sign` import 落空。改 `parents[4]` 精确解析到 `skills/_shared`。2026-09-14 小红书实际发布验证通过。
+- **twitter-post CJK 输入安全闸门**：CJK 正文禁用 `type`（逐字符按键流与 X Draft.js 异步处理竞态，实测中文丢字 + 乱序），改 eval + `execCommand insertText` 整段插入；新增发布前 MATCH 校验闸门与发布后 profile 终验；「Something went wrong」先过闸门判因（MISMATCH 重插 / MATCH 瞬时错误重试），替换原「优先精简正文」的误判。含草稿回填重复、占位符假警报、emoji 渲染为 img 三个坑。expert-bd comment-engagement 复用同套规则。
+- **微信视频号 / 公众号登录统一无头截 QR**：同模式无头截二维码发用户扫码，渲染失败才 `--headed` 兜底；`docs/platform-login-and-browser-spec.md` 两处旧说法连带修正。
+- **`published-track record` 补 `--help`/`-h`**：对齐 `update-metrics.sh` 既有模式（DB 检查前响应，无库也能查参数），覆盖全部必填/可选参数、upsert 去重键、`wx_channel --title` 语义（完整视频描述非短标题）、publish-date 禁传 `$()` 警示。
+- **Brief 硬性规则新增「不写实现路径」**：Brief 只写需求与验收标准，禁写脚本引用 / ffmpeg 参数表 / 工具链内部细节；用户点名参数例外照传并注明。不依赖工具链补齐进度——边界规则本身恒成立，过渡期由既有「CP 回报无法执行 → 确认改 Brief」条款兜底。
+
+### 清理
+
+- 删除软著申报脚本（`generate_code_doc.py` / `generate_form_info.py` / `generate_manual.py` / `swcr-register.sh`）及 expert-ir 的依赖与委派表条目，软著 / 商标 / 专利申报明确移出职责范围（`docs/d21-symlink-skill.md` C 类清单同步清理）。
+- awada 媒体发送说明更新（`scripts/lib/agent-skills.sh`）；`README.md` 精简。
+
+---
+
 # v5.7.0 (2026-08-31)
 
 ### 专家包（Expert Pack）架构

@@ -15,6 +15,12 @@
  *     douyin   GET /aweme/v1/web/history/read/（a_bogus 签名）→ status_code==0
  *   wx_mp 不在本模块——走 wx-mp-hunter check（cgi-bin/home <h2>「新的创作」）。
  *
+ *   pong 三态：ok / fail（明确未登录：douyin status_code=8、xhs guest）/ UNKNOWN
+ *   （端点异常但无法证明未登录：douyin 除 0/8 外的 status_code、HTTP 层错误、网络异常）。
+ *   UNKNOWN 不判死——gate 放行，由下游真实请求最终裁决。2026-09-01/02 连续两晚凌晨
+ *   douyin pong 回 status_code=4 被判 SESSION_EXPIRED 触发误报重登，但同 cookie 真实
+ *   取数成功（探活端点被风控/限流间歇拦截），见 workspace-main/douyin/20260902 排查文档。
+ *
  *   pong 结果落 ~/.cache/wiseflow-check-login/<platform>.json，TTL 600s。
  *   批量调用复用同一缓存，把 N 次 pong 压成 1 次，避免批量签名触风控。
  *
@@ -81,7 +87,7 @@ export interface CheckResult {
   error?: "SESSION_EXPIRED" | "SIGN_UNAVAILABLE";
   reason?: string;
   detail?: string;
-  ping?: "skipped" | "cached" | "ok" | "fail";
+  ping?: "skipped" | "cached" | "ok" | "fail" | "unknown";
 }
 
 /** 平台 key → 中央存储 session 文件名（xhs/xhs-browse 共用 xhs-browse.json） */
@@ -235,7 +241,7 @@ function genFakeMsToken(): string {
   return t + "==";
 }
 
-async function pongDouyin(map: CookieMap): Promise<{ ok: boolean; reason?: string }> {
+async function pongDouyin(map: CookieMap): Promise<{ ok: boolean; reason?: string; unknown?: boolean }> {
   const { douyinSign } = await import("./relay-sign.ts");
   const ua = loadUa("douyin");
   const params = new URLSearchParams({ max_cursor: "0", count: "20", msToken: genFakeMsToken() }).toString();
@@ -246,17 +252,28 @@ async function pongDouyin(map: CookieMap): Promise<{ ok: boolean; reason?: strin
       headers: { "User-Agent": ua, Cookie: cookieHeader(map), Referer: "https://www.douyin.com/", Accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!resp.ok) return { ok: false, reason: `history/read HTTP ${resp.status}` };
-    const data = (await resp.json()) as { status_code?: number };
-    // status_code==0 已登录；==8 未登录
-    return data.status_code === 0 ? { ok: true } : { ok: false, reason: `status_code=${data.status_code}` };
+    // HTTP 层异常不能证明未登录（风控/限流同样落这里）——UNKNOWN 放行，真实请求裁决
+    if (!resp.ok) return { ok: true, unknown: true, reason: `history/read HTTP ${resp.status}` };
+    const text = await resp.text();
+    let data: { status_code?: number } = {};
+    try {
+      data = JSON.parse(text) as { status_code?: number };
+    } catch {
+      /* 非 JSON 响应（如风控验证页）——落 UNKNOWN 分支 */
+    }
+    // status_code==0 已登录；==8 明确未登录。其余值语义未知（2026-09 误报教训，见模块头注释）：
+    // 除 8 外一律 UNKNOWN 放行，由下游真实请求最终裁决；响应体片段保留在 reason 供观察。
+    if (data.status_code === 0) return { ok: true };
+    if (data.status_code === 8) return { ok: false, reason: "status_code=8（未登录）" };
+    return { ok: true, unknown: true, reason: `status_code=${data.status_code}（语义未知） body=${text.slice(0, 120)}` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, reason: `history/read error: ${msg.slice(0, 120)}` };
+    // 网络异常同理不能证明未登录——UNKNOWN 放行（真实请求若同样失败会以自身错误上报）
+    return { ok: true, unknown: true, reason: `history/read error: ${msg.slice(0, 120)}` };
   }
 }
 
-async function pong(platform: string, map: CookieMap): Promise<{ ok: boolean; reason?: string }> {
+async function pong(platform: string, map: CookieMap): Promise<{ ok: boolean; reason?: string; unknown?: boolean }> {
   const p = pongPlatform(platform);
   switch (p) {
     case "bilibili": return pongBilibili(map);
@@ -272,6 +289,7 @@ async function pong(platform: string, map: CookieMap): Promise<{ ok: boolean; re
 interface CacheEntry {
   ok: boolean;
   reason?: string;
+  unknown?: boolean;
   at: number;
 }
 
@@ -324,8 +342,12 @@ export async function verifyCookies(platform: string, map: CookieMap, opts: { no
   }
 
   const r = await pong(platform, map);
-  writeCache(platform, { ok: r.ok, reason: r.reason, at: Date.now() });
-  if (r.ok) return { ok: true, detail: pres.detail, ping: "ok" };
+  writeCache(platform, { ok: r.ok, reason: r.reason, unknown: r.unknown, at: Date.now() });
+  if (r.ok) {
+    // UNKNOWN（pong 端点异常但无法证明未登录）——放行，detail 带原因供日志观察
+    if (r.unknown) return { ok: true, ping: "unknown", detail: `pong UNKNOWN: ${r.reason}（放行，由真实请求最终裁决）` };
+    return { ok: true, detail: pres.detail, ping: "ok" };
+  }
   return { ok: false, error: "SESSION_EXPIRED", reason: r.reason, ping: "fail" };
 }
 
@@ -365,12 +387,21 @@ export async function checkSession(platform: string, opts: { noPing?: boolean } 
   // Tier 2: pong（带缓存）
   const cached = readCache(platform);
   if (cached) {
-    if (cached.ok) return { ok: true, detail: pres.detail, ping: "cached" };
+    if (cached.ok) {
+      if (cached.unknown) {
+        return { ok: true, ping: "unknown", detail: `pong UNKNOWN(缓存): ${cached.reason}（放行，由真实请求最终裁决）` };
+      }
+      return { ok: true, detail: pres.detail, ping: "cached" };
+    }
     return { ok: false, error: "SESSION_EXPIRED", reason: cached.reason, ping: "cached" };
   }
 
   const r = await pong(platform, loaded.map);
-  writeCache(platform, { ok: r.ok, reason: r.reason, at: Date.now() });
-  if (r.ok) return { ok: true, detail: pres.detail, ping: "ok" };
+  writeCache(platform, { ok: r.ok, reason: r.reason, unknown: r.unknown, at: Date.now() });
+  if (r.ok) {
+    // UNKNOWN（pong 端点异常但无法证明未登录）——放行，detail 带原因供日志观察
+    if (r.unknown) return { ok: true, ping: "unknown", detail: `pong UNKNOWN: ${r.reason}（放行，由真实请求最终裁决）` };
+    return { ok: true, detail: pres.detail, ping: "ok" };
+  }
   return { ok: false, error: "SESSION_EXPIRED", reason: r.reason, ping: "fail" };
 }
