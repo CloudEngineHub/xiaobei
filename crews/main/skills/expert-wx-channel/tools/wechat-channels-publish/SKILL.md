@@ -12,7 +12,7 @@ description: 通过 camoufox-cli 持久化 session wechat-channel 发布视频�
 **业务页 `snapshot` 一律加 `-s "wujie-app"` 作用域**（下文简写 `snapshot -s`）：wujie 页面里主文档与子应用各有一个 body，整页 `snapshot` 会报 `locator('body') resolved to 2 elements` strict violation，拿不到任何 ref。只有登录页（无 wujie）可整页 snapshot。`click` / `fill` / `type` 按 ref 操作；`upload` 支持 ref 或 CSS 选择器（底层 Playwright setInputFiles，穿透 shadow DOM），无需 CDP hack。
 
 **输入**：本地视频文件（`.mp4` / `.mov` / `.avi` / `.webm`）、**视频描述**（含话题标签，最长约 300 字）、**短标题**（6-16 字）。发布页改版后两项都能填，官方明确「填写短标题会获得更多流量」，因此**两项都必须填**，都由 main agent 拟定后交给本工具。
-**输出**：视频号已发布作品；能取到时附带公开链接（`https://weixin.qq.com/sph/xxxx`）。
+**输出**：视频号已发布作品。本工具**不抓取作品公开链接**——管理后台分享面板路线实践中不可靠（审核 / 转码中常不可用），链接由用户后补，调用方入库时升级（见文末「入库衔接约束」）。
 
 > **短标题只在发布页存在**：作品管理页与 `wx-channel-engagement` 抓取都拿不到短标题，所以入库与匹配一律只用视频描述（见文末「入库衔接约束」）。
 
@@ -118,6 +118,13 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
    - 校验不过（缺段/串位）：重跑 1 聚焦后 execCommand('selectAll') + execCommand('delete') 清空，再从 2 重插
 ```
 
+> **话题标签段格式（硬约束）**：标签段只能是半角 `#` + 空格分隔的 `#标签` 项，整行不得出现任何其他字符——不加前缀或分组标题（如「【三层标签】」）、不加分隔符（／、/、—、顿号）、不用全角 `＃`。混入这些字符会导致**整行标签全部不被视频号识别渲染（失效）**。DNA 的分层/分组标签策略只用于挑标签，结构标记不进正文。
+>
+> - ✅ `#AI员工 #开源工具 #影视解说 #Wiseflow #一人成团 #Agent327`
+> - ❌ `【三层标签】＃影视解说 ＃反转 ＃悬疑短片 ／ ＃AI商机监控 ＃AI客服 ＃自媒体获客 ／ ＃遗憾 ＃十年`
+>
+> 定稿文案已含违规字符时，先清洗成纯标签行再插入，不要照插。
+
 **短标题**——真实 `<input>`（placeholder 含「短标题」，官方提示形如「填写短标题有机会获得更多流量」），aria snapshot 有独立 ref，直接填：
 
 ```
@@ -148,24 +155,11 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 等待 4 秒后检查（`url` 命令 + `snapshot -s "wujie-app"`）：
 - 页面自动跳转到视频管理列表页
 - 或 URL 变为 `https://channels.weixin.qq.com/platform/post/list`
-- 刚发表的作品通常在第一个。但可能处于转码中——封面缩略图为灰色，转圈。每隔 5 秒 snapshot -s 看转码是否完成（封面缩略图出现），完成后才能取链接。
-
-### Step 9: 获取已发布视频链接
-
-发布成功后，在视频号管理后台的视频列表页获取视频公开链接：
-
-```
-1. snapshot -s "wujie-app" 找到刚发布的视频（列表第一条，或按完整视频描述匹配）ref
-2. snapshot -s 找该视频的"分享"按钮 ref → click
-3. snapshot -s 在弹出的分享面板中找"复制视频链接"按钮 ref → click
-4. eval 从剪贴板读取链接：
-   camoufox-cli --session wechat-channel --persistent --json eval "navigator.clipboard.readText()"
-   链接格式通常为 https://weixin.qq.com/sph/xxxxxx（sph 即视频号拼音缩写）
-```
+- 刚发表的作品通常在第一个；处于转码中（封面缩略图灰色、转圈）属正常，不影响发布成功判定，**不必等转码完成**。
 
 > 管理页若 `-s "wujie-app"` 报作用域不存在/为空（该页未走 wujie 容器），退回整页 snapshot。
 
-> **注意**：如果刚发布的视频还在审核中，"分享"按钮可能不可用。此时可先完成发布记录（publish_url 留空），待审核通过后再补充链接。
+确认发布成功后 close session 并回报。**不要尝试在管理后台抓取作品链接**——分享面板路线实践中不可靠（审核 / 转码中常不可用），已从本流程移除。回报时告知用户作品已提交，请其后续在手机端或后台「分享」中获取作品链接（`https://weixin.qq.com/sph/xxxx`）提供给我们，由调用方按「入库衔接约束」补录升级。
 
 ---
 
@@ -282,3 +276,5 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 > **`published-track record --platform wx_channel --title` 必须传 Step 6 填的完整视频描述**（含 hashtag，最长约 300 字）；**短标题不入库**。
 
 原因：作品管理页只展示视频描述，`wx-channel-engagement` 抓取匹配用的也是视频描述。`pub_wx_channel.title` 是数据库字段名，语义为完整视频描述；把短标题写进去会导致后续抓取匹配失败。短标题只留在作品目录的 `publish-copy.md` 里备查。
+
+> **首次入库不传 `--publish-url`**：本工具不抓取作品链接，链接由用户后补（同 `wx-mp-publisher` 的 URL 升级机制）。用户提供链接后，用相同 `--source-folder` 重跑 `published-track record` 补 `--publish-url`——upsert 语义升级记录，不重复插行。`wx-channel-engagement` 抓取不依赖 `publish_url`，留空不影响日常数据采集。
