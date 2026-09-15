@@ -24,13 +24,12 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
 流程:
   通用制作流程（expert-video SKILL.md 的 Stage 0→14 + 两闸门）是做**任何**视频都要遵循的基准，
   不是"没指定类型时的备选"。Brief 指定 workflow 时，先读包内 workflows/<workflow>.md，
-  按其阶段裁剪调用下列子命令；未指定时只按通用制作流程走，由 intent-router 定档位。
+  按其阶段裁剪调用下列子命令；未指定时只按通用制作流程走。创意不清时先走 story-develop
+  intake workflow（workflows/story-develop.md）与甲方收敛 Brief，再进 script-write。
 
 子命令（按阶段序）:
-  intent-router        Stage 1  意图路由 → 三档脚本模板（故事讲述型/纯画面动效型/蒙太奇剪接型）
   reference-concepts   可选     吃甲方给的参考拆解报告出 2–3 差异化概念
-  story-develop        Stage 2  idea → 故事（分场）
-  script-write         Stage 3  故事 → 分场剧本（含 enhancement_cues + delivery_cues）
+  script-write         Stage 3  Brief 创意 → 分场剧本（含 enhancement_cues + delivery_cues）
   script-self-eval     Stage 3  脚本自评 N 维打分
   storyboard-build     Stage 4  剧本 → 镜头表
   shot-decompose       Stage 5  每镜拆首尾帧 + 运动描述 + variation_type

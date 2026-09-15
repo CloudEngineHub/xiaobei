@@ -4,7 +4,7 @@
 Usage:
   python3 scripts/slot-plan.py <project_dir>
 
-入：project_dir/storyboard/shot_decompose.json（Stage 5）+ script/intent.json（tone）
+入：project_dir/storyboard/shot_decompose.json（Stage 5）
 出：project_dir/slots/slot-plan.json（每镜对应 slot：template + hero slot + tone→slot 数）
 
 template：slot 模板（如"主角家中—晨光—白T青年"）
@@ -24,6 +24,12 @@ import json
 import sys
 from pathlib import Path
 
+
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 TONE_SLOT_TABLE = {
     "elegy": {"shot_duration": 4.0, "slots_per_min": 15},
     "solemn": {"shot_duration": 3.5, "slots_per_min": 17},
@@ -41,7 +47,6 @@ def main() -> None:
 
     project = Path(args.project_dir).resolve()
     decompose_path = project / "storyboard" / "shot_decompose.json"
-    intent_path = project / "script" / "intent.json"
     if not decompose_path.is_file():
         die(f"前置缺失: shot_decompose.json 不存在")
 
@@ -55,8 +60,7 @@ def main() -> None:
         print(json.dumps(existing, ensure_ascii=False, indent=2))
         return
 
-    intent = json.loads(intent_path.read_text(encoding="utf-8")) if intent_path.is_file() else {}
-    tone = args.tone or "solemn"  # narrative 默认庄重
+    tone = args.tone or "solemn"  # 默认庄重；agent 据 Brief 创意/调性传 --tone
     tone_cfg = TONE_SLOT_TABLE[tone]
 
     stub = {

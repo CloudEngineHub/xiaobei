@@ -20,6 +20,12 @@ import json
 import sys
 from pathlib import Path
 
+
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 VALID_VARIATIONS = {"static", "dynamic", "transition"}
 
 

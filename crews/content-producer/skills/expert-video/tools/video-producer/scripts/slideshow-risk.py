@@ -23,6 +23,12 @@ import json
 import sys
 from pathlib import Path
 
+
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 RISK_DIMS = [
     ("motion_density", "动镜头占比", "静图不算", 0.25),
     ("shot_variation", "镜种多样性", "特写/中景/远景/航拍/手持混", 0.15),

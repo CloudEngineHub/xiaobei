@@ -55,8 +55,8 @@ metadata:
 
 | 层 | 是什么 | 怎么用 |
 |----|--------|--------|
-| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→14 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
-| **类型 workflow**（`workflows/<值>.md`） | 在通用制作流程**之上**对某一类视频的进一步细化与明确化：阶段裁剪、叙事套路约束、声音 / 画面规范、验收补充 | Brief 指定 `workflow` 时必读必用，按其细化执行；细化内容与通用流程冲突时以 workflow 为准，但**闸门与护栏不让步** |
+| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→14 阶段链（Stage 1-2 已退役，基线从 Stage 3 script-write 起）、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
+| **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：创意不足以直接写剧本时触发 |
 | **工具说明**（`tools/<工具>/SKILL.md`） | 每个子命令的入参、产物路径、退出码与旁路条件 | 调用前查；本文不重复参数细节 |
 
 > 通用制作流程**不是**与类型 workflow 并列的第四条路，也**不是**"Brief 没指定类型时的 fallback"。它是底座；类型 workflow 只在底座上细化，产出特定类型的视频。
@@ -72,8 +72,10 @@ metadata:
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 一句文稿 → 一个视觉隐喻 → 静帧 → i2v，三道闸门与 Gate 3 批量调度 |
 
 - Brief 指定了 `workflow`：**先读对应文档并直接采用**，不得替换成自创流程。
-- Brief 未指定：仍走通用制作流程，由 Stage 1 `intent-router` 定档位——故事讲述型 narrative / 纯画面动效型 motion / 蒙太奇剪接型 montage。
-- 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。**活儿小也不跳过** Stage 0 Brief 确认、Stage 13 自检与响度归一化、Stage 14 交付三件套。
+- Brief 未指定 `workflow`：仍走通用制作流程；创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 3 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`，**不再做三档分类**（intent-router 已退役）。
+- 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。**活儿小也不跳过** Stage 0 Brief intake、Stage 13 自检与响度归一化、Stage 14 交付三件套。
+
+> `story-develop` 是 **intake 类 workflow**（Stage 0 创意澄清，**不是 `Brief.workflow` 取值**），与上表 type 类 workflow 正交：任何类型的视频，创意不清都先走它收敛 Brief，再按通用制作流程 + 对应 type workflow 执行。详见 `workflows/story-develop.md`。
 
 不属于我的活（交回甲方或转其他专家包）：
 
@@ -91,7 +93,7 @@ output_videos/<topic-en-slug>/      # <project-dir>
 ├── brief.md                    # 甲方交付（拷贝入档）或 Stage 0 与用户定稿
 ├── voiceover.md                # 甲方交付的口播文案（如有）
 ├── reference/                  # 可选：甲方给的参考拆解报告与差异化概念
-├── script/                     # intent.json(1) / story.md(2) / script.md(3) / self-eval.json(3b) / decisions.json(审计链)
+├── script/                     # script.md(3) / self-eval.json(3b) / decisions.json(审计链)
 ├── storyboard/                 # storyboard.json(4) / shot_decompose.json(5)
 ├── characters/                 # registry.json(6) + <char-id>/{front,side,back}.png
 ├── gates/                      # gate-a.md / gate-b.md（含批准人与批准范围）
@@ -108,22 +110,19 @@ output_videos/<topic-en-slug>/      # <project-dir>
 
 workflow 文档在技能包内，不是项目目录内容；项目目录只放 Brief、素材、脚本、渲染与交付产物。
 
-## 通用制作流程（Stage 0→14，两闸门）
+## 通用制作流程（Stage 0→14，两闸门；Stage 1-2 已退役为 intake workflow）
 
 **我做任何视频都走这条链**；类型 workflow 只在此基础上裁剪与细化。每段的子命令是 `video-producer` 工具下的一个独立脚本，按流程逐个调。
 
 ```
-Stage 0  Brief 确认         模式 A：读甲方 Brief，核对字段，缺口向 Brief owner 澄清
+Stage 0  Brief intake       模式 A：读甲方 Brief，核对字段，缺口向 Brief owner 澄清
                             模式 B：用户未给 Brief 时引导讨论 → 代拟 brief.md → 发用户确认
-                            （两种模式的 Stage 0 都是"先把 Brief 定下来"，无子命令）
-Stage 1  intent-router      定档位（Brief 指定 workflow 时按该 workflow 的约束校验，未给定时从下面三个档位选一个）
-                            narrative 故事讲述型（重情节、有人物弧光、含旁白，默认 3–5 镜/场）
-                            motion    纯画面动效型（重节奏与视觉冲击、少对白，默认 5–8 镜快切）
-                            montage   蒙太奇剪接型（重氛围、抽象、纯视觉，默认 4–7 镜无叙事）
-Stage 2  story-develop      idea → 故事（受众/类型显式复述、100–200 词梗概、人物、分场）
-                            甲方已交付口播文案时跳过：叙事以口播稿为准，不另起故事
-Stage 3  script-write       故事 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色）
-                            甲方已交付口播文案时改为落稿锁定：原样落 script/script.md，不重写策略文案
+                            创意不足以直接写剧本时 → 走 story-develop intake workflow（workflows/story-develop.md）
+                            与甲方对话式收敛创意 + 规格，落定 brief.md（无子命令；意图澄清在此消化，不再产 intent.json）
+   〔原 Stage 1 intent-router / Stage 2 story-develop 已退役：三档分类对下游制作无实际作用，
+     故事膨胀并入 Stage 3；意图澄清升格为 Stage 0 的 story-develop intake workflow〕
+Stage 3  script-write       Brief 创意 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色）
+                            基线生产从此开始。甲方已交付口播文案时改为落稿锁定：原样落 script/script.md，不重写策略文案
 Stage 3b script-self-eval   脚本自评 N 维打分，任一维 <3 必返工（落稿锁定时只检查不改写）
 Stage 4  storyboard-build   剧本 → 镜头表（每镜叙事目的/机位复用/位置朝向/不写不可见）
 Stage 5  shot-decompose     每镜拆首帧静照/尾帧静照/运动描述（variation_type 三档）
@@ -162,7 +161,7 @@ Stage 14b 交付              回报成片 + 封面 + final-deliver.md 的绝对
 
 文本产物全齐（脚本 + 分镜 + 机位 + 角色），**停下发甲方审**：
 
-- 呈交摘要：档位或 workflow、场次数、镜数、角色数、关键决策（路径 / 模型 / 风格选择的备选 + 置信度 + 理由）
+- 呈交摘要：workflow 或创意定位、场次数、镜数、角色数、关键决策（路径 / 模型 / 风格选择的备选 + 置信度 + 理由）
 - **结束本轮回复**，不许在同条回复里进 Stage 7
 - 批准人是 Brief owner（模式 A = main agent，模式 B = 用户）；甲方已在 Brief 中代理批准时，把批准范围落 `gates/gate-a.md` 后继续
 - 批准是**逐闸门的**——早先的一句"你继续"不覆盖本闸门
@@ -201,7 +200,7 @@ Stage 14b 交付              回报成片 + 封面 + final-deliver.md 的绝对
 
 | 工具 | 用途 | 命令 |
 |------|------|------|
-| `video-producer` | 阶段链全部原子能力（意图路由、故事 / 剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
+| `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `collage-broll` | 纸拼贴 B-roll 的环境自检与 Gate 3 批量 i2v 调度（0 全通 / 1 参数错 / 2 部分失败，只重跑失败条目） | `collage-broll check-setup` / `collage-broll gate3 --batch <gen-jobs.json> [--dry-run]` |
 
 跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 8/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`siliconflow-img-gen`（静帧、角色三视图、封面，Stage 6/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；`--enable-subtitle` 让火山流式 HTTP 原生返回时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。

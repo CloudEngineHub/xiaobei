@@ -74,12 +74,12 @@ def main() -> None:
 
 ## 用户选定
 
-> 呈交甲方（Brief owner）选定一个概念，写入 brief.md。未选定前不进 Stage 2。
+> 呈交甲方（Brief owner）选定一个概念，写入 brief.md。未选定前不进基线生产（script-write）。
 """
     concepts_path.write_text(stub, encoding="utf-8")
     print(f"[done] 报告已存档：{archived}")
     print(f"[stub] concepts.md 模板已落：{concepts_path}")
-    print(f"[next] agent 据报告填概念 → 呈交甲方选定 → 回通用制作流程（story-develop）")
+    print(f"[next] agent 据报告填概念 → 呈交甲方选定 → 回通用制作流程（script-write）")
 
 
 if __name__ == "__main__":

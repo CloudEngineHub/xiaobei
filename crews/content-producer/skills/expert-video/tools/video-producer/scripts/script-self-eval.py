@@ -7,13 +7,12 @@ Usage:
 入：project_dir/script/script.md（Stage 3）
 出：project_dir/script/self-eval.json（N 维分 1–5 + 总评 + 是否必返工）
 
-N 维（硬约束六条）：
+N 维（硬约束五条）：
 1. 可拍化：无不可见物描写
 2. 场次划分：同时间同地点一场
 3. 对白格式：引号统一
 4. enhancement_cues：六型齐
 5. delivery_cues：语气/语速/重音齐
-6. 镜头数预算：在 intent.json 的 min-max 区间
 
 agent 据此逐维打分填 self-eval.json。脚本不做 NLP 判分——是 agent 的自检脚手架。
 """
@@ -23,13 +22,18 @@ import json
 import sys
 from pathlib import Path
 
+
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 EVAL_DIMS = [
     ("filmable", "可拍化", "无不可见物描写（'想起了'/'觉得'改外化动作）"),
     ("scene_split", "场次划分", "同时间同地点一场"),
     ("dialog_format", "对白格式", "引号「」统一"),
     ("enhancement_cues", "enhancement_cues 六型齐", "动作/表情/环境/心理外化/节奏/视觉锚点"),
     ("delivery_cues", "delivery_cues 齐", "语气/语速/重音/情感控制"),
-    ("shot_count", "镜数在预算区间", "intent.json 的 min-max"),
 ]
 
 

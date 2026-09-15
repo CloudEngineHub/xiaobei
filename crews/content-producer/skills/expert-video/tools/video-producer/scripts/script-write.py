@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 3 — script-write：故事 → 分场剧本。
+"""Stage 3 — script-write：Brief 创意 → 分场剧本。
 
 Usage:
   python3 scripts/script-write.py <project_dir>
 
-入：project_dir/script/story.md（Stage 2）
+入：project_dir/brief.md（甲方 Brief：创意 + 规格；口播类为 voiceover.md 落稿）
 出：project_dir/script/script.md（分场剧本，含 enhancement_cues 六型 + delivery_cues）
 
 剧本硬约束：
@@ -21,15 +21,20 @@ import sys
 from pathlib import Path
 
 
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Stage 3 script-write")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
-    story_path = project / "script" / "story.md"
-    if not story_path.is_file():
-        die(f"前置缺失: story.md 不存在，先跑 story-develop（Stage 2）")
+    brief_path = project / "brief.md"
+    if not brief_path.is_file():
+        die(f"前置缺失: brief.md 不存在，先完成 Stage 0 Brief intake（创意模糊时走 story-develop intake workflow）")
 
     script_path = project / "script" / "script.md"
     script_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,7 +46,7 @@ def main() -> None:
 
     stub = f"""# 分场剧本（Stage 3）
 
-> 据故事梗概（{story_path.name}）拆成可拍化分场剧本。每场含：场景描述、出场人物、对白、动作、enhancement_cues、delivery_cues。
+> 据 Brief 创意（{brief_path.name}）拆成可拍化分场剧本。每场含：场景描述、出场人物、对白、动作、enhancement_cues、delivery_cues。
 
 ## 场 1：（场名，如"主角家中—清晨")
 

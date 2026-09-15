@@ -1,6 +1,6 @@
 ---
 name: video-producer
-description: 视频制作原子能力集——意图路由、故事/剧本/分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面。子命令范式，产物文件存在性即 checkpoint。
+description: 视频制作原子能力集——剧本/分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面。子命令范式，产物文件存在性即 checkpoint。
 ---
 
 # video-producer — 工具说明
@@ -19,14 +19,12 @@ description: 视频制作原子能力集——意图路由、故事/剧本/分�
 
 | 子命令 | 入 | 出 | 用途 |
 |--------|----|----|------|
-| `intent-router` | brief.md（主题/关键词/类型） | `script/intent.json`（档位+主题） | 意图路由三档：故事讲述型 narrative / 纯画面动效型 motion / 蒙太奇剪接型 montage |
 | `reference-concepts` | 甲方给的参考拆解报告（可选） | `reference/concepts.md` | 据报告出 2–3 个差异化概念；不做下载/转写/抽帧 |
-| `story-develop` | intent.json | `script/story.md` | idea → 故事（受众/类型复述、100–200 词梗概、人物、分场） |
-| `script-write` | story.md | `script/script.md`（含 enhancement_cues 六型 + delivery_cues） | 故事 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色） |
+| `script-write` | brief.md（创意 + 规格） | `script/script.md`（含 enhancement_cues 六型 + delivery_cues） | Brief 创意 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色） |
 | `script-self-eval` | script.md | `script/self-eval.json` | 脚本自评 N 维打分，任一维 <3 必返工 |
 | `storyboard-build` | script.md | `storyboard/storyboard.json` | 剧本 → 镜头表（每镜叙事目的/机位复用/位置朝向/不写不可见） |
 | `shot-decompose` | storyboard.json | `storyboard/shot_decompose.json` | 每镜拆首帧静照/尾帧静照/运动描述（variation_type 三档） |
-| `character-register` | storyboard.json + brief.md | `characters/registry.json` + 三视图 png | 角色 static/dynamic features 拆分 + front/side/back（调 `siliconflow-img-gen`） |
+| `character-register` | shot_decompose.json + script.md | `characters/registry.json` + 三视图 png | 角色 static/dynamic features 拆分 + front/side/back（调 `siliconflow-img-gen`） |
 | `slot-plan` | storyboard.json + shot_decompose.json | `slots/slot-plan.json` | 素材 slot 规划（template + hero slot + tone→slot 数） |
 | `asset-resolve` | slot-plan.json | `slots/asset-resolve.json`（含 rejected_picks）+ 素材落 `raw_materials/` | 按 slot 拉素材（Fast path：多源并发搜 + 缩略图人核；调 pexels-footage / pixabay-footage / aigc-video-gen） |
 | `slideshow-risk` | storyboard.json + slot-plan.json + asset-resolve.json | `slots/slideshow-risk.json` | 六维幻灯风险打分（pre-compose 闸门，≥4.0 fail） |

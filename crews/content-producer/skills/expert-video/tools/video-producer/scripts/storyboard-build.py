@@ -22,6 +22,11 @@ import sys
 from pathlib import Path
 
 
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Stage 4 storyboard-build")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
@@ -45,7 +50,7 @@ def main() -> None:
     stub = {
         "stage": 4,
         "shots": [],
-        "instruction": "agent 据剧本拆镜，每镜按下 schema 填。镜数应在 intent.json 的 shot_count.min-max 区间。",
+        "instruction": "agent 据剧本拆镜，每镜按下 schema 填。",
         "shot_schema": {
             "id": "shot-01",
             "scene": 1,

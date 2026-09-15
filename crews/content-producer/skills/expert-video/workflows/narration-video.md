@@ -26,8 +26,7 @@ Brief 里写 `workflow: narration-video`，或 Brief 交付了口播文案 / 真
 | 阶段 | 本 workflow 的做法 |
 |------|--------------------|
 | Stage 0 | 除 Brief 外，必须确认口播文案 / 录音**已到位**：绝对路径存在、可解码、时长可读；缺 → 向甲方要，不开工 |
-| Stage 1 | 档位一般为故事讲述型；纯画面动效型不适用（口播是主干） |
-| Stage 2–3 | 跳过 `story-develop` / `script-write`；口播稿原样落 `script/script.md` |
+| Stage 3 | `script-write` 落稿锁定：口播稿原样落 `script/script.md`，不重写策略文案（无独立故事阶段——story-develop 已退役为 intake workflow，口播类创意已定，不触发） |
 | Stage 3b | `script-self-eval` 只做检查，不改写：总字数 vs 目标时长（按 6–8 字/秒折算）、句长、合规敏感词、是否存在无法配画面的抽象段 |
 | Stage 4 | 分镜按口播段落切：每段"讲什么 → 看什么"写清；不写不可见 |
 | Stage 5 | 画面全来自现成素材时跳过；需要 AIGC 补画面时保留 |
