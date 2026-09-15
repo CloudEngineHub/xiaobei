@@ -84,6 +84,20 @@ xhs-publish --mode video --title "笔记标题" --body "正文内容" --video vi
 
 > **⚠️ `--body` 必须传实际文字，不能传文件路径或 `$(cat file)`**：exec sandbox 禁用 `$(...)` 命令替换，`--body post.md` 也会被当字面量字符串。把正文直接硬编码进命令。
 
+> **⚠️ `--body` 换行用真实换行，不要在双引号里写 `\n`**：bash 双引号内的 `\n` 是字面量「反斜杠+n」，发布后正文会全是 `\n` 文本。脚本已兜底把字面量 `\n` 自动归一化为真实换行，但传参仍首选真换行：
+>
+> ```bash
+> # ✅ 多行字符串：引号内直接回车换行
+> xhs-publish --mode image --title "标题" --body "第一行
+> 第二行" --images img.jpg
+>
+> # ✅ $'...' 转义：\n 被 bash 解释为真实换行
+> xhs-publish --mode image --title "标题" --body $'第一行\n第二行' --images img.jpg
+>
+> # ❌ 普通双引号里的 \n 是字面量，发布后正文全是 \n 文本
+> xhs-publish --mode image --title "标题" --body "第一行\n第二行" --images img.jpg
+> ```
+
 成功输出：
 
 ```json

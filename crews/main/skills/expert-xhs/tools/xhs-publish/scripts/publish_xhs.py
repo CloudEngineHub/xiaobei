@@ -132,6 +132,16 @@ def cookie_str(cookie_dict: dict) -> str:
     return "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
 
 
+def normalize_body_newlines(body: str) -> str:
+    r"""把 body 里字面量 \n / \r\n（反斜杠+字母序列）归一化为真实换行。
+
+    Agent 在 bash 双引号里传 --body 时，引号内 \n 是字面量「反斜杠+n」而非真实换行，
+    原样透传会被小红书当普通文本展示，正文全是 \n 文本。
+    先替换 \r\n 再替换 \n，避免残留字面量 \r；已是真实换行的内容不受影响。
+    """
+    return body.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+
 def extract_topics(body: str, extra_topics: list[str] | None = None) -> list[dict]:
     """Extract #话题 from body text, return AiToEarn-format hash_tag list.
 
@@ -716,6 +726,10 @@ def main() -> None:
     parser.add_argument("--private", action="store_true", help="Set note to private")
     parser.add_argument("--cookie-file", type=Path, help="Cookie file path")
     args = parser.parse_args()
+
+    # 字面量 \n 归一化须在长度校验 / 话题提取之前：字面量 \n 占 2 字符，先归一化长度才准；
+    # 且紧贴 #话题 的 \n（非空白字符）会污染 extract_topics 的分词
+    args.body = normalize_body_newlines(args.body)
 
     if len(args.title) > 20:
         err_exit("TITLE_TOO_LONG: title exceeds 20 characters")
