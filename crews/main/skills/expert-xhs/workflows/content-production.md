@@ -162,7 +162,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 
 - 视频名 / slug：
 - platform：xhs
-- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，Stage 1 自定档位）
+- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法）
 - 选题与观看理由：
 - 核心传达：
 - 内容创意：创意原型 + 展开逻辑 + 记忆点
@@ -216,7 +216,7 @@ Brief 硬性规则：
 | --- | --- |
 | 用户直接提供成片 | 校验格式与时长，复制到作品目录 |
 | 已有素材需简单加工 | main 用 `video-edit` / `talking-head-cut` 处理 |
-| 全案制作 | 委托 `content-producer`：只交 Brief + 素材绝对路径 + 口播文案 / 录音，不指定 CP 工作区；指定 `workflow` 必须采用；未指定时 CP 按其通用制作流程做，档位由 Stage 1 定。成片与封面按 CP 回报的绝对路径取回作品目录 |
+| 全案制作 | 委托 `content-producer`：只交 Brief + 素材绝对路径 + 口播文案 / 录音，不指定 CP 工作区；指定 `workflow` 必须采用；未指定时 CP 按其通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。成片与封面按 CP 回报的绝对路径取回作品目录 |
 
 视频封面优先从成片选帧；需要更强视觉冲击时用 `siliconflow-img-gen`。
 

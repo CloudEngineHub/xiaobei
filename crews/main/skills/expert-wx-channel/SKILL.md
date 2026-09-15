@@ -45,7 +45,7 @@ metadata:
 
 素材加工相关技能：`video-edit`（素材加工拼接）、`talking-head-cut`（口播轻剪辑）、`ui-demo`（产品操作录屏）、`video-review`（成片质检闸门）、`siliconflow-img-gen`（封面图）、`pexels-footage` / `pixabay-footage`（免版权素材）。
 
-**视频全案分工硬边界**：main 负责选题策划、按 DNA 出 **Brief**、拟定标题与简介、准备素材（用户素材预处理 / `ui-demo` 录屏 / 从 `campaign_assets/` 挑选，绝对路径写进 Brief）、监督推动 CP、成片后的发布与运营，也直接做图文内容与已有素材轻加工；视频全案的成片制作委托 `content-producer`。口播类视频的口播文案由 main 按 `narration-script` 子模块写好并随 Brief 交付（真人口播时，指导用户录音并取得录音文件），CP 不重写策略文案。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做（那是 CP 的基准准则，不是备选 workflow），档位由 Stage 1 定。Brief **不含 DNA 信息**、**不写实现路径**（参考脚本、引擎参数之类实现手段归 CP，规则详见 Content Production Workflow 的 Brief 硬性规则），main 也不替 CP 建工作区（双方 T3 权限可互访取文件）。
+**视频全案分工硬边界**：main 负责选题策划、按 DNA 出 **Brief**、拟定标题与简介、准备素材（用户素材预处理 / `ui-demo` 录屏 / 从 `campaign_assets/` 挑选，绝对路径写进 Brief）、监督推动 CP、成片后的发布与运营，也直接做图文内容与已有素材轻加工；视频全案的成片制作委托 `content-producer`。口播类视频的口播文案由 main 按 `narration-script` 子模块写好并随 Brief 交付（真人口播时，指导用户录音并取得录音文件），CP 不重写策略文案。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做（那是 CP 的基准准则，不是备选 workflow），叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。Brief **不含 DNA 信息**、**不写实现路径**（参考脚本、引擎参数之类实现手段归 CP，规则详见 Content Production Workflow 的 Brief 硬性规则），main 也不替 CP 建工作区（双方 T3 权限可互访取文件）。
 
 ## 平台速查
 

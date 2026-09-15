@@ -200,7 +200,7 @@ DNA 约束的是选题与观看理由、短标题与视频描述写法、内容�
 
 - 视频名 / slug：
 - platform：wx_channel
-- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，Stage 1 自定档位）
+- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法）
 - 选题与观看理由：
 - 核心传达：
 - 内容创意：创意原型 + 展开逻辑 + 记忆点（+ 反转设计，如为反转植入类）
@@ -225,7 +225,7 @@ Brief 硬性规则：
 
 2. 口播类视频：按 DNA 的 `narration-script` 子模块写口播终稿 `wx_channel/outputs/<video-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。口播子模块未启用时 Brief 写「口播文案：不适用」或只给要点，由 CP 按其 workflow 组织旁白，main 不再规定逐句台词。用户必用的事实、案例、承诺和 CTA 必须进入 Brief 或口播终稿，不得为了形式删除关键事实。
 3. 参考模式下，把选题与创意结论写进 Brief 的「内容创意」段即可；`viral-chaser` 拆解报告是 main 的采样材料，**不作为 Brief 附件交给 CP**。
-4. spawn `content-producer` 委托制作：只交 Brief + 素材绝对路径 + 口播文案 / 录音；不指定 CP 的工作区与制作方案。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做（那是 CP 的基准准则，不是备选 workflow），档位由 Stage 1 定。
+4. spawn `content-producer` 委托制作：只交 Brief + 素材绝对路径 + 口播文案 / 录音；不指定 CP 的工作区与制作方案。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做（那是 CP 的基准准则，不是备选 workflow），叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。
 5. Brief 变更时更新版本并推送变更要点；已开工中间产物按新版取舍，弃用部分记入交付说明。制作中发现 Brief 无法执行（素材缺失、时长超标）时，由 CP 回报、main 与用户确认后改 Brief，CP 不擅自改策略。
 6. CP 交付后，按其回报的绝对路径把成片与封面取回 `wx_channel/outputs/<video-name>/`（`video.mp4` / `cover.jpg`），并把交付说明要点记入作品目录。用户直接提供成片时校验格式（`.mp4` / `.mov` / `.avi` / `.webm`）与时长后复制进作品目录。
 
