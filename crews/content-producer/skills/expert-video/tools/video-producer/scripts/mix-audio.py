@@ -42,6 +42,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Stage 11 mix-audio")
@@ -49,6 +51,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 11 mix-audio"):
+        return
     script_path = project / "script" / "script.md"
     if not script_path.is_file():
         die(f"前置缺失: script.md 不存在")

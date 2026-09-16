@@ -2,13 +2,13 @@
 """BGM ducking — narration/dialog drives BGM auto-ducking via sidechain.
 
 把 BGM 轨在旁白/对话出现时自动压低，旁白停了再放开——专业混音的标配。
-只在声画同出模式（gen.py 出的片旁白+BGM 同轨）且用户要专业混音时用。
+只在声画同出模式（aigc-video-gen 出的片旁白+BGM 同轨）且用户要专业混音时用。
 
 ⚠️ 可选步骤，不是必跑。通用制作流程默认不做混音处理——
 assemble.py / normalize.py 都只碰整体响度，不动轨间电平。
 **仅当用户明确说"要混音"/"做 ducking"/"BGM 压旁白"/"professional mix"时才跑**。
 
-前置：要有可分离的 BGM 轨和旁白轨。AI 声画同出模式 gen.py 出的片是
+前置：要有可分离的 BGM 轨和旁白轨。AI 声画同出模式 aigc-video-gen 出的片是
 **混轨单声道**——duck.py 没法从混轨里分离 BGM 和旁白。所以本脚本实际
 只在以下场景能用：
 1. assemble.py 走 Stock Footage + TTS 模式：素材视频（含 BGM/环境音）+

@@ -23,6 +23,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -46,6 +48,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 8 slideshow-risk"):
+        return
     resolve_path = project / "slots" / "asset-resolve.json"
     if not resolve_path.is_file():
         die(f"前置缺失: asset-resolve.json 不存在")

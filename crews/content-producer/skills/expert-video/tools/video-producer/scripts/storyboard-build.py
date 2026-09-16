@@ -21,6 +21,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -33,6 +35,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 3 storyboard-build"):
+        return
     script_path = project / "script" / "script.md"
     if not script_path.is_file():
         die(f"前置缺失: script.md 不存在")

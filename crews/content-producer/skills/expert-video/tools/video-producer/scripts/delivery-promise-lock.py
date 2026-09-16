@@ -25,6 +25,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -37,6 +39,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 9 delivery-promise-lock"):
+        return
     board_path = project / "storyboard" / "storyboard.json"
     if not board_path.is_file():
         die(f"前置缺失: storyboard.json 不存在")

@@ -22,6 +22,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -36,6 +38,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 10 render-shot"):
+        return
     decompose_path = project / "storyboard" / "shot_decompose.json"
     resolve_path = project / "slots" / "asset-resolve.json"
     if not decompose_path.is_file() or not resolve_path.is_file():

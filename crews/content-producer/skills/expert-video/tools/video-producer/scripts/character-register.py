@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -33,6 +35,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 5 character-register"):
+        return
     decompose_path = project / "storyboard" / "shot_decompose.json"
     script_path = project / "script" / "script.md"
     if not decompose_path.is_file() or not script_path.is_file():
