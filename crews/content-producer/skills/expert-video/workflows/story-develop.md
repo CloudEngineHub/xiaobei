@@ -1,6 +1,6 @@
 # Workflow：Story Develop（Brief intake · 创意澄清）
 
-**这是 intake 类 workflow，不是 type 类 workflow。** type workflow（`narration-video` / `collage-broll` / `reversal-ad`）细化"某类视频怎么制作"，是 `Brief.workflow` 的取值；本 workflow 解决"甲方还没把创意讲清楚时，怎么和他对话把 Brief 收敛出来"，**不是 `Brief.workflow` 的取值**，也不与 type workflow 互斥。它在 **Stage 0（Brief intake）** 阶段触发，与任何 type workflow 正交可组合——收敛出 Brief 后，仍按通用制作流程 + 对应 type workflow 执行。
+**这是 intake 类 workflow，不是 type 类 workflow。** type workflow（`narration-video` / `collage-broll` / `reversal-ad`）指导从 Brief 生产 script（含自检），是 `Brief.workflow` 的取值；本 workflow 解决"甲方还没把创意讲清楚时，怎么和他对话把 Brief 收敛出来"，**不是 `Brief.workflow` 的取值**，也不与 type workflow 互斥。它在 **Stage 0（Brief intake）** 阶段触发，与任何 type workflow 正交可组合——收敛出 Brief 后，仍按通用制作流程 + 对应 type workflow 执行。
 
 ## 何时触发
 

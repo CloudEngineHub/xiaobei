@@ -24,7 +24,7 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
 流程:
   通用制作流程（expert-video SKILL.md 的 Stage 0→15 + 两闸门）是做**任何**视频都要遵循的基准，
   不是"没指定类型时的备选"。Brief 指定 workflow 时，先读包内 workflows/<workflow>.md，
-  按其阶段裁剪调用下列子命令；未指定时只按通用制作流程走。Brief 创意不足以直接写剧本时，
+  按它生产 script 并按它自检（其制作约定在该类型上生效）；未指定时只按通用制作流程走。Brief 创意不足以直接写剧本时，
   先走 story-develop intake workflow（workflows/story-develop.md）与甲方收敛 Brief，再进 script-write。
 
 子命令（按阶段序）:

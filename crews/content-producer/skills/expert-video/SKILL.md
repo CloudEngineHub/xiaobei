@@ -56,22 +56,22 @@ metadata:
 | 层 | 是什么 | 怎么用 |
 |----|--------|--------|
 | **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→15 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
-| **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：Brief 缺失或创意不足以直接写剧本时触发 |
+| **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：没有 Brief 或 Brief 不清晰时与甲方探讨收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：**指导从 Brief 生产该类型的 script，含这一步之后的自检与 GATE A 质检标准**；并附该类型的制作与验收约定，GATE A 批准后按通用流程执行时适用） | type 类：Brief 指定 `workflow` 时必读必用，按它生产 script、按它自检；intake 类：Brief 缺失或创意不足以直接写剧本时触发 |
 | **工具说明**（`tools/<工具>/SKILL.md`） | 每个子命令的入参、产物路径、退出码与旁路条件 | 调用前查；本文不重复参数细节 |
 
-> 通用制作流程**不是**与类型 workflow 并列的第四条路，也**不是**"Brief 没指定类型时的 fallback"。它是底座；类型 workflow 只在底座上细化，产出特定类型的视频。
+> 通用制作流程**不是**与类型 workflow 并列的一条路，也**不是**"Brief 没指定类型时的 fallback"。它是我做任何视频都必走的全程流程；类型 workflow 只负责其中 **Stage 1–2（Brief→script→自检）** 这一段的类型化指导，并附该类型的制作约定——不接管、不裁掉流程本身。
 
 命名约定：Workflow 名与 Tool 名是包内**逻辑资源名**，不是 Workspace 路径，不要拼成相对路径执行；只有工具清单里列出的 wrapper 名能直接当 shell 命令调用。`output_videos/`、`design_assets/` 才是 Workspace 相对路径（从 Content Producer workspace 根解析）。
 
-## 类型 workflow（细化层）
+## 类型 workflow（script 生产指南）
 
-| 视频类型 / 入口信号 | workflow | Brief `workflow` 值 | 它细化了什么 |
+| 视频类型 / 入口信号 | workflow | Brief `workflow` 值 | 它指导什么 |
 |--------------------|----------|---------------------|--------------|
 | 影视解说 / 剧情解说 + 突然反转插入品宣（"万万没想到"式） | Reversal Ad | `reversal-ad` | 三段结构占比、反转点落在 55%–76%、四种反转手法、反转幅度与接入丝滑度两轴（含二次反转 CTA）、素材三模式 sourcing（Blender 片库 / 用户直供三查 / AIGC）、意象桥与钩连句、植入段约束 |
 | 口播 / 旁白类（口播：真人出镜、数字人、真人录音；旁白：TTS 配音解说） | Narration Video | `narration-video` | 口播稿落稿锁定不重写、旁白稿由我写 GATE A 交审、按字级时间戳配画面、声音规范与验收清单 |
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 隐喻清单即 script（GATE A 检）→ 静帧即素材（GATE B 检 contact sheet）→ Stage 10 `collage-broll render` 批量 i2v 组装；阶段裁剪表见 workflow |
 
-- Brief 指定了 `workflow`：**先读对应文档并直接采用**，不得替换成自创流程。
+- Brief 指定了 `workflow`：**先读对应文档，按它生产 script 并按它自检**（GATE A 质检标准同此），不得替换成自创流程；其制作与验收约定（阶段裁剪、素材 sourcing 等）在该类型视频上生效。
 - Brief 未指定 `workflow`：仍走通用制作流程，叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`；Brief 创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 1 `script-write`。
 - 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。
 
@@ -112,7 +112,7 @@ workflow 文档在技能包内，不是项目目录内容；项目目录只放 B
 
 ## 通用制作流程（Stage 0→15，两闸门）
 
-**我做任何视频都走这条链**；类型 workflow 只在此基础上裁剪与细化。每段的子命令是 `video-producer` 工具下的一个独立脚本，按流程逐个调。
+**我做任何视频都走这条链**；类型 workflow 只指导其中 **Stage 1–2（Brief→script→自检）** 的类型化生产，并附该类型的制作约定，不裁掉流程本身。每段的子命令是 `video-producer` 工具下的一个独立脚本，按流程逐个调。
 
 ```
 Stage 0  Brief intake       读甲方 Brief，核对字段，缺口向 Brief owner 澄清；
@@ -147,7 +147,7 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 ```
 
 - **产物文件存在性即 checkpoint**：子命令先查产物文件是否存在，存在则 load 不重生成（允许手改 JSON 后续跑）；要改哪段就重跑对应子命令，未改的不会重生成。
-- 类型 workflow 指定时，阶段裁剪以该 workflow 文档为准；**闸门位置与"停下发甲方"的纪律不变**。甲方已在 Brief 中代理批准某道闸门时，把批准范围落 `gates/` 后继续。
+- 类型 workflow 附带的制作约定（阶段裁剪、素材 sourcing、验收清单）在该类型视频上生效；**闸门位置与"停下发甲方"的纪律不变**。甲方已在 Brief 中代理批准某道闸门时，把批准范围落 `gates/` 后继续。
 - 可选工具 `reference-concepts`：甲方给了参考视频拆解报告时，据报告出 2–3 个差异化概念落 `reference/concepts.md`。
 
 ## 闸门与护栏

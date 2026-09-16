@@ -1,6 +1,6 @@
 # Workflow：Collage B-roll（纸拼贴组装动画）
 
-Brief 里写 `workflow: collage-broll`，或甲方要"把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴"时使用。本文是**通用制作流程在纸拼贴 B-roll 上的细化**：方法论移植自 gbro-collage-broll（半调纸拼贴 + assemble-from-empty），阶段链按下表裁剪，闸门收敛为 GATE A / GATE B 两道——**GATE A 检隐喻清单（即本类型的 script），GATE B 检静帧 contact sheet（即素材）**。不替代通用流程；原子能力、护栏、工作区与交付约定照 `expert-video` 的 SKILL.md 执行；本文与通用流程冲突处以本文为准，但闸门与护栏不让步。
+Brief 里写 `workflow: collage-broll`，或甲方要"把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴"时使用。本文指导**从 Brief 生产纸拼贴 B-roll 的 script**（隐喻清单）及这一步之后的自检（隐喻自检，GATE A 质检标准），并附该类型的制作约定（方法论移植自 gbro-collage-broll：半调纸拼贴 + assemble-from-empty）；闸门收敛为 GATE A / GATE B 两道——**GATE A 检隐喻清单（即本类型的 script），GATE B 检静帧 contact sheet（即素材）**。不替代通用流程；原子能力、护栏、工作区与交付约定照 `expert-video` 的 SKILL.md 执行；本文与通用流程冲突处以本文为准，但闸门与护栏不让步。
 
 ## 类型定义
 

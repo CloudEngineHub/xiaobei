@@ -1,6 +1,6 @@
 # Workflow：Narration Video（口播类视频）
 
-Brief 里写 `workflow: narration-video`，或 Brief 交付了口播文案 / 真人口播录音时使用。本文是**通用制作流程在口播类视频上的细化**：声画实现套路、阶段裁剪与验收补充，不替代通用流程——阶段链、GATE A/B 闸门纪律、护栏、工作区与交付约定一律照 `expert-video` 的 SKILL.md 执行；本文与通用流程冲突处以本文为准，但闸门与护栏不让步。
+Brief 里写 `workflow: narration-video`，或 Brief 交付了口播文案 / 真人口播录音时使用。本文指导**从 Brief 生产口播 / 旁白类视频的 script**（口播形态落稿锁定、旁白稿由我写）及这一步之后的自检（GATE A 质检标准），并附该类型的声画实现约定与验收清单——阶段链、GATE A/B 闸门纪律、护栏、工作区与交付约定一律照 `expert-video` 的 SKILL.md 执行；本文与通用流程冲突处以本文为准，但闸门与护栏不让步。
 
 ## 类型定义
 
