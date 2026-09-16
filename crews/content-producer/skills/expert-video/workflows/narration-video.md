@@ -21,24 +21,6 @@ Brief 里写 `workflow: narration-video`，或 Brief 交付了口播文案 / 真
 - 模式 B（用户直接对话）下用户只给大意时，可代拟文案，但必须发用户确认，定稿后才算 `voiceover`。
 - 语义级剪辑（去口气词、智能剪重点）归 main 的 `talking-head-cut`；我只做几何级修整（切段/拼接/混音/烧字幕/补轨）。
 
-## 阶段裁剪（对通用制作流程的细化）
-
-| 阶段 | 本 workflow 的做法 |
-|------|--------------------|
-| Stage 0 | 除 Brief 外，必须确认口播文案 / 录音**已到位**：绝对路径存在、可解码、时长可读；缺 → 向甲方要，不开工 |
-| Stage 3 | `script-write` 落稿锁定：口播稿原样落 `script/script.md`，不重写策略文案（无独立故事阶段——story-develop 已退役为 intake workflow，口播类创意已定，不触发） |
-| Stage 3b | `script-self-eval` 只做检查，不改写：总字数 vs 目标时长（按 6–8 字/秒折算）、句长、合规敏感词、是否存在无法配画面的抽象段 |
-| Stage 4 | 分镜按口播段落切：每段"讲什么 → 看什么"写清；不写不可见 |
-| Stage 5 | 画面全来自现成素材时跳过；需要 AIGC 补画面时保留 |
-| Stage 6 | 无 AIGC 角色时跳过 |
-| Stage 7–8 | slot 按口播语义规划；甲方给了素材先入库校验（可解码/规格/授权），缺口才补搜 |
-| Stage 9a | 幻灯风险重点查"一句口播一张静图"的幻灯片感 |
-| Stage 9b | 交付承诺必须含音画同步与字幕样式 |
-| Stage 11 | **核心阶段**：场景 B（TTS 一次性生成 + 字级时间戳）或场景 D（甲方录音 → ASR 时间戳）；字幕必须来自对齐后的时间轴 |
-| Stage 12 | `timeline-compose` 按字级时间戳对齐：每句口播不得越过对应镜头边界，连续口播保留呼吸间隔；切旁白段用 `clip-trim --pre-buffer 0.5` 防吞首字。甲方要求逐句 TTS（每句独立 mp3）时改走 `narration-layout`（对齐镜头起点 + 防重叠守卫 + 越界断言 + SRT + 混音一步），拼接用 `assemble --manifest --verify-fps` |
-| Stage 13 | `video-review` + `motion-audit` + **响度归一化必跑** |
-| Stage 14 | 封面主文案来自 Brief；口播金句作候选时需 Brief 允许 |
-
 ## 声音规范
 
 - **音色**：按 Brief 指定；未指定时选与内容气质匹配的音色，把备选 + 置信度 + 理由记 `script/decisions.json`。

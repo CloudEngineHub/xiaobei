@@ -55,7 +55,7 @@ metadata:
 
 | 层 | 是什么 | 怎么用 |
 |----|--------|--------|
-| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→14 阶段链（Stage 1-2 已退役，基线从 Stage 3 script-write 起）、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
+| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→14 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
 | **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：创意不足以直接写剧本时触发 |
 | **工具说明**（`tools/<工具>/SKILL.md`） | 每个子命令的入参、产物路径、退出码与旁路条件 | 调用前查；本文不重复参数细节 |
 
@@ -72,8 +72,8 @@ metadata:
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 一句文稿 → 一个视觉隐喻 → 静帧 → i2v，三道闸门与 Gate 3 批量调度 |
 
 - Brief 指定了 `workflow`：**先读对应文档并直接采用**，不得替换成自创流程。
-- Brief 未指定 `workflow`：仍走通用制作流程；创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 3 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`，**不再做三档分类**（intent-router 已退役）。
-- 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。**活儿小也不跳过** Stage 0 Brief intake、Stage 13 自检与响度归一化、Stage 14 交付三件套。
+- Brief 未指定 `workflow`：仍走通用制作流程；创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 3 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`。
+- 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。
 
 > `story-develop` 是 **intake 类 workflow**（Stage 0 创意澄清，**不是 `Brief.workflow` 取值**），与上表 type 类 workflow 正交：任何类型的视频，创意不清都先走它收敛 Brief，再按通用制作流程 + 对应 type workflow 执行。详见 `workflows/story-develop.md`。
 
@@ -110,29 +110,25 @@ output_videos/<topic-en-slug>/      # <project-dir>
 
 workflow 文档在技能包内，不是项目目录内容；项目目录只放 Brief、素材、脚本、渲染与交付产物。
 
-## 通用制作流程（Stage 0→14，两闸门；Stage 1-2 已退役为 intake workflow）
+## 通用制作流程（Stage 0→15，两闸门）
 
 **我做任何视频都走这条链**；类型 workflow 只在此基础上裁剪与细化。每段的子命令是 `video-producer` 工具下的一个独立脚本，按流程逐个调。
 
 ```
-Stage 0  Brief intake       模式 A：读甲方 Brief，核对字段，缺口向 Brief owner 澄清
-                            模式 B：用户未给 Brief 时引导讨论 → 代拟 brief.md → 发用户确认
-                            创意不足以直接写剧本时 → 走 story-develop intake workflow（workflows/story-develop.md）
-                            与甲方对话式收敛创意 + 规格，落定 brief.md（无子命令；意图澄清在此消化，不再产 intent.json）
-   〔原 Stage 1 intent-router / Stage 2 story-develop 已退役：三档分类对下游制作无实际作用，
-     故事膨胀并入 Stage 3；意图澄清升格为 Stage 0 的 story-develop intake workflow〕
-Stage 3  script-write       Brief 创意 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色）
-                            基线生产从此开始。甲方已交付口播文案时改为落稿锁定：原样落 script/script.md，不重写策略文案
-Stage 3b script-self-eval   脚本自评 N 维打分，任一维 <3 必返工（落稿锁定时只检查不改写）
-Stage 4  storyboard-build   剧本 → 镜头表（每镜叙事目的/机位复用/位置朝向/不写不可见）
-Stage 5  shot-decompose     每镜拆首帧静照/尾帧静照/运动描述（variation_type 三档）
-Stage 6  character-register 角色三视图 front/side/back + static/dynamic features 拆分
+Stage 0  Brief intake       读甲方 Brief，核对字段，缺口向 Brief owner 澄清；
+                            甲方未给 Brief 或 Brief 不足以直接写剧本时 → 走 story-develop intake workflow（workflows/story-develop.md）
+Stage 1  script-write       Brief 创意 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色）
+                            基线生产从此开始。
+Stage 2  script-self-eval   脚本自评 N 维打分，任一维 <3 必返工（落稿锁定时只检查不改写）
+Stage 3  storyboard-build   剧本 → 镜头表（每镜叙事目的/机位复用/位置朝向/不写不可见）
+Stage 4  shot-decompose     每镜拆首帧静照/尾帧静照/运动描述（variation_type 三档）
+Stage 5  character-register 角色三视图 front/side/back + static/dynamic features 拆分
    ────── GATE A：文本闸门（脚本+分镜+机位+角色全齐，停，发甲方审）──────
-Stage 7  slot-plan          素材 slot 规划（template + hero slot + tone→slot 数）
-Stage 8  asset-resolve      按 slot 取素材（Fast path：多源并发搜 + 缩略图人核 + rejected_picks 落盘）
+Stage 6  slot-plan          素材 slot 规划（template + hero slot + tone→slot 数）
+Stage 7  asset-resolve      按 slot 取素材（Fast path：多源并发搜 + 缩略图人核 + rejected_picks 落盘）
                             甲方已给素材时：先入库校验（可解码、分辨率/帧率/时长/音轨、授权记录），缺口才补搜
-Stage 9a slideshow-risk     六维幻灯风险打分（pre-compose 闸门，≥4.0 fail 不许进 compose）
-Stage 9b delivery-promise-lock 交付承诺八类锁定 + motion_ratio 预估
+Stage 8  slideshow-risk     六维幻灯风险打分（pre-compose 闸门，≥4.0 fail 不许进 compose）
+Stage 9  delivery-promise-lock 交付承诺八类锁定 + motion_ratio 预估
    ────── GATE B：素材闸门（素材齐+计划过审，停，发甲方看 contact sheet）──────
 Stage 10 render-shot        按 slot 渲染（AIGC 走 aigc-video-gen i2v 首尾帧插值；静图走 siliconflow-img-gen）
          motion-graphics    Stage 10 第二条渲染路径：程序化逐帧动态图形（声明式 spec，产品段动效/标题动画/
@@ -140,29 +136,28 @@ Stage 10 render-shot        按 slot 渲染（AIGC 走 aigc-video-gen i2v 首尾
 Stage 11 mix-audio          配音配乐四场景分流（A 人物对话声画同出 / B 旁白一次性 TTS 带字级时间戳 + 对齐 /
                             C BGM 成片后统一生成（优先 bgm-library 免版税曲库，pexels/pixabay 并列；定制风格用
                             aigc-video-gen music）/ D 甲方口播录音 → ASR 时间戳 → 按时间戳补素材）
-         narration-layout   逐句 TTS 模式（每句独立 mp3）：对齐镜头起点 + 防重叠守卫 + 越界断言 + SRT + 可选混音；
+         narration-layout   逐句 TTS 模式（每句独立 mp3）：素材前后各留1s气口 + 防重叠守卫 + 越界断言 + 可选混音；
                             整段模式的时间戳对齐仍走 narration-align，两者互补
 Stage 12 assemble           按序拼接成片（原子工具箱，见下节，我按场景组合，不写死流程）
 Stage 13a video-review      公共 video-review 技术自检（强制闸门，verdict=pass 才继续）
 Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）
 Stage 13c normalize         响度归一化到 -14 LUFS（**必跑**：`video-producer normalize`）
 Stage 14a make-cover        封面（siliconflow-img-gen，必含封面主文案）
-Stage 14b 交付              回报成片 + 封面 + final-deliver.md 的绝对路径与关键参数
+Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对路径与关键参数
 ```
 
 - **产物文件存在性即 checkpoint**：子命令先查产物文件是否存在，存在则 load 不重生成（允许手改 JSON 后续跑）；要改哪段就重跑对应子命令，未改的不会重生成。
-- Stage 0–6 全是**文本产物**，付费生成前必停——GATE A 落在这条边界上；GATE B 落在素材就绪、pre-compose 闸门通过后，确认渲染前最终计划。
 - 类型 workflow 指定时，阶段裁剪以该 workflow 文档为准；**闸门位置与"停下发甲方"的纪律不变**。甲方已在 Brief 中代理批准某道闸门时，把批准范围落 `gates/` 后继续。
 - 可选工具 `reference-concepts`：甲方给了参考视频拆解报告时，据报告出 2–3 个差异化概念落 `reference/concepts.md`。
 
 ## 闸门与护栏
 
-### GATE A（Stage 6 后）：文本闸门
+### GATE A（Stage 5 后）：文本闸门
 
 文本产物全齐（脚本 + 分镜 + 机位 + 角色），**停下发甲方审**：
 
 - 呈交摘要：workflow 或创意定位、场次数、镜数、角色数、关键决策（路径 / 模型 / 风格选择的备选 + 置信度 + 理由）
-- **结束本轮回复**，不许在同条回复里进 Stage 7
+- **结束本轮回复**，不许在同条回复里进 Stage 6
 - 批准人是 Brief owner（模式 A = main agent，模式 B = 用户）；甲方已在 Brief 中代理批准时，把批准范围落 `gates/gate-a.md` 后继续
 - 批准是**逐闸门的**——早先的一句"你继续"不覆盖本闸门
 
@@ -214,9 +209,7 @@ env 依赖：`AWK_API_KEY`（静帧 / 视频生成）、`VOLC_ASR_*`（`narratio
 - **禁止声称没做过的事**：没有 tool result 或产物文件证明，不许声称已渲染 / 已生成 / 已改动。
 - **禁止替甲方做需求决策**：选题方向、品牌事实、卖点承诺、业务植入与 CTA 口径、发布文案不由我定；Brief 没写就问。
 - **禁止让甲方建工作区**：工作区自建；也不要把中间产物写进甲方（main / 用户）的目录。
-- **禁止把模糊想法擅自扩成多场多镜**：默认 1 场 3–5 镜，甲方要扩才扩。
 - **禁止直接写 ffmpeg 命令**：所有 ffmpeg 调用走 `video-producer` / `collage-broll` 子命令或公共技能子命令；唯一例外是 workflow 文档里给出的既定 ffmpeg 模板（如 Collage B-roll 的首尾帧处理与 contact sheet 拼图），照抄执行不自创。
 - **禁止自己做视频下载 / 转写 / 抽帧**：那是 main 的 `viral-chaser` 的活。
 - **禁止引入 CLIP / torch 系本地模型**：素材匹配走 Fast path 人核缩略图。
-- **禁止扩充图库源**：保 Pexels + Pixabay 两源。
 - **禁止批量生成撞运气**：逐条精做。
