@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 6 — character-register：角色三视图 + static/dynamic features 拱分。
+"""Stage 5 — character-register：角色三视图 + static/dynamic features 拆分。
 
 Usage:
   python3 scripts/character-register.py <project_dir>
 
-入：project_dir/storyboard/shot_decompose.json（Stage 5）+ script.md（Stage 3 出场人物）
+入：project_dir/storyboard/shot_decompose.json（Stage 4）+ script.md（Stage 1 出场人物）
 出：project_dir/characters/registry.json（每个角色 static/dynamic features）
     + project_dir/characters/<char-id>/front.png + side.png + back.png（调 siliconflow-img-gen）
 
@@ -28,7 +28,7 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 6 character-register")
+    parser = argparse.ArgumentParser(description="Stage 5 character-register")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
@@ -49,7 +49,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": 6,
+        "stage": 5,
         "characters": [],
         "instruction": (
             "agent 据 script.md 出场人物 + shot_decompose.json 列出所有出场角色，每个角色填 schema 并调 "

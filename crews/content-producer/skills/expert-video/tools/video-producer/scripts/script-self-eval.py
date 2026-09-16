@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 3b — script-self-eval：剧本自评 N 维打分，任一维 <3 必返工。
+"""Stage 2 — script-self-eval：剧本自评 N 维打分，任一维 <3 必返工。
 
 Usage:
   python3 scripts/script-self-eval.py <project_dir>
 
-入：project_dir/script/script.md（Stage 3）
+入：project_dir/script/script.md（Stage 1）
 出：project_dir/script/self-eval.json（N 维分 1–5 + 总评 + 是否必返工）
 
 N 维（硬约束五条）：
@@ -38,14 +38,14 @@ EVAL_DIMS = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 3b script-self-eval")
+    parser = argparse.ArgumentParser(description="Stage 2 script-self-eval")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
     script_path = project / "script" / "script.md"
     if not script_path.is_file():
-        die(f"前置缺失: script.md 不存在，先跑 script-write（Stage 3）")
+        die(f"前置缺失: script.md 不存在，先跑 script-write（Stage 1）")
 
     eval_path = project / "script" / "self-eval.json"
     eval_path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +58,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": "3b",
+        "stage": "2",
         "dims": [
             {"key": k, "name": n, "criteria": c, "score": None, "note": ""}
             for k, n, c in EVAL_DIMS
@@ -69,7 +69,7 @@ def main() -> None:
     }
     eval_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] self-eval.json 模板已落：{eval_path}")
-    print(f"[next] agent 逐维打分 → 任一维 <3 必返工 → 全维 ≥3 跑 storyboard-build（Stage 4）")
+    print(f"[next] agent 逐维打分 → 任一维 <3 必返工 → 全维 ≥3 跑 storyboard-build（Stage 3）")
 
 
 if __name__ == "__main__":

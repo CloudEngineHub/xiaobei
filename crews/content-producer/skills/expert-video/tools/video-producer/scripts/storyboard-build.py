@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 4 — storyboard-build：剧本 → 镜头表。
+"""Stage 3 — storyboard-build：剧本 → 镜头表。
 
 Usage:
   python3 scripts/storyboard-build.py <project_dir>
 
-入：project_dir/script/script.md（Stage 3，self-eval 全维 ≥3）
+入：project_dir/script/script.md（Stage 1，self-eval 全维 ≥3）
 出：project_dir/storyboard/storyboard.json（镜头表，每镜叙事目的/机位复用/位置朝向/不写不可见）
 
 硬规则六条：
@@ -28,7 +28,7 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 4 storyboard-build")
+    parser = argparse.ArgumentParser(description="Stage 3 storyboard-build")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
@@ -48,7 +48,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": 4,
+        "stage": 3,
         "shots": [],
         "instruction": "agent 据剧本拆镜，每镜按下 schema 填。",
         "shot_schema": {
@@ -67,7 +67,7 @@ def main() -> None:
     }
     board_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] storyboard.json 模板已落：{board_path}")
-    print(f"[next] agent 填镜头表 → 跑 shot-decompose（Stage 5）")
+    print(f"[next] agent 填镜头表 → 跑 shot-decompose（Stage 4）")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@
 
 ## 能力方向路由
 
-**视频类铁律**：只要接的是视频制作活儿，`expert-video` 的**通用制作流程**（Stage 0→14 阶段链 + GATE A/B 两闸门 + 护栏 + 工作区与交付约定）**一律适用**——它是基准准则，不是"没匹配到类型时的备选"，也不与类型 workflow 并列。下表匹配到的类型 workflow 只是叠加在基准上的进一步细化。
+**视频类铁律**：只要接的是视频制作活儿，`expert-video` 的**通用制作流程**（Stage 0→15 阶段链 + GATE A/B 两闸门 + 护栏 + 工作区与交付约定）**一律适用**——它是基准准则，不是"没匹配到类型时的备选"，也不与类型 workflow 并列。下表匹配到的类型 workflow 只是叠加在基准上的进一步细化。
 
 | 入口信号 | 专家包 | 怎么做 |
 |---------|--------|--------|
@@ -19,7 +19,7 @@
 | 影视解说 / 剧情解说 + 突然反转插入品宣（"万万没想到"式） | `expert-video` | 通用制作流程 + Reversal Ad 细化 |
 | 甲方交付口播文案或真人口播录音，要合成声画 | `expert-video` | 通用制作流程 + Narration Video 细化 |
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | `expert-video` | 通用制作流程 + Collage B-roll 细化 |
-| "从零做视频""出一支完整视频""按这个主题拍片子"（无匹配类型） | `expert-video` | 只按通用制作流程走；创意不清时先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 3 `script-write`（叙事 / 动效 / 蒙太奇手法由我据创意自定，不再做三档分类） |
+| "从零做视频""出一支完整视频""按这个主题拍片子"（无匹配类型） | `expert-video` | 只按通用制作流程走；创意不清时先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 1 `script-write`（叙事 / 动效 / 蒙太奇手法由我据创意自定） |
 | 已有素材要剪辑、修整、拼接、配音、烧字幕 | `expert-video` | 通用制作流程的 Stage 12 工具箱（只做几何级修整） |
 | "做网页/落地页/APP 界面/品牌视觉体系" | `expert-design` | Web Page / App UI / Brand Visual |
 

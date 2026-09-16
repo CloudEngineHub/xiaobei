@@ -108,7 +108,7 @@ DNA template = **Brief.md 正文模板 + 口播文案模板（可选）**，固�
 | 已有真人口播素材去口气词、剪高光 | main `talking-head-cut`（不委托 CP） | — |
 | 产品操作录屏 | main `ui-demo`（不委托 CP） | — |
 
-Brief 写了 `workflow` 时 Content Producer 必须直接采用，不得替换成自创流程；未写时 CP 按其**通用制作流程**做——那是 CP 所有视频工作的基准准则，不是与其他 workflow 并列的选项，也不是 fallback，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定（intent-router 档位分类已退役）。
+Brief 写了 `workflow` 时 Content Producer 必须直接采用，不得替换成自创流程；未写时 CP 按其**通用制作流程**做——那是 CP 所有视频工作的基准准则，不是与其他 workflow 并列的选项，也不是 fallback，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。
 
 ## Focus ID 表
 

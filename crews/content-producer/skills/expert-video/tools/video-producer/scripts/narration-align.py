@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 11b — narration-align：旁白时间戳对齐。
+"""Stage 11 — narration-align：旁白时间戳对齐。
 
 Usage:
   python3 scripts/narration-align.py <project_dir>
 
-入：project_dir/audio/narration.mp3（Stage 11a 一次性 TTS 生成的整段旁白）
+入：project_dir/audio/narration.mp3（Stage 11 场景 B 一次性 TTS 生成的整段旁白）
     + project_dir/audio/narration.subtitle.json（awk-tts --enable-subtitle 落盘的 TTS 原生字级时间戳，优先复用）
 出：project_dir/audio/narration-segments.json
     {
@@ -153,7 +153,7 @@ def fallback_asr(narration: Path, out_path: Path) -> None:
 def main() -> None:
     load_env_file()
 
-    parser = argparse.ArgumentParser(description="Stage 11b narration-align")
+    parser = argparse.ArgumentParser(description="Stage 11 narration-align")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     parser.add_argument(
         "--audio",

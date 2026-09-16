@@ -55,7 +55,7 @@ metadata:
 
 | 层 | 是什么 | 怎么用 |
 |----|--------|--------|
-| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→14 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
+| **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→15 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
 | **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：创意不足以直接写剧本时触发 |
 | **工具说明**（`tools/<工具>/SKILL.md`） | 每个子命令的入参、产物路径、退出码与旁路条件 | 调用前查；本文不重复参数细节 |
 
@@ -72,7 +72,7 @@ metadata:
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 一句文稿 → 一个视觉隐喻 → 静帧 → i2v，三道闸门与 Gate 3 批量调度 |
 
 - Brief 指定了 `workflow`：**先读对应文档并直接采用**，不得替换成自创流程。
-- Brief 未指定 `workflow`：仍走通用制作流程；创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 3 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`。
+- Brief 未指定 `workflow`：仍走通用制作流程；创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 1 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`。
 - 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。
 
 > `story-develop` 是 **intake 类 workflow**（Stage 0 创意澄清，**不是 `Brief.workflow` 取值**），与上表 type 类 workflow 正交：任何类型的视频，创意不清都先走它收敛 Brief，再按通用制作流程 + 对应 type workflow 执行。详见 `workflows/story-develop.md`。
@@ -93,19 +93,19 @@ output_videos/<topic-en-slug>/      # <project-dir>
 ├── brief.md                    # 甲方交付（拷贝入档）或 Stage 0 与用户定稿
 ├── voiceover.md                # 甲方交付的口播文案（如有）
 ├── reference/                  # 可选：甲方给的参考拆解报告与差异化概念
-├── script/                     # script.md(3) / self-eval.json(3b) / decisions.json(审计链)
-├── storyboard/                 # storyboard.json(4) / shot_decompose.json(5)
-├── characters/                 # registry.json(6) + <char-id>/{front,side,back}.png
+├── script/                     # script.md(1) / self-eval.json(2) / decisions.json(审计链)
+├── storyboard/                 # storyboard.json(3) / shot_decompose.json(4)
+├── characters/                 # registry.json(5) + <char-id>/{front,side,back}.png
 ├── gates/                      # gate-a.md / gate-b.md（含批准人与批准范围）
 ├── raw_materials/              # 甲方素材入库副本 + 授权记录
-├── slots/                      # slot-plan.json(7) / asset-resolve.json(8) / slideshow-risk.json(9a) / delivery-promise.json(9b)
+├── slots/                      # slot-plan.json(6) / asset-resolve.json(7) / slideshow-risk.json(8) / delivery-promise.json(9)
 ├── render/shot-NN/             # (10) first-frame.png / last-frame.png / shot.mp4
 ├── audio/                      # narration.mp3 / narration-segments.json / bgm.mp3 / subtitles.srt
 ├── artifacts/                  # (12) 按镜顺序的最终段 01_*.mp4 … NN_*.mp4
 ├── video.mp4                   # (12) 成片
 ├── review/                     # verdict.json(13a) / frames/ / motion-audit.json(13b)
 ├── cover.jpg                   # (14a)
-└── final-deliver.md            # (14b)
+└── final-deliver.md            # (15)
 ```
 
 workflow 文档在技能包内，不是项目目录内容；项目目录只放 Brief、素材、脚本、渲染与交付产物。
@@ -198,7 +198,7 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 | `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `collage-broll` | 纸拼贴 B-roll 的环境自检与 Gate 3 批量 i2v 调度（0 全通 / 1 参数错 / 2 部分失败，只重跑失败条目） | `collage-broll check-setup` / `collage-broll gate3 --batch <gen-jobs.json> [--dry-run]` |
 
-跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 8/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`siliconflow-img-gen`（静帧、角色三视图、封面，Stage 6/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；`--enable-subtitle` 让火山流式 HTTP 原生返回时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
+跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`siliconflow-img-gen`（静帧、角色三视图、封面，Stage 5/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；`--enable-subtitle` 让火山流式 HTTP 原生返回时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
 
 env 依赖：`AWK_API_KEY`（静帧 / 视频生成）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。缺 env 时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow`（`motion-graphics` 逐帧绘制）在仓根 `requirements.txt`。系统依赖：`motion-graphics` 需要 Noto Sans SC/CJK 字体（探测 `/usr/share/fonts/opentype/noto-sc` 等候选目录，缺失 exit 2；可用 spec `font_dir` 或 env `MG_FONT_DIR` 覆盖）。机器资源约束（线程数、分辨率上限、低载编码）读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里（`motion-graphics` 默认即低载：nice19/veryfast/crf18/threads2）。
 

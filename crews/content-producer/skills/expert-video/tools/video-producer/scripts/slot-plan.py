@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 7 — slot-plan：素材 slot 规划。
+"""Stage 6 — slot-plan：素材 slot 规划。
 
 Usage:
   python3 scripts/slot-plan.py <project_dir>
 
-入：project_dir/storyboard/shot_decompose.json（Stage 5）
+入：project_dir/storyboard/shot_decompose.json（Stage 4）
 出：project_dir/slots/slot-plan.json（每镜对应 slot：template + hero slot + tone→slot 数）
 
 template：slot 模板（如"主角家中—晨光—白T青年"）
@@ -40,7 +40,7 @@ TONE_SLOT_TABLE = {
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 7 slot-plan")
+    parser = argparse.ArgumentParser(description="Stage 6 slot-plan")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     parser.add_argument("--tone", default=None, choices=sorted(TONE_SLOT_TABLE), help="调性，不传走 narrative 默认")
     args = parser.parse_args()
@@ -64,7 +64,7 @@ def main() -> None:
     tone_cfg = TONE_SLOT_TABLE[tone]
 
     stub = {
-        "stage": 7,
+        "stage": 6,
         "tone": tone,
         "tone_config": tone_cfg,
         "slots": [],
@@ -88,7 +88,7 @@ def main() -> None:
     }
     plan_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] slot-plan.json 模板已落：{plan_path}")
-    print(f"[next] agent 填 slot schema → 跑 asset-resolve（Stage 8）")
+    print(f"[next] agent 填 slot schema → 跑 asset-resolve（Stage 7）")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 3 — script-write：Brief 创意 → 分场剧本。
+"""Stage 1 — script-write：Brief 创意 → 分场剧本。
 
 Usage:
   python3 scripts/script-write.py <project_dir>
@@ -27,7 +27,7 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 3 script-write")
+    parser = argparse.ArgumentParser(description="Stage 1 script-write")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
@@ -44,7 +44,7 @@ def main() -> None:
         print(f"[checkpoint] script.md 已存在，沿用：{script_path}")
         return
 
-    stub = f"""# 分场剧本（Stage 3）
+    stub = f"""# 分场剧本（Stage 1）
 
 > 据 Brief 创意（{brief_path.name}）拆成可拍化分场剧本。每场含：场景描述、出场人物、对白、动作、enhancement_cues、delivery_cues。
 
@@ -81,7 +81,7 @@ def main() -> None:
 """
     script_path.write_text(stub, encoding="utf-8")
     print(f"[done] script.md 模板已落：{script_path}")
-    print(f"[next] agent 填剧本 → 跑 script-self-eval（Stage 3b）")
+    print(f"[next] agent 填剧本 → 跑 script-self-eval（Stage 2）")
 
 
 if __name__ == "__main__":

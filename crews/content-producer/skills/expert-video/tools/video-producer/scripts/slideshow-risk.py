@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 9a — slideshow-risk：六维幻灯风险打分（pre-compose 闸门）。
+"""Stage 8 — slideshow-risk：六维幻灯风险打分（pre-compose 闸门）。
 
 Usage:
   python3 scripts/slideshow-risk.py <project_dir>
 
-入：project_dir/slots/asset-resolve.json（Stage 8，素材齐）
+入：project_dir/slots/asset-resolve.json（Stage 7，素材齐）
 出：project_dir/slots/slideshow-risk.json（六维分 + verdict）
 
 六维（每维 0–10，加权总分 ≥4.0 才许进 compose，<4.0 fail 必换素材）：
@@ -41,7 +41,7 @@ FAIL_THRESHOLD = 4.0
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 9a slideshow-risk")
+    parser = argparse.ArgumentParser(description="Stage 8 slideshow-risk")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
@@ -61,7 +61,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": "9a",
+        "stage": "8",
         "dims": [
             {"key": k, "name": n, "criteria": c, "weight": w, "score": None, "note": ""}
             for k, n, c, w in RISK_DIMS
@@ -77,7 +77,7 @@ def main() -> None:
     }
     risk_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] slideshow-risk.json 模板已落：{risk_path}")
-    print(f"[next] agent 填六维分 → fail 必返工 → pass 跑 delivery-promise-lock（Stage 9b）")
+    print(f"[next] agent 填六维分 → fail 必返工 → pass 跑 delivery-promise-lock（Stage 9）")
 
 
 if __name__ == "__main__":
