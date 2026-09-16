@@ -81,7 +81,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 | 标题 | 硬限制 ≤ 20 字；覆盖主关键词或用户问题 |
 | 图组 | 硬限制 ≤ 18 张；用户提供优先 |
 | 行动引导 | 只放一个平台内动作 |
-| workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略 |
+| workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略（省略 = CP 走其 story-develop intake 收敛后按通用制作流程做） |
 
 优先级：
 
@@ -162,7 +162,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 
 - 视频名 / slug：
 - platform：xhs
-- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法）
+- workflow：reversal-ad / narration-video / collage-broll（视频形态未确定时省略本字段；省略 = CP 走其 story-develop intake workflow 收敛创意后按通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定）
 - 选题与观看理由：
 - 核心传达：
 - 内容创意：创意原型 + 展开逻辑 + 记忆点
@@ -187,9 +187,9 @@ Brief 硬性规则：
 
 ### 口播文案规则
 
-- **口播类视频的口播文案由 main agent 出**：按 DNA 文档的 `narration-script`（口播文案子模块）写终稿，保存为作品目录下的 `voiceover.md`，在 Brief 中给**绝对路径**。CP 不重写策略文案，只做声画实现。
+- **口播类视频的口播终稿一律由 main agent 出**：`narration-script`（口播文案子模块）启用时按其结构写，未启用时按用户要求与 Brief 核心传达写，保存为作品目录下的 `voiceover.md`，在 Brief 中给**绝对路径**。CP 不重写，只做声画实现。
 - **真人口播**：明确要用用户真人声音时，指导用户按口播稿录音，完成后向用户取得录音文件，落到作品目录并在 Brief 中给绝对路径。
-- **口播子模块未启用**：Brief 写明「口播文案：不适用」或只给要点，由 CP 按其 workflow 组织旁白；main 不再规定逐句台词。
+- **口播子模块未启用**：口播终稿仍由 main 写——按用户要求与 Brief 的核心传达 / CTA 要求直接撰写（不依赖 DNA 子模块），落 `voiceover.md` 并在 Brief 给绝对路径；「不适用」仅限非口播类视频。
 - 用户必用的事实、案例、承诺和 CTA 必须进入 Brief 或口播终稿，不得为了形式删除关键事实。
 
 ## 【确认】正文 / Brief
@@ -216,7 +216,7 @@ Brief 硬性规则：
 | --- | --- |
 | 用户直接提供成片 | 校验格式与时长，复制到作品目录 |
 | 已有素材需简单加工 | main 用 `video-edit` / `talking-head-cut` 处理 |
-| 全案制作 | 委托 `content-producer`：只交 Brief + 素材绝对路径 + 口播文案 / 录音，不指定 CP 工作区；指定 `workflow` 必须采用；未指定时 CP 按其通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。成片与封面按 CP 回报的绝对路径取回作品目录 |
+| 全案制作 | 委托 `content-producer`：只交 Brief 一份（素材、口播文案 / 录音以绝对路径写在 Brief 内），不指定 CP 工作区；指定 `workflow` 必须采用；未指定时 CP 走其 story-develop intake 收敛创意后按通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定。成片与封面按 CP 回报的绝对路径取回作品目录 |
 
 视频封面优先从成片选帧；需要更强视觉冲击时用 `siliconflow-img-gen`。
 

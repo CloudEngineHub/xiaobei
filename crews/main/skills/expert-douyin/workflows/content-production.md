@@ -20,8 +20,8 @@
 | 路线 | 判断 | 执行方 |
 | --- | --- | --- |
 | 素材组装 / 轻剪辑 | 用户手里有可用素材 | main 直接做：`video-edit` / `talking-head-cut` / `ui-demo` |
-| 从零制作 | 没有素材，需要出脚本、拍摄/生成画面 | main 出制作简报，委托 `content-producer` |
-| 脚本制作 | 用户已有脚本 | 根据dna对脚本做必要修改，提交用户确认后，脚本交 `content-producer` 制作 |
+| 从零制作 | 没有素材，需要出脚本、拍摄/生成画面 | main 出 Brief，委托 `content-producer` |
+| 脚本制作 | 用户已有脚本 | 用户脚本按素材处理（绝对路径写进 Brief 素材清单，必须保留的事实 / 结构要点写进 Brief 要求）；main 只调策略层（选题 / 口播口径 / 植入 / CTA），不改写脚本本体、不动分镜与画面执行——需动分镜即改走 Brief 委托，由 CP 重出 |
 
 ### 3. 抖音链接的意图判断
 
@@ -77,6 +77,7 @@ DNA template 是 main agent 的生产输入模板：
 | 项目 | 规则 |
 | --- | --- |
 | 制作路线 | 素材组装 / 从零制作 / 脚本制作，判断依据见 Step 0 |
+| workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略（省略 = CP 走其 story-develop intake 收敛后按通用制作流程做） |
 | 主题 / 方向 | 用户给了明确主题时不得另起炉灶，仅按 DNA template 细化选题和钩子 |
 | 素材 | 用户提供的视频片段、图片、录音、文案必须优先使用 |
 | 目标观众 | 未指定时按 `business_knowledge.md` 和 DNA 受众关系推导 |
@@ -187,14 +188,14 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 
 ### 路线 B / C：委托 content-producer 制作
 
-1. 产出**制作简报** `douyin/outputs/<video-name>/brief.md`（Brief 是 main / CP 的唯一交接物）：
+1. 产出 **Brief** `douyin/outputs/<video-name>/brief.md`（Brief 是 main / CP 的唯一交接物）：
 
 ```markdown
 # 抖音视频制作 Brief
 
 - 视频名 / slug：
 - platform：douyin
-- workflow：reversal-ad / narration-video / collage-broll / 未指定（未指定 = CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法）
+- workflow：reversal-ad / narration-video / collage-broll（视频形态未确定时省略本字段；省略 = CP 走其 story-develop intake workflow 收敛创意后按通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定）
 - 选题与观看理由：
 - 核心传达：
 - 内容创意：创意原型 + 展开逻辑 + 记忆点（+ 反转设计，如为反转植入类）
@@ -216,9 +217,9 @@ Brief 硬性规则：
 - **素材给绝对路径**：main 负责素材准备（用户素材预处理、`ui-demo` 录屏、从 `campaign_assets/` 挑选），把绝对路径写进 Brief。
 - **甲乙方关系**：需求方向、品牌事实、发布文案归 main；制作方案、分镜、渲染参数归 CP。
 
-2. 口播类视频：按 DNA 的 `narration-script` 子模块写口播终稿 `douyin/outputs/<video-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。
+2. 口播类视频：口播终稿一律由 main 写——`narration-script` 子模块启用时按其结构写，未启用时按用户要求与 Brief 核心传达写——落 `douyin/outputs/<video-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。
 3. 参考模式下，把选题与创意结论写进 Brief 的「内容创意」段即可；`viral-chaser` 拆解报告是 main 的采样材料，**不作为 Brief 附件交给 CP**。
-4. spawn `content-producer` 委托制作：只交 Brief + 素材绝对路径 + 口播文案 / 录音；不指定 CP 的工作区与制作方案。
+4. spawn `content-producer` 委托制作：只交 Brief 一份——素材、口播文案 / 录音均已以绝对路径写在 Brief 内；不指定 CP 的工作区与制作方案。
 5. Brief 变更时更新版本并推送变更要点；已开工中间产物按新版取舍，弃用部分记入交付说明。
 6. CP 交付后，按其回报的绝对路径把成片与封面取回 `douyin/outputs/<video-name>/`（`video.mp4` / `cover.jpg`），并把交付说明要点记入作品目录。
 

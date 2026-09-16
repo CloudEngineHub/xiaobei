@@ -156,7 +156,7 @@ douyin-style-profiler update \
 - **图文内容**：读取图文 DNA 文档与 template，main agent 直接生产。
 - **视频全案**：读取视频 DNA 文档与 template，main agent 产出 **Brief**（+ 口播类的口播文案）。Brief 写明选题与观看理由、标题与简介、内容创意、`workflow`（视频形态的制作指向）、制作规格（横竖屏 / 时长带 / 画面风格 / 配音音色）、素材清单与授权（绝对路径）、验收标准、闸门批准人。
 - **Brief 不含 DNA 信息**：Content Producer 看不到 main 的 DNA，只按 Brief 制作；也不要把 DNA 文档路径写进 Brief。
-- **口播类视频**：口播文案子模块启用时，口播终稿由 main agent 写好并随 Brief 交付；真人口播时由 main agent 指导用户录音并向用户取得录音文件。CP 不重写策略文案。
+- **口播类视频**：口播终稿一律由 main agent 写好并随 Brief 交付（`narration-script` 子模块启用时按其结构写，未启用时按用户要求与 Brief 核心传达写）；真人口播时由 main agent 指导用户录音并向用户取得录音文件。CP 不重写。
 - **工作区**：main 不替 CP 建工作区，也不指定项目目录；CP 自建工作区，双方 T3 权限可互访取文件。
 
 ## 对标接口
