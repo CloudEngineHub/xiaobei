@@ -8,8 +8,9 @@
 
 流程：
   1. ffmpeg 抽 16kHz mono WAV
-  2. 调火山方舟豆包语音极速版（volc.bigasr.auc_turbo）拿 utterance + word 级时间戳
-     （复用 viral-chaser 的鉴权约定：VOLC_ASR_APP_ID+VOLC_ASR_ACCESS_KEY 或 VOLC_ASR_APP_KEY）
+  2. 调公共 ASR 路由（_shared/asr.py：火山极速版 → 百炼业务空间 → 百炼 agent plan）
+     拿 utterance + word 级时间戳
+     （凭据：VOLC_ASR_* 或 WORKSPACE_ID+MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY 或 AWK_API_KEY）
   3. 多层检测（按 --mode 决定保留策略）：
      - fillers：语气词清单匹配（zh: 嗯/呃/额/唔/哎/诶/欸；en: um/uh/uhm/er）
      - silence：word gap > --silence-gap 秒
@@ -23,7 +24,7 @@
 
 依赖：
   - ffmpeg/ffprobe（系统）
-  - 火山 ASR env（VOLC_ASR_*）
+  - ASR 凭据（VOLC_ASR_* / WORKSPACE_ID+MODELSTUDIO_API_KEY / AWK_API_KEY 任一组）
   - requests（Python 包，仓根 requirements.txt 已声明）
 
 无第三方 ASR/VAD 包——不引入 faster-whisper / Silero VAD，与 main stdlib + ffmpeg 范式一致。
@@ -31,7 +32,7 @@
 退出码：
   0 = 成功
   1 = 参数错误 / 文件不存在
-  2 = 火山 ASR env 未配置（提示用户走 viral-chaser 开通流程）
+  2 = ASR 凭据未配置（提示用户走 viral-chaser 开通流程配火山，或配百炼 key）
   3 = ffmpeg/ffprobe 不存在
 """
 
@@ -47,9 +48,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
-# 注入 _shared 到 sys.path，复用公共火山 ASR 脚本（与 xhs-publish/scripts/publish_xhs.py 同范式）
+# 注入 _shared 到 sys.path，复用公共 ASR 路由（与 xhs-publish/scripts/publish_xhs.py 同范式）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "_shared"))
-from volc_asr import volc_asr  # noqa: E402
+from asr import asr  # noqa: E402
 
 # 语气词清单
 FILLERS_ZH = {"嗯", "呃", "额", "唔", "哎", "诶", "欸", "啊", "呀", "嘛", "呢", "吧"}
@@ -338,8 +339,8 @@ def main() -> None:
             pass
         sys.exit(3)
 
-    # 2. 火山 ASR
-    asr_result = volc_asr(wav_path)
+    # 2. ASR 路由（火山 → 百炼业务空间 → 百炼 agent plan）
+    asr_result = asr(wav_path)
     try:
         os.unlink(wav_path)
     except OSError:

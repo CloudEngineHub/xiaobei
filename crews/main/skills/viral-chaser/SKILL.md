@@ -8,13 +8,21 @@ metadata:
       bins:
       - node
       - ffmpeg
-      env:
-      - VOLC_ASR_APP_ID
 ---
 
-## 🔑 前置：开通火山语音模型（仅首次）
+## 🔑 前置：ASR 凭据（仅首次）
 
-本技能的语音转写（ASR）使用**火山引擎豆包语音 · 录音文件极速版**（资源 ID `volc.bigasr.auc_turbo`）。即便账号已订购火山 Code Plan，语音模型仍需**单独开通**，否则调用会返回鉴权/权限错误。
+本技能的语音转写走公共 ASR 路由（`crews/main/skills/_shared/asr.py`），凭据在哪家走哪家：
+
+1. **火山录音文件极速版**（`VOLC_ASR_*`，优先）——需单独开通语音模型，见下
+2. **百炼业务空间**（`WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`）
+3. **百炼 agent plan**（`AWK_API_KEY`）
+
+三组任一组在环境里即可运行；都缺失时分析器退出码 2 并提示配置。
+
+### 火山开通指引（选火山路线时）
+
+火山引擎豆包语音 · 录音文件极速版（资源 ID `volc.bigasr.auc_turbo`）。即便账号已订购火山 Code Plan，语音模型仍需**单独开通**，否则调用会返回鉴权/权限错误。
 
 **判断是否已开通**：直接跑 Step 3 分析器，若 ASR 报错含 `status=45xxxxx` 或权限相关码，说明未开通，按下面流程开通一次即可。
 
