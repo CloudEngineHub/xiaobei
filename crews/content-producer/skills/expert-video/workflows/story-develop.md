@@ -1,13 +1,12 @@
 # Workflow：Story Develop（Brief intake · 创意澄清）
 
-**这是 intake 类 workflow，不是 type 类 workflow。** type workflow（`narration-video` / `collage-broll` / `reversal-ad`）细化"某类视频怎么制作"，是 `Brief.workflow` 的取值；本 workflow 解决"甲方还没把创意讲清楚时，怎么和他对话把 Brief 收敛出来"，**不是 `Brief.workflow` 的取值**，也不与 type workflow 互斥。**Brief 未指定 workflow 时，Stage 0（Brief intake）默认从这里进入**，与任何 type workflow 正交可组合——收敛出 Brief 后，仍按通用制作流程 + 对应 type workflow 执行。
+**这是 intake 类 workflow，不是 type 类 workflow。** type workflow（`narration-video` / `collage-broll` / `reversal-ad`）细化"某类视频怎么制作"，是 `Brief.workflow` 的取值；本 workflow 解决"甲方还没把创意讲清楚时，怎么和他对话把 Brief 收敛出来"，**不是 `Brief.workflow` 的取值**，也不与 type workflow 互斥。它在 **Stage 0（Brief intake）** 阶段触发，与任何 type workflow 正交可组合——收敛出 Brief 后，仍按通用制作流程 + 对应 type workflow 执行。
 
 ## 何时触发
 
-- **Brief 未指定 `workflow` 且无明确类型信号**（"从零做视频""出一支完整视频"）：默认入口。
 - **模式 B（直接对接用户）**：用户没给 Brief，或只给了模糊想法（"做个短片""帮我策划一下"）。
 - **模式 A（Subagent 承制）**：main 的 Brief 缺关键字段（创意 / 核心传达不清、规格缺失），需向 Brief owner 澄清。
-- 创意足以直接写 `script.md` 时**快速通过**：确认 Brief 字段完整即直进 Stage 1，不硬走对话。
+- 触发判据：**甲方没给 Brief，或 Brief 的"创意"不足以直接写 `script.md`**。够用就不触发。
 
 > ❗ 本 workflow 是**澄清与收敛**，不是替甲方创作。选题方向、品牌事实、卖点承诺、CTA 口径归甲方；我只把甲方脑子里的创意问清楚、整理成 Brief，不自行脑补，也不反过来指挥甲方。
 

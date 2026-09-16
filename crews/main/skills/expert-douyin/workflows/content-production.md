@@ -77,7 +77,7 @@ DNA template 是 main agent 的生产输入模板：
 | 项目 | 规则 |
 | --- | --- |
 | 制作路线 | 素材组装 / 从零制作 / 脚本制作，判断依据见 Step 0 |
-| workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略（省略 = CP 走其 story-develop intake 收敛后按通用制作流程做） |
+| workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略（省略 = CP 按其通用制作流程做） |
 | 主题 / 方向 | 用户给了明确主题时不得另起炉灶，仅按 DNA template 细化选题和钩子 |
 | 素材 | 用户提供的视频片段、图片、录音、文案必须优先使用 |
 | 目标观众 | 未指定时按 `business_knowledge.md` 和 DNA 受众关系推导 |
@@ -195,7 +195,7 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 
 - 视频名 / slug：
 - platform：douyin
-- workflow：reversal-ad / narration-video / collage-broll（视频形态未确定时省略本字段；省略 = CP 走其 story-develop intake workflow 收敛创意后按通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定）
+- workflow：reversal-ad / narration-video / collage-broll（视频形态未确定时省略本字段；省略 = CP 按其通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定）
 - 选题与观看理由：
 - 核心传达：
 - 内容创意：创意原型 + 展开逻辑 + 记忆点（+ 反转设计，如为反转植入类）

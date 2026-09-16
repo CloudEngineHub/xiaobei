@@ -19,7 +19,7 @@
 | 影视解说 / 剧情解说 + 突然反转插入品宣（"万万没想到"式） | `expert-video` | 通用制作流程 + Reversal Ad 细化 |
 | 甲方交付口播文案或真人口播录音，要合成声画 | `expert-video` | 通用制作流程 + Narration Video 细化 |
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | `expert-video` | 通用制作流程 + Collage B-roll 细化 |
-| "从零做视频""出一支完整视频""按这个主题拍片子"（无匹配类型） | `expert-video` | 先走 `story-develop` intake workflow（创意不清时与甲方收敛 Brief，够用则快速通过），再进 Stage 1 `script-write`，按通用制作流程出片（叙事 / 动效 / 蒙太奇手法由我据创意自定） |
+| "从零做视频""出一支完整视频""按这个主题拍片子"（无匹配类型） | `expert-video` | 只按通用制作流程走（叙事 / 动效 / 蒙太奇手法由我据创意自定）；Brief 缺失或创意不清时先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 1 `script-write` |
 | 已有素材要剪辑、修整、拼接、配音、烧字幕 | `expert-video` | 通用制作流程的 Stage 12 工具箱（只做几何级修整） |
 | "做网页/落地页/APP 界面/品牌视觉体系" | `expert-design` | Web Page / App UI / Brand Visual |
 

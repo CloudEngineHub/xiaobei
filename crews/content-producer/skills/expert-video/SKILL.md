@@ -56,7 +56,7 @@ metadata:
 | 层 | 是什么 | 怎么用 |
 |----|--------|--------|
 | **通用制作流程**（本文下方） | 我做**任何**视频制作工作都必须遵循的准则：Stage 0→15 阶段链、GATE A / GATE B 两闸门、返工与耗时上限、决策审计链、工作区与交付约定 | 永远适用，不因视频类型而跳过或替换 |
-| **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：Brief 未指定 workflow 时进入（创意不足先收敛，够用快速通过） |
+| **workflow**（`workflows/*.md`） | 两类——**intake 类**（`story-develop`：Stage 0 创意模糊时与甲方对话收敛 Brief，**不是 `Brief.workflow` 取值**）；**type 类**（`narration-video` / `collage-broll` / `reversal-ad`：在通用制作流程之上细化某类视频的阶段裁剪、叙事套路、声音 / 画面规范、验收） | type 类：Brief 指定 `workflow` 时必读必用，冲突时以 workflow 为准但**闸门与护栏不让步**；intake 类：Brief 缺失或创意不足以直接写剧本时触发 |
 | **工具说明**（`tools/<工具>/SKILL.md`） | 每个子命令的入参、产物路径、退出码与旁路条件 | 调用前查；本文不重复参数细节 |
 
 > 通用制作流程**不是**与类型 workflow 并列的第四条路，也**不是**"Brief 没指定类型时的 fallback"。它是底座；类型 workflow 只在底座上细化，产出特定类型的视频。
@@ -72,10 +72,10 @@ metadata:
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 隐喻清单即 script（GATE A 检）→ 静帧即素材（GATE B 检 contact sheet）→ Stage 10 `collage-broll render` 批量 i2v 组装；阶段裁剪表见 workflow |
 
 - Brief 指定了 `workflow`：**先读对应文档并直接采用**，不得替换成自创流程。
-- Brief 未指定 `workflow` 且无明确类型信号：走 `story-develop` intake workflow——创意不足以直接写剧本时与甲方收敛，够用则快速通过——再进 Stage 1 `script-write`。叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`。
+- Brief 未指定 `workflow`：仍走通用制作流程，叙事 / 动效 / 蒙太奇的处理手法由我据创意自定并记 `decisions.json`；Brief 创意不足以直接写剧本时，先走 `story-develop` intake workflow 与甲方收敛 Brief，再进 Stage 1 `script-write`。
 - 已有素材只要剪辑、修整、拼接、配音、烧字幕：仍走通用制作流程，中间阶段按实际裁剪，重心落在 Stage 12 工具箱（只做几何级修整；语义级高光剪辑归甲方 main）。
 
-> `story-develop` 是 **intake 类 workflow**（Stage 0 创意澄清，**不是 `Brief.workflow` 取值**），与上表 type 类 workflow 正交：Brief 未指定 workflow 时默认从它进入——创意不足以直接写剧本先收敛，够用则快速通过——再按通用制作流程（+ 信号识别到的 type workflow）执行。详见 `workflows/story-develop.md`。
+> `story-develop` 是 **intake 类 workflow**（Stage 0 创意澄清，**不是 `Brief.workflow` 取值**），与上表 type 类 workflow 正交：甲方没给 Brief 或 Brief 创意不足以直接写剧本时走它收敛出 Brief，再按通用制作流程 + 对应 type workflow 执行。详见 `workflows/story-develop.md`。
 
 不属于我的活（交回甲方或转其他专家包）：
 
@@ -116,8 +116,7 @@ workflow 文档在技能包内，不是项目目录内容；项目目录只放 B
 
 ```
 Stage 0  Brief intake       读甲方 Brief，核对字段，缺口向 Brief owner 澄清；
-                            甲方未给 Brief，或 Brief 未指定 workflow → 走 story-develop intake workflow
-                            （workflows/story-develop.md；创意不足先收敛，够用快速通过）
+                            甲方未给 Brief 或 Brief 不足以直接写剧本时 → 走 story-develop intake workflow（workflows/story-develop.md）
 Stage 1  script-write       Brief 创意 → 分场剧本（同时间同地点分一场、可拍化描述、enhancer 润色）
                             基线生产从此开始。
 Stage 2  script-self-eval   脚本自评 N 维打分，任一维 <3 必返工（落稿锁定时只检查不改写）
