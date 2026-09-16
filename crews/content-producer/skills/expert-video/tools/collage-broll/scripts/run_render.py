@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate 3 批量调度——读 gen-jobs.json 逐条调公共 aigc-video-gen wrapper 走 i2v 模式（首尾帧插值）。
+"""Stage 10 render 批量调度——读 gen-jobs.json 逐条调公共 aigc-video-gen wrapper 走 i2v 模式（首尾帧插值）。
 
 每个 job 字段：
   prompt         aigc-video-gen --prompt（中文声画同出描述）
@@ -14,8 +14,8 @@ aigc-video-gen wrapper 内部已带候选链 fallback + decisions.log 落盘，�
 串行调（视频生成是异步轮询任务，并行调会撞平台并发限）。
 
 Usage:
-  python3 <skill-dir>/scripts/run_gate3.py --batch <project>/gen-jobs.json
-  python3 <skill-dir>/scripts/run_gate3.py --batch <project>/gen-jobs.json --dry-run
+  python3 <skill-dir>/scripts/run_render.py --batch <project>/render/gen-jobs.json
+  python3 <skill-dir>/scripts/run_render.py --batch <project>/render/gen-jobs.json --dry-run
 
 Exit codes:
   0  全部 job 跑通
@@ -74,7 +74,7 @@ def run_one(job: dict, job_id: int, dry_run: bool) -> tuple[bool, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Gate 3 批量调度——读 gen-jobs.json 逐条调公共 aigc-video-gen wrapper 走 i2v（首尾帧插值）."
+        description="Stage 10 render 批量调度——读 gen-jobs.json 逐条调公共 aigc-video-gen wrapper 走 i2v（首尾帧插值）."
     )
     parser.add_argument("--batch", required=True, help="gen-jobs.json 路径")
     parser.add_argument("--dry-run", action="store_true", help="只打印不真调")
