@@ -112,7 +112,7 @@ published-track record \
 
 ### 流程 2A·自动更新（定时任务用）
 
-`fetch-and-update-metrics.sh` 封装探活 → API 抓取 → DB 写入，凌晨复盘心跳调用（仅 bilibili / douyin / kuaishou 三个纯 HTTP 平台）：
+`fetch-and-update-metrics.sh` 封装探活 → API 抓取 → DB 写入，凌晨复盘心跳调用（仅 douyin 一个纯 HTTP 平台）：
 
 ```bash
 # 通过 source-folder 从 DB 查 publish_url → 抓取 → 写入
@@ -135,7 +135,7 @@ published-track fetch-metrics \
 
 Exit codes：0=成功/浏览器/手动（非错误），1=一般错误，2=SESSION_EXPIRED。
 
-- **脚本支持**：bilibili、douyin、kuaishou（走 `fetch-retro-data.ts` 纯 HTTP + cookie + UA）。**xhs / wx_mp / wx_channel 均不走本技能的 fetch-metrics**（收到这三个平台直接 exit 1 指路）——xhs 走 `expert-xhs` 专家包内的 `xhs-engagement` 工具，wx_mp 走 `expert-wx-mp` 专家包内的 `wx-mp-engagement` 工具，wx_channel 走 `expert-wx-channel` 专家包内的 `wx-channel-engagement` 工具，三者都是 camoufox 抓平台后台方案，与纯 HTTP 链路机制不同。其他平台暂不支持自动抓取互动数据。
+- **脚本支持**：douyin（走 `fetch-retro-data.ts` 纯 HTTP + cookie + UA）。**自动取数仅覆盖完全支持 Expert 架构的 4 个平台**：douyin 走本技能 `fetch-metrics`；xhs / wx_mp / wx_channel 均不走本技能的 fetch-metrics（收到这三个平台直接 exit 1 指路）——xhs 走 `expert-xhs` 专家包内的 `xhs-engagement` 工具，wx_mp 走 `expert-wx-mp` 专家包内的 `wx-mp-engagement` 工具，wx_channel 走 `expert-wx-channel` 专家包内的 `wx-channel-engagement` 工具，三者都是 camoufox 抓平台后台方案，与纯 HTTP 链路机制不同。**bilibili / kuaishou 及其余平台不做自动取数**（收到直接 exit 1 报 `PLATFORM_OUT_OF_FETCH_SCOPE`）——发布记录与查询照常支持，只是不抓互动数据。
 
 ### 流程 2B·用户提供数据（Agent 补录）
 

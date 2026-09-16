@@ -47,8 +47,10 @@
 
 #### Step 1: 通过 published-track 读取待取数的已发布内容
 
+> **取数范围仅限完全支持 Expert 架构的 4 个平台**：douyin / xhs / wx_mp / wx_channel。kuaishou / bilibili 等其余平台不取数（发布记录照常入库，仅不抓互动数据），见 Step 2 第 5 条。
+
 ```bash
-# 对纯 HTTP 脚本平台（douyin / kuaishou / bilibili），查询近期记录（取数时效窗口内，见 Step 2）
+# 对纯 HTTP 脚本平台（douyin），查询近期记录（取数时效窗口内，见 Step 2）
 published-track query --platform douyin --limit 50
 ```
 
@@ -58,9 +60,9 @@ published-track query --platform douyin --limit 50
 
 #### Step 2: 依次获取已发布内容的互动数据并更新到 published-track
 
-按平台分四种情况。第 1 条纯 HTTP 平台按 id 逐条取数；第 2/3/4 条 camoufox 平台**每平台只跑一次 `fetch-all`**——打开后台列表**首页**一次，解析页内全部作品，匹配 DB 全部行逐行写库，首页没有的行报 `NOT_ON_FIRST_PAGE` 跳过（这是设计，见「取数时效窗口」）。
+按平台分两类情况：取数范围内的 4 个 Expert 架构平台（第 1–4 条）逐平台取数；其余平台（第 5 条）一律跳过。第 1 条纯 HTTP 平台按 id 逐条取数；第 2/3/4 条 camoufox 平台**每平台只跑一次 `fetch-all`**——打开后台列表**首页**一次，解析页内全部作品，匹配 DB 全部行逐行写库，首页没有的行报 `NOT_ON_FIRST_PAGE` 跳过（这是设计，见「取数时效窗口」）。
 
-1. **douyin / kuaishou / bilibili** —— 走 `published-track fetch-metrics`（纯 HTTP+cookie 链路：login-manager 探活 → fetch-retro-data.ts → 写库），对 Step 1 查出的每条记录按 id 逐条调：
+1. **douyin（抖音）** —— 走 `published-track fetch-metrics`（纯 HTTP+cookie 链路：login-manager 探活 → fetch-retro-data.ts → 写库），对 Step 1 查出的每条记录按 id 逐条调：
 
    ```bash
    published-track fetch-metrics \
@@ -69,35 +71,35 @@ published-track query --platform douyin --limit 50
 
    脚本封装了完整流程，返回统一 JSON 结果。**xhs / wx_mp / wx_channel 不走这个脚本**——机制不同，见下方第 2/3/4 条。
 
-2. **小红书 (xhs)** —— **走 `expert-xhs` 包内 `xhs-engagement` 技能**（PATH wrapper 同名），camoufox 抓 creator 创作服务平台后台方案，与第 1 条三个纯 HTTP+cookie 平台机制完全不同，两条路独立、不耦合：
+2. **小红书 (xhs)** —— **走 `expert-xhs` 包内 `xhs-engagement` 技能**（PATH wrapper 同名），camoufox 抓 creator 创作服务平台后台方案，与第 1 条 douyin 的纯 HTTP+cookie 链路机制完全不同，两条路独立、不耦合：
 
    ```bash
    xhs-engagement fetch-all
    ```
    > ⚠️ 不要调 `published-track fetch-metrics --platform xhs`——该子命令对 xhs 直接 exit 1 报错提示走 xhs-engagement。两条链路独立维护，避免机制错配。
 
-3. **微信公众号 (wx_mp)** -- **走 `expert-wx-mp` 包内 `wx-mp-engagement` 工具**（PATH wrapper 同名），camoufox 抓创作者中心方案，与第 1 条三个平台的纯 HTTP+cookie 链路完全不同，两条路独立、不耦合：
+3. **微信公众号 (wx_mp)** -- **走 `expert-wx-mp` 包内 `wx-mp-engagement` 工具**（PATH wrapper 同名），camoufox 抓创作者中心方案，与第 1 条 douyin 的纯 HTTP+cookie 链路完全不同，两条路独立、不耦合：
 
    ```bash
    wx-mp-engagement fetch-all
    ```
    > ⚠️ 不要调 `published-track fetch-metrics --platform wx_mp`——该子命令对 wx_mp 直接 exit 1 报错提示走 wx-mp-engagement。两条链路独立维护，避免机制错配。
 
-4. **微信视频号 (wx_channel)** —— **走 `expert-wx-channel` 包内 `wx-channel-engagement` 工具**（PATH wrapper 同名），camoufox 抓视频号助手后台方案，与 wx_mp 同源（camoufox + 解析 innerText）、与第 1 条三个纯 HTTP+cookie 平台机制完全不同，两条路独立、不耦合：
+4. **微信视频号 (wx_channel)** —— **走 `expert-wx-channel` 包内 `wx-channel-engagement` 工具**（PATH wrapper 同名），camoufox 抓视频号助手后台方案，与 wx_mp 同源（camoufox + 解析 innerText）、与第 1 条 douyin 的纯 HTTP+cookie 链路机制完全不同，两条路独立、不耦合：
 
    ```bash
    wx-channel-engagement fetch-all
    ```
    > ⚠️ 不要调 `published-track fetch-metrics --platform wx_channel`——该子命令对 wx_channel 直接 exit 1 报错提示走 wx-channel-engagement。两条链路独立维护，避免机制错配。
 
-5. **其他平台**(如有) —— 除 douyin / xhs / kuaishou / bilibili / wx_mp / wx_channel 外，其他平台暂不支持自动取数，直接跳过。
+5. **其他平台**（kuaishou / bilibili 等）—— **不在取数范围**。自动取数仅覆盖完全支持 Expert 架构的 4 个平台（douyin / xhs / wx_mp / wx_channel）；kuaishou / bilibili 等其余平台只保留发布记录（`record` / `query` 照常支持），**不抓互动数据**，直接跳过，不要尝试任何取数动作。
 
 ##### 取数时效窗口
 
 **发布超过 30 天的内容不再每天抓取互动数据**——数据已稳定，边际变化可忽略，反复抓只浪费配额/增加风控暴露。按平台类型：
 
 - **camoufox 后台方案**（xhs / wx_mp / wx_channel）：`fetch-all` **永远只打开并解析后台列表首页，不翻页**——首页本身就是天然窗口，页内有什么解析什么；首页之外的老作品报 `NOT_ON_FIRST_PAGE` 自然跳过，**这是设计不是 bug**，不要加翻页逻辑去补抓老内容，也不要按天数过滤 DB 行（少操作一次页面就少一次风控暴露）。
-- **纯 HTTP 脚本方案**（bilibili / douyin / kuaishou）：Step 1 查询时加 `publish_date >= date('now', '-30 days')` 过滤，超过 30 天的行直接跳过不调 `published-track fetch-metrics`。
+- **纯 HTTP 脚本方案**（douyin）：Step 1 查询时加 `publish_date >= date('now', '-30 days')` 过滤，超过 30 天的行直接跳过不调 `published-track fetch-metrics`。
 
 **DNA 评估（Step 3）不受此限**
 

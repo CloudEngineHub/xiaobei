@@ -33,17 +33,9 @@ extract_content_id() {
   local url="$2"
 
   case "$platform" in
-    bilibili)
-      # https://www.bilibili.com/video/BVxxxxx → BVxxxxx
-      echo "$url" | sed -n 's|.*/video/\(BV[^/?]*\).*|\1|p'
-      ;;
     douyin)
       # https://www.douyin.com/video/1234567890 → 1234567890
       echo "$url" | sed -n 's|.*/video/\([0-9]*\).*|\1|p'
-      ;;
-    kuaishou)
-      # https://www.kuaishou.com/short-video/xxx 或 /video/xxx
-      echo "$url" | sed -n 's|.*/short-video/\([^/?]*\).*|\1|p; s|.*/video/\([^/?]*\).*|\1|p'
       ;;
     *)
       echo ""
@@ -56,10 +48,13 @@ extract_content_id() {
 # 脚本支持的平台（fetch-retro-data.ts 能处理的）
 # 2026-08-22：xhs 移出——走 xhs-engagement 技能（camoufox creator 后台方案），
 # 与 wx_mp/wx_channel 同模式，见下方平台路由
-SCRIPT_PLATFORMS="bilibili douyin kuaishou"
+# 2026-09-16：bilibili / kuaishou 移出——自动取数范围收窄为完全支持 Expert 架构的
+# 4 个平台（douyin 走本脚本；xhs/wx_mp/wx_channel 走各自专家包的 engagement 工具），
+# bilibili/kuaishou 只保留发布记录/查询，不抓互动数据，见下方平台路由
+SCRIPT_PLATFORMS="douyin"
 
 # 需要 cookie 的平台
-COOKIE_PLATFORMS="douyin kuaishou"
+COOKIE_PLATFORMS="douyin"
 
 # 只能手动提供数据的平台
 # Phase 4.6：wx_mp 已接入 wx-mp-engagement skill 自动抓取，移出手动列表
@@ -93,15 +88,23 @@ fi
 LM_PLATFORM="$PLATFORM"
 case "$LM_PLATFORM" in
   douyin)     PLATFORM_HOME="https://www.douyin.com/" ;;
-  bilibili)   PLATFORM_HOME="https://www.bilibili.com/" ;;
-  kuaishou)   PLATFORM_HOME="https://www.kuaishou.com/" ;;
   *)          PLATFORM_HOME="" ;;
 esac
 
 # ─── 平台路由 ──────────────────────────────────────────────────────────────
 
+# bilibili / kuaishou **不走本脚本**——2026-09-16 起自动取数范围收窄为完全支持
+# Expert 架构的 4 个平台（douyin 走本脚本；xhs/wx_mp/wx_channel 走各自专家包的
+# engagement 工具）。bilibili/kuaishou 只保留发布记录/查询，不自动抓互动数据。
+case "$PLATFORM" in
+  bilibili|kuaishou)
+    echo "{\"ok\":false,\"error\":\"PLATFORM_OUT_OF_FETCH_SCOPE\",\"platform\":\"$PLATFORM\",\"hint\":\"自动取数仅覆盖完全支持 Expert 架构的 4 个平台（douyin/xhs/wx_mp/wx_channel）。bilibili/kuaishou 不做自动取数，发布记录与查询照常支持\"}"
+    exit 1
+    ;;
+esac
+
 # wx_mp（微信公众号）**不走本脚本**——它走 camoufox 抓创作者中心的方案，
-# 与 bilibili/douyin/kuaishou 的纯 HTTP+cookie 链路完全不同，
+# 与 douyin 的纯 HTTP+cookie 链路完全不同，
 # 由 expert-wx-mp 专家包内的 wx-mp-engagement 工具独立承担（agent 直调 wx-mp-engagement wrapper）。
 # 见 crews/main/HEARTBEAT.md Step 2 与 crews/main/skills/expert-wx-mp/tools/wx-mp-engagement/SKILL.md。
 if [ "$PLATFORM" = "wx_mp" ]; then
@@ -118,7 +121,7 @@ if [ "$PLATFORM" = "xhs" ]; then
 fi
 
 # wx_channel（微信视频号）**不走本脚本**——它走 camoufox 抓视频号助手后台的方案，
-# 与 bilibili/douyin/kuaishou 的纯 HTTP+cookie 链路完全不同，
+# 与 douyin 的纯 HTTP+cookie 链路完全不同，
 # 由 expert-wx-channel 专家包内的 wx-channel-engagement 工具独立承担（agent 直调同名 wrapper）。
 # 见 crews/main/HEARTBEAT.md Step 2 与 crews/main/skills/expert-wx-channel/tools/wx-channel-engagement/SKILL.md。
 if [ "$PLATFORM" = "wx_channel" ]; then
@@ -288,9 +291,8 @@ if (!data.ok) { console.log('__fetch_failed__:' + (data.error || 'UNKNOWN') + ':
 const stats = data.stats || {};
 const args = [];
 const mapping = {
-  // viewCount → 'plays'：pub_bilibili / pub_kuaishou 的播放列叫 plays（非 views）。
-  // 此 mapping 仅对 SCRIPT_PLATFORMS=bilibili/douyin/kuaishou 生效，其中
-  // bili/kuaishou 返回 viewCount 且 DB 列为 plays；douyin 返回 playCount，均不受影响。
+  // viewCount → 'plays' 等通用映射保留（fetch-retro-data.ts 可能返回多种键名）；
+  // 当前 SCRIPT_PLATFORMS 仅 douyin，返回 playCount → plays。
   viewCount: 'plays', plays: 'plays', playCount: 'plays', views: 'views',
   likeCount: 'likes', likes: 'likes',
   commentCount: 'comments', comments: 'comments',

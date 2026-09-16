@@ -39,7 +39,7 @@ case "$cmd" in
 子命令:
   record                 发布记录入库（upsert；自动读 dna-meta.json 落 dna_id）
   update-metrics         更新单条/同 folder 记录的互动指标
-  fetch-metrics          探活→API 抓取→写库（xhs/bilibili/douyin/kuaishou；wx_mp/wx_channel 不走这里）
+  fetch-metrics          探活→API 抓取→写库（仅 douyin；xhs/wx_mp/wx_channel 走各专家包 engagement 工具）
   query                  通用查询（--platform [--limit]）
   query-pending          查询待分发内容
   check-published        查某作品是否已发布
