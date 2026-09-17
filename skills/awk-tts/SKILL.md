@@ -16,21 +16,13 @@ metadata:
 
 火山 openspeech v3 单向流式 + 百炼 SpeechSynthesizer 双后端，凭据自动路由。
 
-## 优先级约定（强制）
-
-**优先使用 OpenClaw 内置 TTS 工具**（`tts_generate` 或 agent 内置语音合成能力）。
-
-OpenClaw 内置 TTS 不可用时，回退到本 skill 的本地脚本。
-
-> 即：本 skill 的 `scripts/tts.py` 是 **fallback 路径**，不应首选。调用方在 SKILL.md 里描述 TTS 环节时，须照此优先级写明，不许把本脚本写成第一选择。
-
 ## 供应商路由（脚本内部，凭据在哪家走哪家）
 
 | 优先级 | 供应商 | 触发凭据 | 模型/资源 |
 |--------|--------|---------|-----------|
 | 1 | 火山豆包语音合成 2.0 | `VOLC_TTS_APP_ID`+`VOLC_TTS_ACCESS_KEY`（旧双头）或 `VOLC_TTS_APP_KEY`（新单头） | `seed-tts-2.0`（克隆音色 `S_xxx` 自动路由 `seed-icl-2.0`） |
 | 2 | 百炼业务空间 | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` | `qwen-audio-3.0-tts-plus` → `qwen-audio-3.0-tts-flash` 候选链 |
-| 3 | 百炼 agent plan | `AWK_API_KEY`（token-plan 端点） | 同上 |
+| 3 | 百炼 agent plan | `AWK_API_KEY`（token-plan 端点） | 仅 `qwen-audio-3.0-tts-plus` |
 
 - 百炼候选链自动 fallback（模型未开通/未找到切下一个）；`--model` 显式指定关闭 fallback（仅百炼生效）。
 - 百炼默认音色 `longanhuan_v3.6`；传了火山系音色 ID 会警告并换默认音色。
