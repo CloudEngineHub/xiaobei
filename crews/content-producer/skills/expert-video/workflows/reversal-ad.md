@@ -73,7 +73,7 @@ GATE A 交审脚本时必须附四问答案（`script-self-eval` 同查）：
 
 来源模式只允许以下四类（含混合），每段素材都必须能追溯到来源模式与授权记录：
 
-1. **open_license_footage**：首选 **Blender 开源电影**——官网直链 `studio.blender.org/films/…`，无需登录，协议均为 CC BY。已验证可用片库：Spring / Sintel / Caminandes 系列 / Tears of Steel / Big Buck Bunny / Coffee Run。逐部记录原片 URL、许可证与署名要求；**发布简介必须带原片署名**——署名文案写入 `final-deliver.md` 交甲方并入发布说明。片库以外的片源逐案核实许可证允许商用与改编，不得把"网上能下载"等同于可用。
+1. **open_license_footage**：首选 **Blender 开源电影**——官网直链 `studio.blender.org/films/…`，无需登录，协议均为 CC BY。片库实测状态（2026-09 核验）：Big Buck Bunny / Sintel / Tears of Steel / Agent 327 官方直链可下；**Caminandes 部分集数直链已 404、Coffee Run 需登录 cloud.blender.org（302）**——选片前先 curl 探测直链可用性再定片，不要默认全片库可下。逐部记录原片 URL、许可证与署名要求；**发布简介必须带原片署名**——署名文案写入 `final-deliver.md` 交甲方并入发布说明。片库以外的片源逐案核实许可证允许商用与改编，不得把"网上能下载"等同于可用。
 2. **user_provided**：用户直供现成影视片段。入库**三查**：① `ffprobe` 全片 decode 校验（整片解码，不只读文件头，防尾部损坏）；② 记录分辨率、帧率、时长、音轨；③ 来源与授权背景向用户确认，原样记入 `final-deliver.md`。署名按用户提供的信息如实标注，不猜测、不做授权背书；版权风险由甲方确认承担，我只做技术处理。入库副本落 `raw_materials/`。
 3. **aigc**：按 Brief 风格边界生成（公共 `aigc-video-gen`）。**每段 3–15s**；prompt 必须含**画面描述 + 音频描述**——AIGC 声画同出，源文件自带音频可作环境音床（见护栏 5）。产物存 `<project-dir>/generations/`（天然满足 `aigc-video-gen` 的 `output_videos/` 路径约束），每段附 metadata（prompt、模型、生成时间）。发布时按平台要求勾「AI 生成」标注——标注要求写入 `final-deliver.md` 交甲方。
 4. **mixed**：以上混合，每段素材独立追溯到各自的模式与授权记录。
@@ -108,7 +108,7 @@ GATE A 交审脚本时必须附四问答案（`script-self-eval` 同查）：
 ## 制作护栏
 
 1. **规格一次锁定**：横竖屏、目标时长、分辨率与帧率由 Brief 决定；不为"看起来高级"擅自放大素材。需要统一规格时先确认素材源质量与环境约束，再写入 timeline 计划与决策日志。
-2. **帧率一致性**：混排来源素材时先确认各段帧率；不一致必须在切片时用 `clip-trim --normalize WxH@FPS` 统一（或 `assemble` 归一化参数），不得不同帧率直接 concat 交付。拼接一律带 `assemble --verify-fps`（断言成片帧率）+ `--expect-durations`（逐段时长 vs 计划 ± 容差），输出后核对音画同步与段边界。
+2. **帧率一致性**：混排来源素材时先确认各段帧率；不一致必须在切片时用 `clip-trim --normalize WxH@FPS` 统一（或 `assemble` 归一化参数），不得不同帧率直接 concat 交付。拼接一律带 `assemble --verify-fps`（断言成片帧率）+ `--expect-durations`（逐段时长 vs 计划 ± 容差），输出后核对音画同步与段边界。AIGC 生成片段的帧率由生成端决定、无 CLI 参数指定（实测 24fps）——含 AIGC 段的混排，规划期就按最低公共帧率预判统一规格并写进 timeline 计划（Brief 素材清单注明了各源帧率），不要等 assemble 才发现主素材被拉低。
 3. **旁白排布**：逐句 TTS 模式（解说/反转植入类默认）走 `narration-layout`——实测镜头时长累积起点、每句对齐镜头起点、防重叠守卫（min_gap）、逐句与末句越界断言、SRT 与混音一步产出；**守卫断言失败改计划（镜头时长/文案），不放宽容差硬过，更不手写排布脚本**。整段旁白模式走 `mix-audio` + `narration-align` 的实测时长 / 字级时间戳。两种模式都不用文本长度估算；每句旁白不得越过对应镜头边界（确需跨镜的桥句在 plan 里显式 `allow_spill`）；连续旁白保留呼吸间隔，累计漂移可追溯到 `audio/abs_starts.json` 的每段实测时长。
 4. **字幕安全区**：`subtitles.srt` 必须来自对齐后的解说时间轴；烧录前检查目标画幅安全区，避免字幕落到画面中部或关键主体上。字幕样式由 Brief 决定，不硬编码项目个案参数。
 5. **AIGC 原声**：AIGC 声画同出素材如含有效环境音，可作低音量音床并在口播下 ducking；无有效音轨时补静音，不用噪声填充。

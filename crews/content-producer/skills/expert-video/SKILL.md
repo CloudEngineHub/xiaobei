@@ -176,6 +176,15 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 - 技术故障（缺 key、依赖缺失、渲染报错）按 Dispatch Protocol spawn IT engineer，不静默卡死
 - **决策审计链**：每个选择（路径 / 模型 / 风格 / 音色 / 任何 fallback）记 `备选 + 置信度 + 理由`，跨阶段累积进 `script/decisions.json`
 
+### 改片（定向修改）约定
+
+甲方拿着已交付成片提修改（改画面、补元素、换段重做等）时，委托会以**成片修改单**格式到达（v1 路径 / 修改点 / 不动范围 / 验收 / 回滚要求）：
+
+- **定向重做，不推倒重建**：只重跑受影响的段，未涉及段沿用 v1 已终审产物；修改范围外的旁白 / 字幕 / BGM 时间轴零改动。
+- **保留上一版（强制）**：v1 成片先备份为 `artifacts/video_v1_backup.mp4`（vN 同理 `video_vN_backup.mp4`），v1/v2 并存，不覆盖交付历史。
+- 交付说明（`final-deliver.md`）增补**「修改记录」段**：修改点逐条、重做了哪些段、自检结果（video-review / motion-audit / normalize 照常跑）。
+- 修改单缺项（没写不动范围 / 没写验收）时先向甲方澄清，不自猜边界。
+
 ## Stage 12 工具箱（场景化组合，不写死顺序）
 
 原子子命令（`clip-trim` / `audio-mix` / `timeline-compose` / `scene-compose` / `assemble` / `add-silent-audio` / `make-outro`）的入参与产物见 `video-producer` 工具说明。下面只给组合套路：
