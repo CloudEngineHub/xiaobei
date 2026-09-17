@@ -87,7 +87,7 @@ def main() -> None:
             "query": "（API 搜索关键词，英文给 pexels/pixabay）",
             "tone_params": {"slot_duration": tone_cfg["shot_duration"]},
             "hero_slot": False,
-            "fallback": "静图（siliconflow-img-gen）",
+            "fallback": "静图（awk-img-gen）",
         },
     }
     plan_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")

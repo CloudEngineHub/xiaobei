@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
-"""火山方舟 Seedream 图像生成（Phase 5 — D13 决策：img-gen Key 用户自带）
+"""阿里云百炼图像生成/编辑（awk-img-gen）— stdlib only.
 
-替代原 SiliconFlow (Qwen) 生图路径。改调火山方舟 Ark 平台
-`/api/v3/images/generations` 端点（不是 `/api/coding/v3`，后者是 LLM 编码
-路径；图像生成走标准推理 `/v3`）。
+Provider 收敛（2026-09 拍板）：SiliconFlow（skill 旧名残留）→ 火山 Seedream（Phase 5）→ 阿里云百炼（现在）。
 
-API key 走用户自带 `AWK_GEN_KEY` 环境变量（纯客户端，不入 server）。
+双模式（resolve_mode）：
+  - 业务空间：WORKSPACE_ID 配置时优先 → https://{wsid}.cn-beijing.maas.aliyuncs.com/api/v1
+    key = MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY
+    模型候选链：qwen-image-3.0-pro → qwen-image-3.0 → qwen-image-2.0-pro-2026-06-22
+  - agent plan：否则 → https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1
+    key = AWK_API_KEY
+    模型候选链：wan2.7-image-pro → wan2.7-image
 
-支持模型：
-  - doubao-seedream-4.5（默认，主力）
-  - doubao-seedream-5.0-lite（fallback：主力不可用时自动切换）
-  - doubao-seedream-3-0-t2i-250415（3.0 旧版，纯文生图，需 --model 显式指定）
+同步接口：POST {base}/services/aigc/multimodal-generation/generation
+请求体（DashScope messages 风格，单轮，input_audio 家族同款端点）：
+  {model, input:{messages:[{role:"user",
+     content:[{image:<url|data-uri>}×1-3（编辑模式）, {text:<prompt>}]}]},
+   parameters:{size?, seed?, watermark, prompt_extend}}
+响应：output.choices[0].message.content[*].image 为图片 URL（24h 有效），下载落盘。
 
-参考：https://www.volcengine.com/docs/82379/1541523
+参考：docs.bailian.console.aliyun.com「千问-图像生成与编辑 3.0 / qwen-image 2.0」
+与 modelstudioai/cli packages/core/src/client/image-routes.ts（sync-multimodal 家族）。
 """
 import argparse
+import base64
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -23,137 +32,172 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
-# ── 常量 ─────────────────────────────────────────────────────────────────────
+# ── 端点与模型 ────────────────────────────────────────────────────────────────
 
-API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
+WS_BASE_TEMPLATE = "https://{wsid}.cn-beijing.maas.aliyuncs.com/api/v1"
+AGENT_PLAN_BASE = "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
+GEN_PATH = "/services/aigc/multimodal-generation/generation"
 
-# 火山方舟支持的 model 列表
-# 主力 doubao-seedream-4.5；fallback doubao-seedream-5.0-lite（主力不可用时自动切换）
-DEFAULT_GEN_MODEL = "doubao-seedream-4.5"
-DEFAULT_EDIT_MODEL = "doubao-seedream-4.5"  # 4.5 支持 image edit
-FALLBACK_MODEL = "doubao-seedream-5.0-lite"
-# 触发 fallback 的 HTTP 状态码（模型未开通 / 未找到 / 配额不足等模型层错误）
-MODEL_UNAVAILABLE_CODES = {400, 403, 404}
-DEFAULT_SIZE = "2048x2048"  # 火山默认 1:1
+# 业务空间模型候选链（主力 → fallback，用户 --model 显式指定时关闭 fallback）
+WS_MODEL_CHAIN = ["qwen-image-3.0-pro", "qwen-image-3.0", "qwen-image-2.0-pro-2026-06-22"]
+# agent plan 模型候选链
+PLAN_MODEL_CHAIN = ["wan2.7-image-pro", "wan2.7-image"]
 
-# 火山 size 校验（方式 2：宽x高）
-# - 总像素范围 [2560x1440=3686400, 4096x4096=16777216]
-# - 宽高比范围 [1/16, 16]
-MIN_TOTAL_PIXELS = 2560 * 1440  # 3686400
-MAX_TOTAL_PIXELS = 4096 * 4096  # 16777216
-MIN_ASPECT_RATIO = 1 / 16
-MAX_ASPECT_RATIO = 16
+# 触发候选链 fallback 的 HTTP 状态码（模型未开通 / 未找到 / 无权限）
+MODEL_UNAVAILABLE_CODES = {403, 404}
+# 400 需结合 body 判断（可能是模型不存在，也可能是参数错——参数错不 fallback）
+MODEL_ERROR_BODY_HINTS = ("modelnotfound", "model not found", "not exist", "unsupported model", "access denied")
 
-# 火山方式 1：固定 2K/3K/4K
-SIZE_PRESETS_QUALITY = {"2K", "3K", "4K"}
+REQUEST_TIMEOUT = 300
 
-# 推荐的 2K 分辨率（用户用得最多的）
-SIZE_PRESETS_2K = {
-    "2048x2048": "1:1",
-    "2304x1728": "4:3",
-    "1728x2304": "3:4",
-    "2848x1600": "16:9",
-    "1600x2848": "9:16",
-    "2496x1664": "3:2",
-    "1664x2496": "2:3",
-    "3136x1344": "21:9",
+# ── size 校验（qwen-image 系文档：总像素 [512*512, 2048*2048]，宽高比 [1/8, 8]）──
+
+DEFAULT_SIZE = "2048*2048"  # 1:1
+MIN_TOTAL_PIXELS = 512 * 512        # 262144
+MAX_TOTAL_PIXELS = 2048 * 2048      # 4194304
+MIN_ASPECT_RATIO = 1 / 8
+MAX_ASPECT_RATIO = 8
+
+# 推荐尺寸（qwen-image 2.0/3.0 文档推荐值，DashScope 风格 * 分隔）
+SIZE_PRESETS = {
+    "2048*2048": "1:1 (默认)",
+    "2688*1536": "16:9",
+    "1536*2688": "9:16",
+    "2368*1728": "4:3",
+    "1728*2368": "3:4",
 }
 
-RETRYABLE_STATUS_CODES = {403, 404, 429, 500, 503, 504}
+IMAGE_MIME_BY_EXT = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".bmp": "image/bmp", ".tiff": "image/tiff", ".webp": "image/webp",
+}
 
 
-# ── 校验 ─────────────────────────────────────────────────────────────────────
+# ── 模式解析 ─────────────────────────────────────────────────────────────────
+
+def resolve_mode() -> tuple[str, str, list[str], str]:
+    """解析百炼端点模式。返回 (base, api_key, model_chain, mode)。
+
+    优先业务空间（WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY）；
+    WORKSPACE_ID 配了但 key 缺失时打 warning 落到 agent plan；
+    否则 agent plan（AWK_API_KEY）。都不可用时报错退出。
+    """
+    wsid = (os.environ.get("WORKSPACE_ID") or "").strip()
+    if wsid:
+        key = (
+            os.environ.get("MODELSTUDIO_API_KEY")
+            or os.environ.get("DASHSCOPE_API_KEY")
+            or ""
+        ).strip()
+        if key:
+            return WS_BASE_TEMPLATE.format(wsid=wsid), key, WS_MODEL_CHAIN, "workspace"
+        print("[warn] WORKSPACE_ID 已配置但 MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY 缺失，尝试 agent plan", file=sys.stderr)
+    key = (os.environ.get("AWK_API_KEY") or "").strip()
+    if key:
+        return AGENT_PLAN_BASE, key, PLAN_MODEL_CHAIN, "agent-plan"
+    print("[error] 百炼生图凭据未配置：", file=sys.stderr)
+    print("  - 业务空间：WORKSPACE_ID + MODELSTUDIO_API_KEY（或 DASHSCOPE_API_KEY）", file=sys.stderr)
+    print("  - agent plan：AWK_API_KEY（token-plan 端点）", file=sys.stderr)
+    sys.exit(1)
+
+
+# ── size 处理 ────────────────────────────────────────────────────────────────
 
 def _parse_size(size_str: str) -> tuple[int, int] | None:
-    """解析 WxH 字符串。失败返回 None。"""
-    m = re.match(r"^\s*(\d+)\s*[xX×]\s*(\d+)\s*$", size_str)
+    """解析 WxH / W*H / W×H 字符串。失败返回 None。"""
+    m = re.match(r"^\s*(\d+)\s*[xX×*]\s*(\d+)\s*$", size_str)
     if not m:
         return None
     return int(m.group(1)), int(m.group(2))
 
 
-def validate_size(size_str: str) -> str:
-    """校验火山 size 参数；无效报错退出。"""
-    if size_str in SIZE_PRESETS_QUALITY:
-        return size_str
+def normalize_size(size_str: str) -> str:
+    """校验并规范化 size 为 DashScope 风格 'W*H'；'auto' 原样放行；无效报错退出。"""
+    if size_str.strip().lower() == "auto":
+        return "auto"
     parsed = _parse_size(size_str)
     if parsed is None:
-        _print_size_error(size_str, "格式必须是 'WxH' 或 '2K/3K/4K'")
+        _print_size_error(size_str, "格式必须是 'WxH'（或 W*H）或 'auto'")
         sys.exit(1)
     w, h = parsed
     total = w * h
     ratio = w / h if h != 0 else 0
     if total < MIN_TOTAL_PIXELS:
-        _print_size_error(
-            size_str,
-            f"总像素 {total} 低于火山最小值 {MIN_TOTAL_PIXELS}（2560x1440）",
-        )
+        _print_size_error(size_str, f"总像素 {total} 低于百炼最小值 {MIN_TOTAL_PIXELS}（512x512）")
         sys.exit(1)
     if total > MAX_TOTAL_PIXELS:
-        _print_size_error(
-            size_str,
-            f"总像素 {total} 高于火山最大值 {MAX_TOTAL_PIXELS}（4096x4096）",
-        )
+        _print_size_error(size_str, f"总像素 {total} 高于百炼最大值 {MAX_TOTAL_PIXELS}（2048x2048）")
         sys.exit(1)
     if ratio < MIN_ASPECT_RATIO or ratio > MAX_ASPECT_RATIO:
-        _print_size_error(
-            size_str,
-            f"宽高比 {ratio:.4f} 超出火山范围 [{MIN_ASPECT_RATIO:.4f}, {MAX_ASPECT_RATIO}]",
-        )
+        _print_size_error(size_str, f"宽高比 {ratio:.4f} 超出百炼范围 [1/8, 8]")
         sys.exit(1)
-    return size_str
+    return f"{w}*{h}"
 
 
 def _print_size_error(size_str: str, reason: str) -> None:
     print(f"[error] --image-size '{size_str}' 无效：{reason}", file=sys.stderr)
-    print("[info] 合法选项：", file=sys.stderr)
-    print("  方式 1（quality 预设）：2K / 3K / 4K", file=sys.stderr)
-    print("  方式 2（2K 1:1 / 4:3 / 16:9 / 9:16 等）：", file=sys.stderr)
-    for s, r in SIZE_PRESETS_2K.items():
+    print("[info] 推荐尺寸（总像素 512x512 ~ 2048x2048，宽高比 1:8 ~ 8:1）：", file=sys.stderr)
+    for s, r in SIZE_PRESETS.items():
         print(f"    {s} ({r})", file=sys.stderr)
+
+
+# ── 图像引用解析 ──────────────────────────────────────────────────────────────
+
+def resolve_image_ref(value: str) -> str:
+    """把 --image 入参解析为百炼可接受的引用：URL / data URI 原样，本地文件转 data URI。"""
+    if value.startswith(("http://", "https://", "data:")):
+        return value
+    path = Path(value)
+    if not path.is_file():
+        print(f"[error] 参考图不存在: {value}", file=sys.stderr)
+        sys.exit(1)
+    mime = IMAGE_MIME_BY_EXT.get(path.suffix.lower()) or mimetypes.guess_type(str(path))[0] or "image/png"
+    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 
 # ── Payload 构造 ─────────────────────────────────────────────────────────────
 
 def build_payload(args: argparse.Namespace, model: str) -> dict:
-    """构造火山方舟 images/generations 请求体（model 由调用方传入，便于 fallback）。"""
+    """构造百炼 multimodal-generation 请求体（model 由调用方传入，便于候选链 fallback）。"""
+    content: list[dict] = []
+
+    # 编辑模式：1-3 张参考图在前，text 在后（qwen-image 3.0/2.0 与 wan2.7-image 同构）
     is_edit_mode = bool(args.image)
-    payload: dict = {
-        "model": model,
-        "prompt": args.prompt,
-    }
-
-    # 图生图（image / image2 / image3）
     if is_edit_mode:
-        # 火山支持单图或多图（URL / Base64 数组）
-        images = [args.image]
-        if args.image2:
-            images.append(args.image2)
-        if args.image3:
-            images.append(args.image3)
-        payload["image"] = images if len(images) > 1 else images[0]
-    else:
-        # 文生图：size 必填（火山默认 2048x2048）
-        size = args.image_size or DEFAULT_SIZE
-        payload["size"] = validate_size(size)
+        for ref in (args.image, args.image2, args.image3):
+            if ref:
+                content.append({"image": resolve_image_ref(ref)})
 
-    # 可选参数
-    if args.watermark is not None:
-        payload["watermark"] = args.watermark
-    if args.response_format:
-        payload["response_format"] = args.response_format
+    content.append({"text": args.prompt})
+
+    parameters: dict = {
+        "watermark": bool(args.watermark),
+        # 默认关 prompt 改写：封面/海报场景要精确渲染指定文字，扩写会破坏布局指令。
+        # 需要模型自动扩写润色时显式 --prompt-extend。
+        "prompt_extend": bool(args.prompt_extend),
+    }
     if args.seed is not None:
-        payload["seed"] = args.seed
+        parameters["seed"] = args.seed
+    if is_edit_mode:
+        # 编辑模式默认不指定 size（跟随输入图）；显式传了才带上
+        if args.image_size:
+            parameters["size"] = normalize_size(args.image_size)
+    else:
+        parameters["size"] = normalize_size(args.image_size or DEFAULT_SIZE)
 
-    return payload
+    return {
+        "model": model,
+        "input": {"messages": [{"role": "user", "content": content}]},
+        "parameters": parameters,
+    }
 
 
 # ── API 调用 ────────────────────────────────────────────────────────────────
 
 class ImgGenHTTPError(Exception):
-    """火山端 HTTP 错误（携带状态码与响应体，供 main 做 fallback 决策）。"""
+    """百炼端 HTTP 错误（携带状态码与响应体，供 main 做候选链 fallback 决策）。"""
 
     def __init__(self, code: int, body: str) -> None:
         super().__init__(f"HTTP {code}: {body}")
@@ -161,14 +205,25 @@ class ImgGenHTTPError(Exception):
         self.body = body
 
 
-def api_request(payload: dict, api_key: str) -> dict:
-    """调火山方舟 images/generations；返回解析后的 JSON。
+def is_model_unavailable(exc: ImgGenHTTPError) -> bool:
+    """判断 HTTP 错误是否属于"模型层不可用"（可沿候选链 fallback）。
 
-    失败时抛 ImgGenHTTPError（由 main 决定是否 fallback 到备用模型）。
+    403/404 直接算；400 需 body 命中模型类错误关键词（参数错的 400 不 fallback，
+    换模型也一样错，快速失败暴露真实原因）。
     """
-    data = json.dumps(payload).encode("utf-8")
+    if exc.code in MODEL_UNAVAILABLE_CODES:
+        return True
+    if exc.code == 400:
+        lowered = exc.body.lower()
+        return any(hint in lowered for hint in MODEL_ERROR_BODY_HINTS)
+    return False
+
+
+def api_request(url: str, payload: dict, api_key: str) -> dict:
+    """调百炼 multimodal-generation；返回解析后的 JSON。失败抛 ImgGenHTTPError。"""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        API_URL,
+        url,
         data=data,
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -177,165 +232,154 @@ def api_request(payload: dict, api_key: str) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
-        print(f"[error] HTTP {e.code}: {body}", file=sys.stderr)
-        if e.code in RETRYABLE_STATUS_CODES:
-            print(f"[hint] 火山端暂时不可用 (HTTP {e.code})，稍后重试", file=sys.stderr)
         raise ImgGenHTTPError(e.code, body)
+
+
+def extract_image_urls(resp: dict) -> list[str]:
+    """从响应提取图片 URL：output.choices[*].message.content[*].image。"""
+    urls: list[str] = []
+    output = resp.get("output") or {}
+    for choice in output.get("choices") or []:
+        message = choice.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("image"):
+                    urls.append(item["image"])
+        elif isinstance(content, str) and content.startswith("http"):
+            urls.append(content)
+    return urls
 
 
 # ── 图像下载 ────────────────────────────────────────────────────────────────
 
 def download_image(url: str, dest_path: Path) -> None:
-    """下载图片到本地。链接 24h 内有效（按火山文档）。"""
-    req = urllib.request.Request(url, headers={"User-Agent": "wiseflow-img-gen/2.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    """下载图片到本地。链接 24h 内有效（按百炼文档）。"""
+    req = urllib.request.Request(url, headers={"User-Agent": "wiseflow-awk-img-gen/3.0"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
         dest_path.write_bytes(resp.read())
 
 
-def _print_enable_guide(failed_model: str) -> None:
-    """主力 + fallback 模型都不可用时，输出火山后台开通指引（供 Agent 转告用户）。"""
+def _print_enable_guide(mode: str, failed_model: str) -> None:
+    """候选链全部不可用时，输出开通指引（供 Agent 转告用户）。"""
     print("", file=sys.stderr)
-    print(f"[error] 图像生成模型 {failed_model} 不可用。已尝试主力 + fallback 均失败。", file=sys.stderr)
-    print("[guide] 请到火山引擎后台开通视觉模型：", file=sys.stderr)
-    print("  1. 打开 https://console.volcengine.com/ark/", file=sys.stderr)
-    print("  2. 左侧「系统管理」→「开通管理」→「视觉模型」", file=sys.stderr)
-    print("  3. 列表中找到 doubao-seedream-4.5 和 doubao-seedream-5.0-lite，点右侧「开通服务」", file=sys.stderr)
-    print("[guide] 开通页面上方有 CodePlan 免费资源包活动：", file=sys.stderr)
-    print("  doubao-seedream-4.5 送 200 张图，doubao-seedream-5.0-lite 送 50 张图。", file=sys.stderr)
-    print("  ⚠️ 免费额度用光后，除非手动关闭服务，否则进入付费模式（额外付费）。", file=sys.stderr)
-    print("  收费标准参见视觉模型页面。请提醒用户知悉。", file=sys.stderr)
+    print(f"[error] 图像生成模型 {failed_model} 不可用（模式={mode}），候选链已全部尝试。", file=sys.stderr)
+    if mode == "workspace":
+        print("[guide] 请到阿里云百炼控制台检查业务空间模型授权：", file=sys.stderr)
+        print("  1. 打开 https://bailian.console.aliyun.com/", file=sys.stderr)
+        print(f"  2. 确认业务空间（WORKSPACE_ID）已授权模型：{'、'.join(WS_MODEL_CHAIN)}", file=sys.stderr)
+        print("  3. 确认 MODELSTUDIO_API_KEY 属于该业务空间", file=sys.stderr)
+    else:
+        print("[guide] 请检查 Agent Plan（token-plan）订阅：", file=sys.stderr)
+        print(f"  1. 确认订阅包含图像生成能力，模型：{'、'.join(PLAN_MODEL_CHAIN)}", file=sys.stderr)
+        print("  2. 确认 AWK_API_KEY 为百炼 agent plan 的 key（sk-sp-* 形态）", file=sys.stderr)
+    print("[hint] 免 key 实拍图片可退公共技能 pexels-footage / pixabay-footage（非 AI 生成）。", file=sys.stderr)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="火山方舟 Seedream 图像生成（text-to-image / image-edit）"
+        description="阿里云百炼图像生成/编辑（业务空间 qwen-image / agent plan wan2.7-image）"
     )
-    parser.add_argument("--prompt", required=True, help="图像描述（≤300 汉字 / 600 英文）")
+    parser.add_argument("--prompt", required=True, help="图像描述（要渲染的文字直接写完整句子）")
     parser.add_argument(
         "--model", default=None,
-        help="Model ID（默认 doubao-seedream-4.5，主力不可用时自动 fallback 到 doubao-seedream-5.0-lite；"
-             "显式指定时不 fallback）",
+        help="Model ID（缺省按模式走候选链自动 fallback；显式指定时不 fallback）",
     )
     parser.add_argument(
         "--image-size", default=None, dest="image_size",
-        help="文生图尺寸。方式 1: 2K/3K/4K；方式 2: WxH（如 2048x2048）",
+        help="尺寸：'WxH'（如 2048x2048，总像素 512²~2048²）或 'auto'；缺省 2048x2048",
     )
-    parser.add_argument("--seed", type=int, default=None, help="随机种子 (0-?)")
+    parser.add_argument("--seed", type=int, default=None, help="随机种子 [0, 2147483647]")
     parser.add_argument(
         "--watermark", choices=["true", "false"], default="false",
-        help="是否加水印（火山默认 true；wiseflow 默认 false 避免后续 image 工具处理）",
+        help="是否加水印（百炼默认 false；xiaobei 保持 false 避免后续 image 工具处理）",
     )
     parser.add_argument(
-        "--response-format", default="url", dest="response_format",
-        choices=["url", "b64_json"],
-        help="返回格式：url（火山默认，链接 24h 有效）/ b64_json",
+        "--prompt-extend", action="store_true", dest="prompt_extend",
+        help="允许百炼自动扩写 prompt（API 默认开；本脚本默认关，保证封面文字/布局指令精确）",
     )
-    # image-edit inputs（火山 image 字段支持 URL 或 Base64）
-    parser.add_argument("--image", default=None, help="源图 URL 或 Base64（启用图生图）")
-    parser.add_argument("--image2", default=None, help="第二张参考图（image-edit）")
-    parser.add_argument("--image3", default=None, help="第三张参考图（image-edit）")
+    # image-edit inputs（URL / data URI / 本地文件路径均可）
+    parser.add_argument("--image", default=None, help="参考图 1：URL 或本地路径（启用编辑模式）")
+    parser.add_argument("--image2", default=None, help="参考图 2（编辑模式，多图融合）")
+    parser.add_argument("--image3", default=None, help="参考图 3（编辑模式，多图融合）")
     parser.add_argument("--out-dir", default=None, dest="out_dir", help="输出目录")
     args = parser.parse_args()
 
-    api_key = os.environ.get("AWK_GEN_KEY")
-    if not api_key:
-        print("[error] AWK_GEN_KEY not set（火山方舟 API Key）", file=sys.stderr)
-        sys.exit(1)
+    base, api_key, chain, mode = resolve_mode()
 
-    # watermark 字段火山期望 bool（JSON），从字符串转
+    # watermark 字段百炼期望 bool（JSON），从字符串转
     args.watermark = args.watermark == "true"
 
     ts = int(time.time())
     out_dir = Path(args.out_dir) if args.out_dir else Path(f"./tmp/awk-img-{ts}")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 候选模型：用户显式 --model 时不 fallback；否则主力 → fallback
+    # 候选模型：用户显式 --model 时不 fallback；否则按模式走候选链
+    candidates = [args.model] if args.model else list(chain)
     is_edit_mode = bool(args.image)
-    if args.model:
-        candidates = [args.model]
-    else:
-        default_model = DEFAULT_EDIT_MODEL if is_edit_mode else DEFAULT_GEN_MODEL
-        candidates = [default_model, FALLBACK_MODEL] if default_model != FALLBACK_MODEL else [default_model]
+    gen_mode = "image-edit" if is_edit_mode else "text-to-image"
 
-    mode = "image-edit" if is_edit_mode else "text-to-image"
-
-    result: Optional[dict] = None
-    last_code: Optional[int] = None
+    url = f"{base}{GEN_PATH}"
+    result: dict | None = None
     for idx, cand_model in enumerate(candidates):
         payload = build_payload(args, cand_model)
-        print(f"[info] Mode={mode} model={cand_model} size={payload.get('size', '-')}", file=sys.stderr)
+        size = (payload.get("parameters") or {}).get("size", "-")
+        print(f"[info] Mode={gen_mode} provider={mode} model={cand_model} size={size}", file=sys.stderr)
         try:
-            result = api_request(payload, api_key)
+            result = api_request(url, payload, api_key)
             break
         except ImgGenHTTPError as e:
-            last_code = e.code
+            print(f"[error] HTTP {e.code}: {e.body[:500]}", file=sys.stderr)
             is_last = idx == len(candidates) - 1
-            if e.code in MODEL_UNAVAILABLE_CODES and not is_last:
-                print(f"[warn] model {cand_model} 不可用 (HTTP {e.code})，切换 fallback...", file=sys.stderr)
+            if is_model_unavailable(e) and not is_last:
+                print(f"[warn] model {cand_model} 不可用 (HTTP {e.code})，切换候选链下一个...", file=sys.stderr)
                 continue
-            # 非模型层错误（5xx/429）或已是最后一个候选：直接失败
-            if e.code in MODEL_UNAVAILABLE_CODES:
-                _print_enable_guide(cand_model)
+            if is_model_unavailable(e):
+                _print_enable_guide(mode, cand_model)
             sys.exit(1)
 
     if result is None:
-        # 所有候选都失败（理论上上面 sys.exit 已退出，保险）
-        _print_enable_guide(candidates[-1])
+        _print_enable_guide(mode, candidates[-1])
         sys.exit(1)
 
-    # 火山响应：{ created, data: [{url, b64_json, size}], usage, ... }
-    data = result.get("data", [])
-    if not data:
-        print(f"[error] No images in response: {result}", file=sys.stderr)
+    # 百炼响应：output.choices[0].message.content[*].image → URL（24h 有效）
+    image_urls = extract_image_urls(result)
+    if not image_urls:
+        print(f"[error] 响应中无图片 URL: {json.dumps(result, ensure_ascii=False)[:800]}", file=sys.stderr)
         sys.exit(1)
 
-    # 检查每张图
-    images: list[tuple[int, dict]] = []
-    for i, item in enumerate(data):
-        if "error" in item:
-            print(f"[error] image[{i}] 生成失败: {item['error']}", file=sys.stderr)
-            continue
-        images.append((i, item))
-
-    if not images:
-        print("[error] 所有图片都生成失败，response 见上", file=sys.stderr)
-        sys.exit(1)
-
-    # 下载
     prompts_map: dict = {}
-    for i, item in images:
-        url = item.get("url", "")
-        if not url:
-            print(f"[error] image[{i}] 无 url 字段: {item}", file=sys.stderr)
-            continue
-        # 火山默认 jpeg；可通过 output_format 改 png
-        ext = "jpg"
-        dest = out_dir / f"{i:02d}.{ext}"
+    for i, image_url in enumerate(image_urls):
+        dest = out_dir / f"{i:02d}.png"
         print(f"[info] Downloading image {i} → {dest}", file=sys.stderr)
-        download_image(url, dest)
-        prompts_map[str(i)] = {"prompt": args.prompt, "url": url, "file": str(dest), "size": item.get("size", "")}
+        download_image(image_url, dest)
+        prompts_map[str(i)] = {
+            "prompt": args.prompt,
+            "model": result.get("model", candidates[0] if not args.model else args.model),
+            "provider_mode": mode,
+            "url": image_url,
+            "file": str(dest),
+        }
 
     (out_dir / "prompts.json").write_text(json.dumps(prompts_map, ensure_ascii=False, indent=2))
 
     # 简单 HTML gallery
     gallery_html = ["<!DOCTYPE html><html><body>"]
-    for i, _ in images:
-        gallery_html.append(f'<img src="{i:02d}.jpg" style="max-width:512px;margin:4px">')
+    for i in range(len(image_urls)):
+        gallery_html.append(f'<img src="{i:02d}.png" style="max-width:512px;margin:4px">')
     gallery_html.append("</body></html>")
     (out_dir / "index.html").write_text("\n".join(gallery_html))
 
-    # 用量
-    usage = result.get("usage", {})
-    generated = usage.get("generated_images", len(images))
-    print(f"[done] {len(images)} image(s) saved to {out_dir}/ (usage: generated={generated})", file=sys.stderr)
+    usage = result.get("usage") or {}
+    print(f"[done] {len(image_urls)} image(s) saved to {out_dir}/ (usage: {json.dumps(usage, ensure_ascii=False)})", file=sys.stderr)
     for k, v in prompts_map.items():
-        print(f"  [{k}] {v['file']} ({v['size']})", file=sys.stderr)
+        print(f"  [{k}] {v['file']}", file=sys.stderr)
 
 
 if __name__ == "__main__":

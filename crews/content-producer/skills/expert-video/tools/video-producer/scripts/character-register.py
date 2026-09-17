@@ -6,7 +6,7 @@ Usage:
 
 入：project_dir/storyboard/shot_decompose.json（Stage 4）+ script.md（Stage 1 出场人物）
 出：project_dir/characters/registry.json（每个角色 static/dynamic features）
-    + project_dir/characters/<char-id>/front.png + side.png + back.png（调 siliconflow-img-gen）
+    + project_dir/characters/<char-id>/front.png + side.png + back.png（调 awk-img-gen）
 
 三视图：front / side / back 三张同角色不同视角的静照，保证后续镜头里角色机位一致性。
 static features：跨镜不变的（发色/衣着/体型/年龄感）
@@ -57,7 +57,7 @@ def main() -> None:
         "characters": [],
         "instruction": (
             "agent 据 script.md 出场人物 + shot_decompose.json 列出所有出场角色，每个角色填 schema 并调 "
-            "siliconflow-img-gen 生成 front/side/back 三视图落 characters/<char-id>/。"
+            "awk-img-gen 生成 front/side/back 三视图落 characters/<char-id>/。"
             "static features 跨镜不变（发色/衣着/体型/年龄感），dynamic features 随镜变（表情/姿势/光影）。"
             "best_image_selector 走 agent 看 contact sheet 人核，不引 CLIP。"
         ),
@@ -81,7 +81,7 @@ def main() -> None:
     }
     registry_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] registry.json 模板已落：{registry_path}")
-    print(f"[next] agent 填角色 schema + 调 siliconflow-img-gen 生成三视图 → GATE A 文本闸门")
+    print(f"[next] agent 填角色 schema + 调 awk-img-gen 生成三视图 → GATE A 文本闸门")
 
 
 if __name__ == "__main__":

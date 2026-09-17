@@ -116,13 +116,15 @@ Brief 里写 `workflow: collage-broll`，或甲方要"把这句口播做成拼�
 
 主体以黑白半调为主，局部彩色纸张必须服务信息层级，不为彩色而彩色。
 
-### imagegen prompt（Seedream / siliconflow-img-gen）
+### imagegen prompt（awk-img-gen / 百炼）
 
 ```bash
-siliconflow-img-gen --prompt "<下面整段>" --image-size 1600x2848 --out-dir <project>/render/<item-slug>/frames/
+awk-img-gen --prompt "<下面整段>" --image-size 1536x2688 --out-dir <project>/render/<item-slug>/frames/
 ```
 
-Prompt 用英文（Seedream 对英文响应更好），整段落 `script/imagegen-prompts.md` 留档：
+> 尺寸注意：百炼上限总像素 2048×2048，旧火山 9:16 预设 `1600x2848` 超限会被脚本拒绝；9:16 一律用 `1536x2688`。
+
+Prompt 语言：下面模板是英文可照用；qwen-image / wan2.7 中文同样好，**要渲染的文字必须原句完整写入**（见 awk-img-gen 封面最佳实践）。整段落 `script/imagegen-prompts.md` 留档：
 
 ```text
 Use case: ads-marketing
@@ -136,7 +138,7 @@ Constraints: [本条隐喻必须一眼看懂的关系].
 Avoid: no typography, no readable letters, no numerals, no logos, no watermark, no UI, no subtitles, no glossy 3D, no photoreal environment, no clutter.
 ```
 
-Seedream 不支持参考图锁风格，"同设计语言"靠同一批复用同一 `style_signature` 字串 + 同一 `color_field` 范围。
+同设计语言：优先用 awk-img-gen 参考图编辑（`--image` 传同批已过 QA 的静帧，1–3 张）锁风格；不用参考图时靠同一批复用同一 `style_signature` 字串 + 同一 `color_field` 范围。
 
 ### 静帧 QA
 
@@ -263,7 +265,7 @@ video-review render/<item>/gen-runs/run-v01/final-5s-noaudio.mp4
 ├── script/
 │   ├── script.md                  # Phase 1 隐喻清单（本类型的"分场剧本"）
 │   ├── visual-spec.json           # Phase 2 视觉规格
-│   ├── imagegen-prompts.md        # Seedream prompt 留档
+│   ├── imagegen-prompts.md        # imagegen prompt 留档
 │   └── decisions.json             # 决策审计链
 ├── gates/
 │   ├── gate-a.md / gate-b.md      # 闸门批准记录（含批准人与批准范围）

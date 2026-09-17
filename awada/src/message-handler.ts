@@ -247,7 +247,7 @@ async function _dispatchAwadaEvent(entry: AwadaDebounceEntry): Promise<void> {
     conversation_id: meta.conversation_id,
   });
 
-  // ---- Handle audio: transcribe via SiliconFlow, then treat as text ----
+  // ---- Handle audio: transcribe via ASR 路由（火山→百炼），then treat as text ----
   let audioTranscript = "";
   for (const audio of audios) {
     const audioUrl = audio.file_url;

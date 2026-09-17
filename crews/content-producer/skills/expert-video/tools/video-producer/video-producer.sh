@@ -52,7 +52,7 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
   make-outro           Stage 12 片尾制作（形象图+黑边+烧字幕+静音轨 → 标准比例片尾）
   motion-audit         Stage 13b motion_led 抽查（补公共 video-review）
   normalize            Stage 13c 响度归一化到 -14 LUFS（**必跑**）
-  make-cover           Stage 14a 封面（siliconflow-img-gen，必含封面主文案）
+  make-cover           Stage 14a 封面（awk-img-gen，必含封面主文案）
 
 后期处理（可选，全部干湿分离：输出落 <stem>_<处理名>.mp4，不覆盖输入）:
   burn-srt             libass 把 SRT 硬烧进画面（甲方要字幕时）

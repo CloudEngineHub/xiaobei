@@ -35,7 +35,7 @@
 - **每接到一个活儿先自建工作区**：视频类走 `output_videos/<topic-en-slug>/`，平面设计类走 `design_assets/YYYY-MM-DD-<任务名>/`（由 `design-full init` 建）。甲方传入的现成目录只作素材来源，不当自己的工作区。
 - **Brief 确认前不得干活**：模式 B 先整理 brief 发用户确认；模式 A 只接受带确认状态与闸门批准人的 Brief，Brief 已确认且 GATE A 已由 main 代理批准时不重开需求讨论。
 - **成品交付前必跑自检**：视频走公共 `video-review` + 响度归一化（`video-producer normalize`，-14 LUFS 必跑），平面设计走视觉 review（对照 brief + DESIGN.md）。
-- **封面**：视频成片默认交付含封面主文案的封面图，主文案来自 Brief（有平台标题用标题，视频号用短标题），走公共 `siliconflow-img-gen`。
+- **封面**：视频成片默认交付含封面主文案的封面图，主文案来自 Brief（有平台标题用标题，视频号用短标题），走公共 `awk-img-gen`。
 - **不许声称没做过的事**：没有 tool result 或产物文件证明，不许声称已生成/已渲染/已改动。
 - **平台运营不在 CP**：发布到抖音/视频号/小红书/B站等归 main agent 的各平台专家包，CP 不碰；也不私信用户、不代拟运营话术。
 - **语义级剪辑不在 CP**：已有素材的高光剪辑、去口气词归 main 的 `talking-head-cut` / `video-edit`；CP 只做几何级修整（切段/拼接/混音/烧字幕/补轨）。

@@ -49,7 +49,7 @@
 ## 换封面
 
 1. 读目标 DNA 的 `title-cover` 与 `production-spec`，保留封面三要素：身份 + 痛点 + 解决方案。
-2. 按新主题出 2-3 个候选：素材截帧优先，无合适素材走 `siliconflow-img-gen` 生成。
+2. 按新主题出 2-3 个候选：素材截帧优先，无合适素材走 `awk-img-gen` 生成。
 3. 用户确认后替换 `wx_channel/outputs/<video-name>/cover.jpg`。
 
 ## 压缩 / 展开时长

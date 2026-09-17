@@ -6,7 +6,7 @@ Usage:
 
 入：project_dir/storyboard/shot_decompose.json + characters/ + slots/asset-resolve.json
 出：project_dir/render/shot-NN/ 下产物：
-    first-frame.png（首帧静照，调 siliconflow-img-gen 生成或素材裁切）
+    first-frame.png（首帧静照，调 awk-img-gen 生成或素材裁切）
     last-frame.png（尾帧静照）
     gen*.mp4（aigc-video-gen i2v 产物，首尾帧插值；实际产出名不固定，gen.mp4 / gen-run-v01.mp4 / gen-v2.mp4 等，assemble 自动识别取最新）
     settings.log
@@ -80,8 +80,8 @@ def main() -> None:
             "variation_type": variation,
             "reference_images": 1 if variation == "static" else 2,
             "calls": [
-                "siliconflow-img-gen → first-frame.png",
-                "siliconflow-img-gen → last-frame.png" if variation != "static" else "(skip, same as first)",
+                "awk-img-gen → first-frame.png",
+                "awk-img-gen → last-frame.png" if variation != "static" else "(skip, same as first)",
                 "aigc-video-gen i2v --first first-frame.png --last last-frame.png → gen-run-v01.mp4",
             ],
         }
@@ -92,7 +92,7 @@ def main() -> None:
         if args.dry_run:
             print(f"  [dry-run] 不真调")
         else:
-            print(f"  [next] agent 调 siliconflow-img-gen + aigc-video-gen 落产物到 {shot_dir}/")
+            print(f"  [next] agent 调 awk-img-gen + aigc-video-gen 落产物到 {shot_dir}/")
 
 
 if __name__ == "__main__":

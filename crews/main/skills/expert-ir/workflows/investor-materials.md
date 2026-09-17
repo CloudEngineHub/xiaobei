@@ -59,7 +59,7 @@
 - 现场路演/拜访场景 → 用演示文稿工具生成 PPTX
 - 用户未指定时，简要介绍两种方式让用户选择
 
-**配图**：优先使用 `siliconflow-img-gen`（16:9），不可用时尝试 `pexels-footage` 或 `pixabay-footage`
+**配图**：优先使用 `awk-img-gen`（16:9），不可用时尝试 `pexels-footage` 或 `pixabay-footage`
 
 ### One-Pager / 投资人备忘录
 

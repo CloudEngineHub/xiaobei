@@ -14,7 +14,7 @@
 
 ## Step 4：素材
 
-页面所需配图 / 背景图 / 参考图：`pexels-footage` / `pixabay-footage` 优先，`siliconflow-img-gen` 备选，全部落 `source/` 并记 `prompts.json`。
+页面所需配图 / 背景图 / 参考图：`pexels-footage` / `pixabay-footage` 优先，`awk-img-gen` 备选，全部落 `source/` 并记 `prompts.json`。
 
 ## Step 5：编写
 

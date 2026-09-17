@@ -205,7 +205,7 @@ Brief 硬性规则：
 ### 图文图组
 
 1. 读取 DNA 的图组视觉与标题封面结论，只取风格边界。
-2. 图片来源优先级：用户素材 → `campaign_assets/` → `siliconflow-img-gen` → `pexels-footage` / `pixabay-footage`。
+2. 图片来源优先级：用户素材 → `campaign_assets/` → `awk-img-gen` → `pexels-footage` / `pixabay-footage`。
 3. 封面必须存在，兑现标题承诺；生成图发用户确认。
 4. 图文建议 3:4 竖版，图片 ≤ 18 张，顺序按信息推进。
 5. 图片与正文分工：图承载证据、过程、对比或清单；文承载判断、细节与行动。
@@ -218,7 +218,7 @@ Brief 硬性规则：
 | 已有素材需简单加工 | main 用 `video-edit` / `talking-head-cut` 处理 |
 | 全案制作 | 委托 `content-producer`：只交 Brief 一份（素材、口播文案 / 录音以绝对路径写在 Brief 内），不指定 CP 工作区；指定 `workflow` 必须采用；未指定时 CP 按其通用制作流程做，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定；Brief 缺失或创意不足以直接写剧本时，CP 会走其 story-develop intake workflow 与 Brief owner 收敛 Brief。成片与封面按 CP 回报的绝对路径取回作品目录 |
 
-视频封面优先从成片选帧；需要更强视觉冲击时用 `siliconflow-img-gen`。
+视频封面优先从成片选帧；需要更强视觉冲击时用 `awk-img-gen`。
 
 ## 【确认】正文与图组 / 成片与封面
 

@@ -14,7 +14,7 @@
 | "剪紧一点 / 去口气词 / 把高光剪出来" | 轻剪层 | `talking-head-cut`（去口气词、结巴、静音，按发言内容剪高光） |
 | "加 BGM / 加字幕 / 补片头片尾 / 插一段素材" | 加工层 | `video-edit`（audio-mix / subtitles / extract / assemble） |
 | "结构调一下 / 把第二段提前 / 换个讲法" | 结构层 | 先出调整方案（新的段落顺序与时点）-> 确认 -> `video-edit` 重剪 |
-| "换个封面" | 封面层 | 成片抽帧或 `siliconflow-img-gen` 按 DNA `production-spec`（画面风格）重做 |
+| "换个封面" | 封面层 | 成片抽帧或 `awk-img-gen` 按 DNA `production-spec`（画面风格）重做 |
 | "换个风格 / 方向不对" | 方向层 | 回到 `content-production.md` 从选题重新走 |
 
 ## 文案层
@@ -44,7 +44,7 @@
 
 1. 用户直接指定封面图 -> 直接使用。
 2. 用户说"从片子里选一帧" -> 抽帧候选给用户挑。
-3. 用户说"重做一张" -> 按 DNA `production-spec`（画面风格）与本次标题/核心收益，用 `siliconflow-img-gen` 生成，用户确认后替换 `cover.jpg`。
+3. 用户说"重做一张" -> 按 DNA `production-spec`（画面风格）与本次标题/核心收益，用 `awk-img-gen` 生成，用户确认后替换 `cover.jpg`。
 
 ## 改完必做
 

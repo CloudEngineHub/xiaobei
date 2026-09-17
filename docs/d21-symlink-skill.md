@@ -132,15 +132,15 @@ login-manager check douyin   # wrapper 在 PATH 中
 | email-ops | scripts/send_email.py | wrapper → py |
 | pexels-footage | scripts/pexels_search.py | wrapper → py |
 | pixabay-footage | scripts/pixabay_search.py | wrapper → py |
-| siliconflow-img-gen | scripts/gen.py | wrapper → py |
+| awk-img-gen | scripts/gen.py | wrapper → py |
 | wxwork-drive | scripts/drive.py | wrapper → py |
 | youtube-publish | scripts/publish_youtube.py | wrapper → py |
 | bilibili-publish | scripts/publish_bilibili.py | wrapper → py |
 | design-system-picker | scripts/pick.sh | wrapper → sh |
 | init-workspace | scripts/init.sh | wrapper → sh |
 | ~~manim-explainer~~ | scripts/render-manim.sh | wrapper → sh（**2026-09-10 技能删除**，wrapper 与 bin 软链由 `expose_skill_wrappers` 的悬挂清理回收） |
-| siliconflow-tts | scripts/tts.py | wrapper → py |
-| siliconflow-video-gen | scripts/gen.py | wrapper → py |
+| awk-tts | scripts/tts.py | wrapper → py |
+| ~~siliconflow-video-gen~~ | scripts/gen.py | wrapper → py（**已删除**，CP 视频生成统一走公共 `aigc-video-gen`） |
 | awada-channel-setup | scripts/apply-awada-config.py | wrapper → py |
 | icp-exemption | scripts/generate_pdf.py | wrapper → py |
 | icp-filing | scripts/icp.sh | wrapper → sh |
@@ -282,7 +282,7 @@ dev plan §Phase 7 续 写"验收"：
 5. `skills/email-ops`
 6. `skills/pexels-footage`
 7. `skills/pixabay-footage`
-8. `skills/siliconflow-img-gen`
+8. `skills/awk-img-gen`
 9. `skills/wxwork-drive`
 10. `crews/main/skills/xhs-publish`
 11. `crews/main/skills/xhs-content-ops`

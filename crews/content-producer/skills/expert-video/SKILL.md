@@ -130,7 +130,7 @@ Stage 7  asset-resolve      按 slot 取素材（Fast path：多源并发搜 + �
 Stage 8  slideshow-risk     六维幻灯风险打分（pre-compose 闸门，≥4.0 fail 不许进 compose）
 Stage 9  delivery-promise-lock 交付承诺八类锁定 + motion_ratio 预估
    ────── GATE B：素材闸门（素材齐+计划过审，停，发甲方看 contact sheet）──────
-Stage 10 render-shot        按 slot 渲染（AIGC 走 aigc-video-gen i2v 首尾帧插值；静图走 siliconflow-img-gen）
+Stage 10 render-shot        按 slot 渲染（AIGC 走 aigc-video-gen i2v 首尾帧插值；静图走 awk-img-gen）
          motion-graphics    Stage 10 第二条渲染路径：程序化逐帧动态图形（声明式 spec，产品段动效/标题动画/
                             录屏圈选；确定性渲染不走 AIGC，与 render-shot 并列按镜头性质二选一）
 Stage 11 mix-audio          配音配乐四场景分流（A 人物对话声画同出 / B 旁白一次性 TTS 带字级时间戳 + 对齐 /
@@ -142,7 +142,7 @@ Stage 12 assemble           按序拼接成片（原子工具箱，见下节，�
 Stage 13a video-review      公共 video-review 技术自检（强制闸门，verdict=pass 才继续）
 Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）
 Stage 13c normalize         响度归一化到 -14 LUFS（**必跑**：`video-producer normalize`）
-Stage 14a make-cover        封面（siliconflow-img-gen，必含封面主文案）
+Stage 14a make-cover        封面（awk-img-gen，必含封面主文案）
 Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对路径与关键参数
 ```
 
@@ -198,9 +198,9 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 | `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `collage-broll` | 纸拼贴 B-roll 的环境自检与 Stage 10 批量 i2v 调度（0 全通 / 1 参数错 / 2 部分失败，只重跑失败条目） | `collage-broll check-setup` / `collage-broll render --batch <render/gen-jobs.json> [--dry-run]` |
 
-跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`siliconflow-img-gen`（静帧、角色三视图、封面，Stage 5/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；`--enable-subtitle` 让火山流式 HTTP 原生返回时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
+跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`awk-img-gen`（静帧、角色三视图、封面，Stage 5/10/14a）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；多供应商路由 火山→百炼，`--enable-subtitle` 两家都出字级时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
 
-env 依赖：`AWK_API_KEY`（静帧 / 视频生成）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。缺 env 时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow`（`motion-graphics` 逐帧绘制）在仓根 `requirements.txt`。系统依赖：`motion-graphics` 需要 Noto Sans SC/CJK 字体（探测 `/usr/share/fonts/opentype/noto-sc` 等候选目录，缺失 exit 2；可用 spec `font_dir` 或 env `MG_FONT_DIR` 覆盖）。机器资源约束（线程数、分辨率上限、低载编码）读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里（`motion-graphics` 默认即低载：nice19/veryfast/crf18/threads2）。
+env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKSPACE_ID`+`MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`（百炼业务空间，优先）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写的火山优先路由；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。ASR/TTS 凭据任一组在即可路由；全缺时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow`（`motion-graphics` 逐帧绘制）在仓根 `requirements.txt`。系统依赖：`motion-graphics` 需要 Noto Sans SC/CJK 字体（探测 `/usr/share/fonts/opentype/noto-sc` 等候选目录，缺失 exit 2；可用 spec `font_dir` 或 env `MG_FONT_DIR` 覆盖）。机器资源约束（线程数、分辨率上限、低载编码）读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里（`motion-graphics` 默认即低载：nice19/veryfast/crf18/threads2）。
 
 ## 禁止事项（强制）
 

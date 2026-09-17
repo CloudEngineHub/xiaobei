@@ -12,7 +12,7 @@ FAIL=0
 ok()   { printf 'PASS  %s\n' "$1"; }
 bad()  { printf 'FAIL  %s\n' "$1"; FAIL=1; }
 
-# 1. AWK_API_KEY（Phase 2 静帧生成要——siliconflow-img-gen / Seedream）
+# 1. 百炼生图凭据（Phase 2 静帧生成要——awk-img-gen：WORKSPACE_ID+MODELSTUDIO_API_KEY 或 AWK_API_KEY）
 if [ -n "${AWK_API_KEY:-}" ]; then
   ok "AWK_API_KEY 已设置（Phase 2 静帧可用）"
 else

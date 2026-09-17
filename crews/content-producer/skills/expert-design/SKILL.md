@@ -45,7 +45,7 @@ metadata:
 
 三条 workflow 共用下方 Step 1/2/3/6/7 骨架，差异只在 brief 必含字段与 Step 4/5。
 
-不适用：视频 / 动画 / 封面图 → `expert-video`（封面走其 Stage 14a）；单张配图生成 → 公共 `siliconflow-img-gen`。
+不适用：视频 / 动画 / 封面图 → `expert-video`（封面走其 Stage 14a）；单张配图生成 → 公共 `awk-img-gen`。
 
 ## 工具清单
 
@@ -53,7 +53,7 @@ metadata:
 |------|------|------|
 | `design-full` | 建任务工作区 + brief 模板；从内置 14+ 套设计系统库匹配风格 | `design-full init <任务名>` / `design-full pick "<风格描述>"` |
 
-跨领域公共技能：`pexels-footage` / `pixabay-footage`（配图与背景图首选）、`siliconflow-img-gen`（配图备选）、`smart-search`（参考站点调研）。
+跨领域公共技能：`pexels-footage` / `pixabay-footage`（配图与背景图首选）、`awk-img-gen`（配图备选）、`smart-search`（参考站点调研）。
 
 ## 通用骨架（七步，两闸门）
 
@@ -93,7 +93,7 @@ design-full pick "<风格描述>"
 ### Step 4：素材获取
 
 - **优先**：公共 `pexels-footage` / `pixabay-footage` 搜索下载
-- **备选**：公共 `siliconflow-img-gen` 生成（参数记 `prompts.json`）
+- **备选**：公共 `awk-img-gen` 生成（参数记 `prompts.json`）
 - 甲方给的素材入 `source/`，记录来源与授权
 
 ### Step 5：HTML + CSS 编写
