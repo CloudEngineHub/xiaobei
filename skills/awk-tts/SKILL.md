@@ -95,7 +95,36 @@ awk-tts --text "..." --enable-subtitle --output ./assets/audio/narration.mp3
 | `en_male_tim_uranus_bigtts` | Tim | 多语种（英） |
 
 > 克隆音色（`S_xxx` 开头）走 `seed-icl-2.0` 资源 ID，脚本自动路由，需 `model_type=4`（脚本自动加）。仅火山模式有效。
-> 百炼默认 `longanhuan_v3.6`；百炼系统/克隆/设计音色名见百炼控制台音色列表，`--voice` 直传即可。
+
+百炼 qwen-audio-3.0-tts 系统音色（路由到百炼时可用）。**音色与模型绑定**：音色不在当前 `--model` 支持列表中会返回 `InvalidParameter`，需按下表对齐模型。
+
+`qwen-audio-3.0-tts-plus` 系统音色（agent plan 仅支持此模型）：
+
+| voice 参数 | 名称 | 特质（性别/年龄） | 场景 |
+|-----------|------|-----------------|------|
+| `longanlingxin` | 龙安灵心 | 知心温暖音（女/25） | 社交陪伴·旗舰 |
+| `longanlufeng` | 龙安鲁风 | 明亮开朗音（男/25） | 社交陪伴·旗舰 |
+
+`qwen-audio-3.0-tts-flash` 系统音色（默认音色在此模型）：
+
+| voice 参数 | 名称 | 特质（性别/年龄） | 场景 |
+|-----------|------|-----------------|------|
+| `longanhuan_v3.6` | 龙安欢 | ⭐百炼默认（女/25） | 通用 |
+| `longanfengyue` | 龙安风悦 | 自然亲切音（女/30） | 社交陪伴 |
+| `longanlingxi` | 龙安灵希 | 可爱甜美音（女/25） | 社交陪伴 |
+| `longanxiaoxin` | 龙安小昕 | 亲切活泼音（女/22） | 社交陪伴 |
+| `longanyuanfei` | 龙安元妃 | 高傲妃子音（女/30） | 社交陪伴 |
+| `longjielidou_v3.6` | 龙杰力豆 | 天真男童（男/5） | 儿童陪伴/智能玩具 |
+| `longpaopao_v3.6` | 龙泡泡 | 软糯可爱音（女/5） | 儿童陪伴/智能玩具 |
+| `longhuohuo_v3.6` | 龙火火 | 顽皮少年音（男/8） | 角色音/游戏 |
+| `longchuanshu_v3.6` | 龙川叔 | 川普大叔音（男/40） | 角色音/游戏 |
+| `loongmary` | loongmary | 温暖英音（女/20） | 精品英文（仅英文） |
+| `loongeva_v3.6` | loongeva | 高智美音（女/28） | 精品英文（仅英文） |
+| `loongjohn` | loongJohn | 沉稳亲切美音（男/28） | 精品英文（仅英文） |
+
+> 语言范围：除 `loong*` 三款纯英文外均为中文（普通话）+英文；`text` 超出音色语言范围会发音错误或语音不自然。
+> 默认音色 `longanhuan_v3.6` 虽列在 flash 表，plus 上实测可用（2026-09-17 冒烟）；若指定其他 flash 系音色遇 `InvalidParameter`，改传 `--model qwen-audio-3.0-tts-flash`（agent plan 不支持 flash）或换 plus 系音色。
+> 两模型另各有 500+ 声音复刻基础音色，命名 `qwen-audio-3.0-tts-{plus|flash}-{后缀}`，`--voice` 直传即可，完整列表见[官方音色列表页](https://docs.bailian.console.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list) Excel；也可用声音复刻免费定制专属音色。
 
 ## Output
 

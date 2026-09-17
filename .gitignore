@@ -5,6 +5,7 @@ package-lock.json
 # default ignore
 /shelf/
 /workspace.xml
+/tmp
 .DS_Store
 .idea/
 __pycache__
