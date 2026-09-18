@@ -49,7 +49,7 @@ interface RetroResult {
   platform: string
   contentId: string
   stats: Record<string, number>
-  /** 创作侧深指标（douyin item/list：完播率/封面 CTR 等，键为平台原名）。信息性透传，不进 DB 列。 */
+  /** 创作侧深指标（douyin item/list：完播率/封面 CTR 等，键为平台原名）。经 fetch-and-update 落 pub_douyin.deep_metrics（只存最新值）。 */
   deep?: Record<string, number>
   comments: Array<{ cid: string; text: string; likeCount: number; userName: string }>
   error?: string

@@ -286,6 +286,8 @@ fi
 # 将 fetch-retro-data.ts 的 JSON 输出转换为 update-metrics.sh 参数
 # 用临时文件传递 JSON（避免多行 JSON 在 bash heredoc 中出问题）
 FETCH_TMP=$(mktemp)
+DEEP_TMP=$(mktemp)
+trap 'rm -f "$DEEP_TMP"' EXIT
 echo "$FETCH_OUTPUT" > "$FETCH_TMP"
 
 METRICS_PARAMS=$(node -e "
@@ -316,14 +318,17 @@ for (const [k, v] of Object.entries(stats)) {
     args.push('--' + mapped + '=' + v);
   }
 }
-// 只取互动计数，不抓评论（参考 wiseflow4-pro 各平台 processor：detail-only，风控最低）。
-// 即使无 stats 也输出 __empty__ 标记，避免被 bash 判为空
+// deep 指标 → 单行 JSON 文件（update-metrics --deep-file readfile 读入，
+// 免引号地狱），stdout 标记只表达标量指标有无
+if (data.deep && typeof data.deep === 'object' && Object.keys(data.deep).length > 0) {
+  require('fs').writeFileSync(process.argv[2], JSON.stringify(data.deep));
+}
 if (args.length === 0) {
   console.log('__no_metrics__');
 } else {
   console.log(args.join(' '));
 }
-" "$FETCH_TMP" 2>/dev/null) || METRICS_EXIT=$?
+" "$FETCH_TMP" "$DEEP_TMP" 2>/dev/null) || METRICS_EXIT=$?
 METRICS_EXIT=${METRICS_EXIT:-0}
 rm -f "$FETCH_TMP"
 
@@ -341,10 +346,14 @@ if [[ "$METRICS_PARAMS" == __fetch_failed__:* ]]; then
   exit 1
 fi
 
-# 无指标数据但 API 调用成功——直接返回成功
+# 无标量指标但 API 调用成功：有 deep → 继续 deep-only 写入；无 deep → 直接返回成功
 if [ "$METRICS_PARAMS" = "__no_metrics__" ]; then
-  echo "{\"ok\":true,\"method\":\"script\",\"platform\":\"$PLATFORM\",\"content_id\":\"$CONTENT_ID\",\"note\":\"API 返回成功但无互动指标数据（内容可能不存在或数据尚未产生）\"}"
-  exit 0
+  if [ -s "$DEEP_TMP" ]; then
+    METRICS_PARAMS=""
+  else
+    echo "{\"ok\":true,\"method\":\"script\",\"platform\":\"$PLATFORM\",\"content_id\":\"$CONTENT_ID\",\"note\":\"API 返回成功但无互动指标数据（内容可能不存在或数据尚未产生）\"}"
+    exit 0
+  fi
 fi
 
 # Step 5: 调 update-metrics.sh
@@ -358,8 +367,14 @@ else
   echo "{\"ok\":false,\"error\":\"NO_LOCATE_KEY\",\"platform\":\"$PLATFORM\",\"hint\":\"写库需要 --id 或 --source-folder 定位记录，仅传 --content-id 无法更新\"}"
   exit 1
 fi
-eval "\"$UPDATE_SCRIPT\" --platform \"$PLATFORM\" ${UPDATE_LOCATE[*]} $METRICS_PARAMS" 2>/dev/null || UPDATE_EXIT=$?
+# deep 指标参数（mktemp 路径无空格，eval 安全）
+DEEP_ARGS=()
+if [ -s "$DEEP_TMP" ]; then
+  DEEP_ARGS=(--deep-file "$DEEP_TMP" --deep-source "${PLATFORM}:creator_item_list")
+fi
+eval "\"$UPDATE_SCRIPT\" --platform \"$PLATFORM\" ${UPDATE_LOCATE[*]} $METRICS_PARAMS ${DEEP_ARGS[*]}" 2>/dev/null || UPDATE_EXIT=$?
 UPDATE_EXIT=${UPDATE_EXIT:-0}
+rm -f "$DEEP_TMP"
 
 if [ "$UPDATE_EXIT" -ne 0 ]; then
   echo "{\"ok\":false,\"error\":\"UPDATE_FAILED\",\"platform\":\"$PLATFORM\",\"hint\":\"update-metrics.sh 执行失败 (exit $UPDATE_EXIT)\"}"
@@ -367,4 +382,4 @@ if [ "$UPDATE_EXIT" -ne 0 ]; then
 fi
 
 # 成功
-echo "{\"ok\":true,\"method\":\"script\",\"platform\":\"$PLATFORM\",\"content_id\":\"$CONTENT_ID\",\"metrics_params\":\"$METRICS_PARAMS\"}"
+echo "{\"ok\":true,\"method\":\"script\",\"platform\":\"$PLATFORM\",\"content_id\":\"$CONTENT_ID\",\"metrics_params\":\"$METRICS_PARAMS\",\"deep_stored\":$([ -z "${DEEP_ARGS[*]}" ] && echo false || echo true)}"
