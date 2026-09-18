@@ -20,7 +20,8 @@
  *   xhsBrowserHeaders(ua, cookieStr) — 笔记详情页导航请求头
  *   extractInitialState(html) — 解 window.__INITIAL_STATE__（JSON.parse + vm 兜底）
  *   parseXhsNoteFromHtml(html, noteId) — 合并 og:meta + __INITIAL_STATE__ → XhsHtmlNote | null
- *   fetchXhsNoteFromHtml(noteId, opts) — 抓取 + 解析，带重试 + captcha 检测
+ *   fetchXhsNoteFromHtml(noteId, opts) — 抓取 + 解析，带重试 + captcha/软风控检测
+ *     （软风控 → 8–18s 随机 cooldown 后单次重试，仍被挡抛 XhsSecurityBlockError）
  */
 
 import vm from "node:vm"
@@ -57,6 +58,18 @@ export class XhsNoteInaccessibleError extends Error {
   constructor(msg = "多次重试仍未拿到笔记数据（可能笔记已删除/私密或触发风控）") {
     super(`NOTE_INACCESSIBLE: ${msg}`)
     this.name = "XhsNoteInaccessibleError"
+  }
+}
+
+/**
+ * 速度型软风控（借鉴 OpenCLI #2207/#2355）：note 详情页连读触发，页面被重定向到
+ * website-login/error?error_code=300017/300031 或渲染「安全限制/访问链接异常」文案。
+ * 软风控 ≠ 登录失效——cooldown 后单次重试多数可恢复，不应触发重登流程。
+ */
+export class XhsSecurityBlockError extends Error {
+  constructor(msg = "笔记详情页被速度型风控软屏蔽（cooldown 后仍被挡）") {
+    super(`SECURITY_BLOCK: ${msg}`)
+    this.name = "XhsSecurityBlockError"
   }
 }
 
@@ -255,6 +268,21 @@ export function parseXhsNoteFromHtml(html: string, noteId: string): XhsHtmlNote 
 
 const XHS_BROWSE_BASE = "https://www.xiaohongshu.com"
 const CAPTCHA_RE = /www\.xiaohongshu\.com\/website-login\/captcha\?redirectPath=/
+
+// ── 软风控识别（借鉴 OpenCLI 75c85e5 + 3ec6eb0）─────────────────────────────
+//
+// error_code=300017/300031 是强信号（笔记内容不会自带该参数）；「安全限制」等文案是
+// 弱信号，仅在笔记解析失败后才触达本判定（正常渲染的笔记不会走到这里），desc 撞词
+// 不会误判。fetch 默认跟随重定向，软风控页的最终 URL 带错误码。
+const SECURITY_BLOCK_CODE_RE = /error_code=(?:300017|300031)/
+const SECURITY_BLOCK_TEXT_RE = /安全限制|访问链接异常|请求太频繁|访问频次异常/
+
+function isSecurityBlockPage(html: string, finalUrl: string): boolean {
+  if (SECURITY_BLOCK_CODE_RE.test(finalUrl) || /website-login\/error/.test(finalUrl)) return true
+  if (SECURITY_BLOCK_CODE_RE.test(html)) return true
+  return SECURITY_BLOCK_TEXT_RE.test(html)
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export interface FetchXhsNoteOpts {
@@ -291,6 +319,11 @@ export async function fetchXhsNoteFromHtml(
   const url = `${XHS_BROWSE_BASE}/explore/${noteId}?${qs.toString()}`
   const headers = xhsBrowserHeaders(opts.ua ?? "", opts.cookieStr ?? "")
 
+  // 软风控单次冷却重试（借鉴 OpenCLI readXhsDetailPage）：重试上限是结构化的——
+  // 一个 if 标志位而非可配置次数，不可能退化成 hammer 循环。对高热风控态短间隔连打
+  // 正是把它推向账号违规/封号路径的方式（OpenCLI #842/#677）。
+  let securityBlockRetried = false
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const resp = await fetch(url, {
@@ -306,10 +339,25 @@ export async function fetchXhsNoteFromHtml(
       if (CAPTCHA_RE.test(html)) throw new XhsCaptchaError()
       const note = parseXhsNoteFromHtml(html, noteId)
       if (note) return note
+      if (isSecurityBlockPage(html, resp.url)) {
+        if (securityBlockRetried) {
+          throw new XhsSecurityBlockError(
+            `cooldown 后仍被挡（${resp.redirected ? `redirect → ${resp.url.slice(0, 80)}` : "错误页文案"}）。` +
+              "软风控多为按请求的瞬时挑战：稍后降速重试，勿短间隔连读",
+          )
+        }
+        securityBlockRetried = true
+        const cooldownMs = 8_000 + Math.random() * 10_000 // 8–18s 随机
+        process.stderr.write(
+          `[xhs-html] 命中速度型软风控，cooldown ${Math.round(cooldownMs / 1000)}s 后单次重试（attempt ${attempt}/${retries}）...\n`,
+        )
+        await sleep(cooldownMs)
+        continue
+      }
       process.stderr.write(`[xhs-html] 第 ${attempt}/${retries} 次未解析到笔记数据，重试...\n`)
       await sleep(800 + Math.random() * 1200)
     } catch (e) {
-      if (e instanceof XhsCaptchaError) throw e
+      if (e instanceof XhsCaptchaError || e instanceof XhsSecurityBlockError) throw e
       process.stderr.write(`[xhs-html] 抓取异常（第 ${attempt}/${retries} 次): ${e}\n`)
       await sleep(800 + Math.random() * 1200)
     }

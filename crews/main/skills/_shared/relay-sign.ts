@@ -72,6 +72,25 @@ export class LoginWallError extends Error {
   }
 }
 
+// ── xhs 软风控检测（借鉴 OpenCLI #2207）──────────────────────────────────────
+//
+// 速度型软风控：连读触发，页面被重定向到 website-login/error?error_code=300017/300031
+// 或渲染「安全限制/请求太频繁」等文案。软风控页也是 HTML，必须在登录墙判定**之前**区分——
+// 误归 LoginWallError 会触发无谓的重登循环（登录态本身是好的）。
+// error_code=300017/300031 是强信号；文案仅扫 HTML 响应前段（JSON 业务文本可能撞词，不扫）。
+const XHS_SECURITY_BLOCK_CODE_RE = /error_code=(?:300017|300031)/;
+const XHS_SECURITY_BLOCK_TEXT_RE = /安全限制|访问链接异常|请求太频繁|访问频次异常/;
+
+/** xhs 风控软屏蔽（期望 JSON 时被速度型风控拦截，非登录失效）。下游应降速/冷却重试，勿触发重登。 */
+export class XhsSecurityBlockError extends Error {
+  readonly uri: string;
+  constructor(uri: string) {
+    super(`SECURITY_BLOCK: xhs 风控软屏蔽（期望 JSON）@ ${uri}——软风控非登录失效，cooldown 后降速重试，勿触发重登`);
+    this.name = "XhsSecurityBlockError";
+    this.uri = uri;
+  }
+}
+
 // ── xhs ─────────────────────────────────────────────────────────────────────
 
 export interface XhsSignInput {
@@ -159,6 +178,14 @@ export async function xhsFetch<T = unknown>(input: XhsFetchInput): Promise<T> {
   const body = await resp.text().catch(() => "");
   const head = body.trimStart().slice(0, 256);
   const looksLikeHtml = contentType.includes("text/html") || HTML_LOGIN_WALL_RE.test(head);
+  // 软风控判定先于登录墙（软风控页也是 HTML，语义不同：一个要冷却，一个要重登）。
+  // fetch 默认跟随重定向，软风控 redirect 的最终 URL 在 resp.url 上。
+  if (
+    XHS_SECURITY_BLOCK_CODE_RE.test(resp.url) ||
+    (looksLikeHtml && (XHS_SECURITY_BLOCK_CODE_RE.test(head) || XHS_SECURITY_BLOCK_TEXT_RE.test(body.slice(0, 2000))))
+  ) {
+    throw new XhsSecurityBlockError(`${method.toUpperCase()} ${uri}`);
+  }
   if (looksLikeHtml) {
     throw new LoginWallError("xhs", `${method.toUpperCase()} ${uri}`);
   }

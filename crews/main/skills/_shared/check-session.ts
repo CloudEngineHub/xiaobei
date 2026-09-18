@@ -207,8 +207,8 @@ async function pongKuaishou(map: CookieMap): Promise<{ ok: boolean; reason?: str
   return { ok: false, reason: `visionProfileUserList.result=${data.data?.visionProfileUserList?.result}` };
 }
 
-async function pongXhs(map: CookieMap): Promise<{ ok: boolean; reason?: string }> {
-  const { xhsFetch } = await import("./relay-sign.ts");
+async function pongXhs(map: CookieMap): Promise<{ ok: boolean; reason?: string; unknown?: boolean }> {
+  const { xhsFetch, XhsSecurityBlockError } = await import("./relay-sign.ts");
   const cookies: Record<string, string> = {};
   for (const [k, c] of Object.entries(map)) if (c?.value) cookies[k] = c.value;
   try {
@@ -229,6 +229,11 @@ async function pongXhs(map: CookieMap): Promise<{ ok: boolean; reason?: string }
     }
     return { ok: false, reason: `user/me success=${r?.success} code=${r?.code}` };
   } catch (e) {
+    // 软风控 ≠ 登录失效（速度型，cooldown 后可恢复）：pong 撞上判 UNKNOWN 放行，
+    // 由真实请求最终裁决——同 douyin status_code=4 先例。误判 SESSION_EXPIRED 会触发无谓重登。
+    if (e instanceof XhsSecurityBlockError) {
+      return { ok: true, unknown: true, reason: `user/me 被风控软屏蔽: ${e.message.slice(0, 100)}` };
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, reason: `user/me error: ${msg.slice(0, 120)}` };
   }
