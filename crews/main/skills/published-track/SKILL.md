@@ -135,6 +135,11 @@ published-track fetch-metrics \
 
 Exit codes：0=成功/浏览器/手动（非错误），1=一般错误，2=SESSION_EXPIRED。
 
+**douyin 取数双车道**（`fetch-retro-data.ts`）：
+- 公开侧 `aweme/detail`：点赞/评论/分享/收藏。**play_count 公开侧恒为 0**（播放量仅创作者可见）。
+- 创作侧 `creator/item/list`（`_shared/douyin-web.ts` `douyinCreatorItem`）：**播放量唯一来源**（`view_count`）+ 26 字段深指标（5s 完播率 / 2s 跳出率 / 封面曝光与点击率 / 粉丝观看占比 / 关注转化等），**视频与图文(note)作品通用**；creator 域 cookie-only 无需 a_bogus，用中央 douyin cookie 即可。失败时 graceful 降级（只缺播放量/深指标，公开侧数据不受影响）；深指标在返回 JSON 的 `deep` 字段（信息性，不进 DB 列）。
+- **链接格式**：视频 `douyin.com/video/<id>`、图文 `douyin.com/note/<mid>` 均可提取 content_id（2026-09-17 起支持 note）。
+
 - **脚本支持**：douyin（走 `fetch-retro-data.ts` 纯 HTTP + cookie + UA）。**自动取数仅覆盖完全支持 Expert 架构的 4 个平台**：douyin 走本技能 `fetch-metrics`；xhs / wx_mp / wx_channel 均不走本技能的 fetch-metrics（收到这三个平台直接 exit 1 指路）——xhs 走 `expert-xhs` 专家包内的 `xhs-engagement` 工具，wx_mp 走 `expert-wx-mp` 专家包内的 `wx-mp-engagement` 工具，wx_channel 走 `expert-wx-channel` 专家包内的 `wx-channel-engagement` 工具，三者都是 camoufox 抓平台后台方案，与纯 HTTP 链路机制不同。**bilibili / kuaishou 及其余平台不做自动取数**（收到直接 exit 1 报 `PLATFORM_OUT_OF_FETCH_SCOPE`）——发布记录与查询照常支持，只是不抓互动数据。
 
 ### 流程 2B·用户提供数据（Agent 补录）
