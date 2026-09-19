@@ -1,9 +1,9 @@
 ---
-name: douyin-publish
+name: douyin-video-publish
 description: 通过浏览器自动化发布视频到抖音创作者中心。纯浏览器操作方案。
 ---
 
-# douyin-publish — 工具说明
+# douyin-video-publish — 工具说明
 
 > 本文是 `expert-douyin` 专家包内的工具说明书，不独立出现在技能列表中。由相关 Workflow 指引调用。
 
@@ -18,11 +18,11 @@ description: 通过浏览器自动化发布视频到抖音创作者中心。纯�
 
 ## 发布前置：open 上传页 + agent 判定登录态（必做）
 
-抖音 cookie 存在预热机制，直接 `douyin-publish run` 可能因 cookie 未激活而不生效。**每次发布前必须先 open 上传页**（无头 persistent session），由 agent 在此页面根据元素判定登录态，之后再走 `run`。
+抖音 cookie 存在预热机制，直接 `douyin-video-publish run` 可能因 cookie 未激活而不生效。**每次发布前必须先 open 上传页**（无头 persistent session），由 agent 在此页面根据元素判定登录态，之后再走 `run`。
 
 ```bash
 # 1. open 上传页(无头 persistent session `douyin`)
-douyin-publish open-page
+douyin-video-publish open-page
 # 输出: {"ok": true, "session": "douyin", "url": "...", "hint": "agent 用 camoufox-cli eval/snapshot 判定登录态"}
 
 # 2. agent 判定登录态
@@ -32,7 +32,7 @@ camoufox-cli --session douyin --persistent --json eval "document.querySelector('
 也可以直接截图调用视觉模型判定。
 
 # 3a. 判定为已登录 → 走发布
-douyin-publish run --video /path/to/video.mp4 --title "标题" --caption "描述"
+douyin-video-publish run --video /path/to/video.mp4 --title "标题" --caption "描述"
 
 # 3b. 判定为未登录 → 走「登录失效处理」
 ```
@@ -60,7 +60,7 @@ login-manager --platform douyin
 ### 一键全流程
 
 ```bash
-douyin-publish run \
+douyin-video-publish run \
   --video /path/to/video.mp4 \
   --title "视频标题" \
   --caption "视频描述 #话题1 #话题2"
@@ -72,18 +72,18 @@ douyin-publish run \
 
 ```bash
 # 1. 上传视频（返回 session 名，后续步骤用）
-douyin-publish upload --video video.mp4
+douyin-video-publish upload --video video.mp4
 
 # 2. 填标题/描述 + 自主声明
 #    fill 命令内部自动完成：填标题 -> 填简介 -> 选自主声明"内容由AI生成" -> 点"确定"按钮
 #    自主声明下拉不存在时不阻断（部分账号/页面无此选项）
-douyin-publish fill --session <s> --title "标题" --caption "描述"
+douyin-video-publish fill --session <s> --title "标题" --caption "描述"
 
 # 3. 点发布（返回发布起始时刻，供 get-link 锁定本次作品）
-douyin-publish publish --session <s>
+douyin-video-publish publish --session <s>
 
 # 4. 取视频链接
-douyin-publish get-link --session <s>
+douyin-video-publish get-link --session <s>
 ```
 
 ### 行为说明

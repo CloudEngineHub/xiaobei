@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""douyin-publish - 抖音内容发布(纯浏览器模拟方案,形态仿 wechat-channels-publish)
+"""douyin-video-publish - 抖音内容发布(纯浏览器模拟方案,形态仿 wechat-channels-publish)
 
 形态与 wechat-channels-publish 同构:纯浏览器操作,走 forked camoufox-cli 持久化 session
 `douyin` + upload 命令,在创作者中心页面填表 + 上传视频 + 发布。
@@ -39,6 +39,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / '_shared'))
+from publish_browser import publish_lock, Browser
+
 # ── 常量 ─────────────────────────────────────────────────────────────────────
 
 UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/upload?enter_from=dou_web"
@@ -64,8 +67,9 @@ def session_name(purpose: str = "publish") -> str:
 
 def camoufox_open(session: str, url: str) -> None:
     """启 persistent 会话 + 打开 URL(camoufox-cli 默认 headless)。"""
-    cmd = [CAMOUFOX_BIN, "--session", session, "--persistent", "--json", "open", url]
-    subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+    if session != PERSISTENT_SESSION:
+        raise ValueError('发布必须复用 session douyin')
+    Browser().command('open', url)
 
 
 # 抖音登录态关键 cookie（与 _shared/check-session.ts Tier1 一致：sessionid+sid_tt+uid_tt 必须全在）。
@@ -97,7 +101,7 @@ def _dismiss_draft_dialog(session: str) -> None:
     ) == "yes"
     if not has_dialog:
         return
-    sys.stderr.write("[douyin-publish] 检测到上次未发布草稿，点「放弃」清掉后重新上传...\n")
+    sys.stderr.write("[douyin-video-publish] 检测到上次未发布草稿，点「放弃」清掉后重新上传...\n")
     if not camoufox_click_leaf_by_text(session, "放弃"):
         sys.stderr.write("warn: 草稿弹窗「放弃」按钮未点到，继续上传（可能受弹窗干扰）\n")
         return
@@ -274,7 +278,7 @@ def cmd_open_page(*, session: Optional[str] = None) -> None:
 
     新流程(2026-08-04):agent 先调本命令 open 上传页,再用 camoufox-cli eval/snapshot
     根据页面元素(用户头像/用户名是否存在、是否跳 /login)判定登录态。判定为已登录后
-    调 `douyin-publish run` 走发布;判定为未登录则走 login-manager 有头重登。
+    调 `douyin-video-publish run` 走发布;判定为未登录则走 login-manager 有头重登。
 
     本命令只 open + 输出 session 名 + 当前 URL,不做任何登录态判定(原 _check_logged_in
     已 mute,误判率高)。
@@ -298,6 +302,8 @@ def cmd_upload(*, video: str, session: Optional[str] = None) -> None:
     if not session:
         session = PERSISTENT_SESSION
     video_path = Path(video).resolve()
+    if video_path.suffix.lower() not in {".mp4", ".mov"}:
+        raise ValueError("--video 仅支持 mp4/mov")
     if not video_path.is_file():
         sys.stderr.write(f"error: video not found: {video_path}\n")
         sys.exit(1)
@@ -313,7 +319,7 @@ def cmd_upload(*, video: str, session: Optional[str] = None) -> None:
         sys.stderr.write("error: 上传 input 未找到或 upload 注入失败(DOM 改版?)\n")
         sys.exit(1)
 
-    sys.stderr.write("[douyin-publish] 视频已注入,等待上传/转码...\n")
+    sys.stderr.write("[douyin-video-publish] 视频已注入,等待上传/转码...\n")
     # 上传+转码完成的真实信号是表单渲染出来(标题 input 出现),而非页面文本"上传成功"--
     # 抖音上传页根本没有"上传成功"这四个字,旧写法必超时。2026-07-17 真机 spike 确认。
     if not camoufox_wait_for_selector(session, 'input[placeholder*="填写作品标题"]', TRANSCODE_MAX_WAIT_S):
@@ -458,7 +464,7 @@ def cmd_publish(*, session: str) -> None:
     if not camoufox_click_button_by_text(session, "发布"):
         sys.stderr.write("error: 发布按钮未找到(DOM 改版?)\n")
         sys.exit(1)
-    sys.stderr.write("[douyin-publish] 已点发布,等待跳转...\n")
+    sys.stderr.write("[douyin-video-publish] 已点发布,等待跳转...\n")
     # 发布成功后页面跳转到作品管理页 /content/manage(中间会闪"正在发布"转圈 toast)。
     # 没有"发布成功"文本,旧 wait_for_text 必超时。2026-07-17 真机 spike 确认。
     if not camoufox_wait_for_url_contains(session, "/creator-micro/content/manage", POST_PUBLISH_MAX_WAIT_S):
@@ -472,7 +478,7 @@ def cmd_publish(*, session: str) -> None:
         aweme_id, title = _fetch_newest_aweme_id(session, since_ts=publish_start - 120)
         if aweme_id:
             sys.stderr.write(
-                f"[douyin-publish] work_list API 取到最新作品 aweme_id={aweme_id} title={title!r}\n"
+                f"[douyin-video-publish] work_list API 取到最新作品 aweme_id={aweme_id} title={title!r}\n"
             )
             # 落 localStorage 供 get-link 复用(跨导航存活)
             camoufox_eval(
@@ -484,7 +490,7 @@ def cmd_publish(*, session: str) -> None:
     debug_entries = _read_publish_debug(session)
     try:
         Path(debug_path).write_text(json.dumps(debug_entries, ensure_ascii=False, indent=2), "utf-8")
-        sys.stderr.write(f"[douyin-publish] debug 日志已写 {debug_path}（{len(debug_entries)} 条请求，请回传给研发）\n")
+        sys.stderr.write(f"[douyin-video-publish] debug 日志已写 {debug_path}（{len(debug_entries)} 条请求，请回传给研发）\n")
     except Exception as e:
         sys.stderr.write(f"warn: debug 日志写盘失败: {e}\n")
     # aweme_id 没捕获到 → 发布可能未真正成功（拦截器没命中真实发布 API，或发布被服务端拒了）。
@@ -571,7 +577,7 @@ def _fetch_newest_aweme_id(session: str, since_ts: Optional[int] = None) -> tupl
         # sc != 0 → 鉴权间歇失败,短等重试
         last_sc = sc
         sys.stderr.write(
-            f"[douyin-publish] work_list status_code={sc}(attempt {attempt + 1}/3),间歇鉴权失败,重试...\n"
+            f"[douyin-video-publish] work_list status_code={sc}(attempt {attempt + 1}/3),间歇鉴权失败,重试...\n"
         )
         time.sleep(2)
     # 3 次都 sc!=0 → session 失效,交调用方重登
@@ -633,7 +639,7 @@ def cmd_get_link(*, session: str) -> None:
     aweme_id, title = _fetch_newest_aweme_id(session)
     if aweme_id:
         url = "https://www.douyin.com/video/" + aweme_id
-        sys.stderr.write(f"[douyin-publish] get-link 走 work_list 兜底:aweme_id={aweme_id} title={title!r}\n")
+        sys.stderr.write(f"[douyin-video-publish] get-link 走 work_list 兜底:aweme_id={aweme_id} title={title!r}\n")
         sys.stdout.write(json.dumps({"ok": True, "url": url, "aweme_id": aweme_id}, ensure_ascii=False))
         sys.stdout.write("\n")
         return
@@ -687,7 +693,7 @@ def cmd_run(*, video: str, title: str, caption: str = "") -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="publish_douyin",
+        prog="douyin-video-publish",
         description="抖音内容发布(纯浏览器模拟方案,形态仿 wechat-channels-publish。探活/有头登录/导出 cookie+UA 交 login-manager)",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -728,7 +734,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        args.func(args)
+        with publish_lock():
+            args.func(args)
         return 0
     except SystemExit as e:
         return int(e.code) if e.code is not None else 0

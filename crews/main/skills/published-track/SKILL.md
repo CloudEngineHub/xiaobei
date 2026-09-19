@@ -207,4 +207,10 @@ published-track check-published \
 
 所有发布技能（wx-mp-publisher、xhs-publish、gaoqian-article、wechat-channels-publish、bilibili-publish 等）的流程统一为 **发布 → 记录**（`published-track record` 带 `--account`；DNA 关联经 `dna-meta.json` 自动建立）。各技能 SKILL.md 的"发布记录"段标注此要求，主 agent 无需额外提醒。
 
-**平台代号对照**：`wx-mp-publisher`/`sync-from-mp` → `wx_mp`；`wechat-channels-publish` → `wx_channel`；`xhs-publish` → `xhs`; `douyin-publish` → `douyin`；`bilibili-publish` → `bilibili`；`kuaishou-publish` → `kuaishou`；`zhihu-publish` → `zhihu`; `twitter-post` → `twitter`；`weibo-publish` → `weibo`.
+**平台代号对照**：`wx-mp-publisher`/`sync-from-mp` → `wx_mp`；`wechat-channels-publish` → `wx_channel`；`xhs-publish` → `xhs`; `douyin-video-publish` / `douyin-note-publish` → `douyin`；`bilibili-publish` → `bilibili`；`kuaishou-publish` → `kuaishou`；`zhihu-publish` → `zhihu`; `twitter-post` → `twitter`；`weibo-publish` → `weibo`.
+
+## 平台启用状态与定时取数
+
+`published-track platform-status --platform <douyin|xhs|wx_channel|wx_mp>` 只读工作区 `<platform>/calibration/platform-state.json` 的 `enabled` 字段，兼容旧 `.platform-state.json`。文件不存在返回 `enabled=false, reason=NOT_INITIALIZED`；字段缺失、类型错误或文件损坏返回 `ok=false, enabled=false` 与错误。不因查询而初始化或启用平台。
+
+heartbeat 每个平台取数前查状态，仅 `ok=true, enabled=true` 时取数。抖音用 `published-track query --platform douyin --limit 30` 查询图文与视频合计最近 30 条，按返回的每条 `id` 依次 `published-track fetch-metrics --platform douyin --id <id>`。无需按天数过滤或手传 `--content-id`。登录失效停止该平台，其他单条错误记录后继续。完整定时流程见 HEARTBEAT.md。

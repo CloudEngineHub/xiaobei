@@ -162,12 +162,18 @@ async function fetchDouyin(awemeId: string): Promise<RetroResult> {
     const aweme = data?.aweme_detail
     if (aweme) {
       const stats = aweme.statistics || {}
-      result.stats = {
-        playCount: stats.play_count || 0,
-        likeCount: stats.digg_count || 0,
-        commentCount: stats.comment_count || 0,
-        shareCount: stats.share_count || 0,
-        collectCount: stats.collect_count || 0,
+      // 公开侧播放量不可用；其余指标仅接受明确返回的数值，缺失不补零。
+      const mapping = {
+        digg_count: "likeCount",
+        comment_count: "commentCount",
+        share_count: "shareCount",
+        collect_count: "collectCount",
+      }
+      for (const [key, target] of Object.entries(mapping)) {
+        const value = stats[key]
+        if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+          result.stats[target] = value
+        }
       }
       console.error(`  ✓ 点赞 ${result.stats.likeCount} / 评论 ${result.stats.commentCount} / 分享 ${result.stats.shareCount}`)
     } else {
@@ -185,9 +191,25 @@ async function fetchDouyin(awemeId: string): Promise<RetroResult> {
     const item = await douyinCreatorItem(awemeId, cookieStr, ua)
     if (item) {
       const m = item.metrics
-      // view_count 是公开侧恒 0 的 playCount 的唯一来源
-      if (m.view_count != null) result.stats.playCount = m.view_count
-      result.deep = m
+      // 有常规列的指标全部写 stats，创作侧优先；其余指标才放 deep。
+      // view_count 是播放量唯一来源；缺失字段保留公开侧结果，明确的 0 正常覆盖。
+      const mapping: Record<string, string> = {
+        view_count: "playCount",
+        like_count: "likeCount",
+        comment_count: "commentCount",
+        share_count: "shareCount",
+        favorite_count: "collectCount",
+      }
+      result.deep = {}
+      for (const [key, value] of Object.entries(m)) {
+        if (mapping[key]) {
+          if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+            result.stats[mapping[key]] = value
+          }
+        } else {
+          result.deep[key] = value
+        }
+      }
       console.error(
         `  ✓ 播放 ${m.view_count ?? "?"} / 5s完播率 ${m.completion_rate_5s ?? "?"} / 2s跳出率 ${m.bounce_rate_2s ?? "?"} / 封面点击率 ${m.cover_click_rate ?? "?"}（审核 ${item.review ?? "?"}）`,
       )

@@ -187,7 +187,7 @@ if [ "$NEEDS_COOKIE" = true ]; then
     echo "{\"ok\":false,\"error\":\"CHECK_LOGIN_SCRIPT_NOT_FOUND\",\"platform\":\"$PLATFORM\",\"hint\":\"check-login.ts 不存在于 $SCRIPT_DIR/\"}"
     exit 1
   fi
-  CHECK_OUT=$(node --experimental-strip-types "$CHECK_LOGIN" --platform "$PLATFORM" 2>/dev/null) || CHECK_EXIT=$?
+  CHECK_OUT=$(node --experimental-strip-types "$CHECK_LOGIN" --platform "$PLATFORM") || CHECK_EXIT=$?
   CHECK_EXIT=${CHECK_EXIT:-0}
   if [ "$CHECK_EXIT" -eq 2 ]; then
     CHECK_REASON=$(printf '%s' "$CHECK_OUT" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).reason||"")}catch{}})' 2>/dev/null)
@@ -269,7 +269,7 @@ fi
 
 echo "[fetch-and-update] 调 fetch-retro-data.ts --platform $PLATFORM --content-id $CONTENT_ID ..." >&2
 # stdout = JSON 结果，stderr = 进度日志（透传）
-FETCH_OUTPUT=$(node --experimental-strip-types "$FETCH_SCRIPT" --platform "$PLATFORM" --content-id "$CONTENT_ID" 2>/dev/null) || FETCH_EXIT=$?
+FETCH_OUTPUT=$(node --experimental-strip-types "$FETCH_SCRIPT" --platform "$PLATFORM" --content-id "$CONTENT_ID") || FETCH_EXIT=$?
 FETCH_EXIT=${FETCH_EXIT:-0}
 
 if [ "$FETCH_EXIT" -eq 2 ]; then
@@ -314,13 +314,13 @@ const mapping = {
 };
 for (const [k, v] of Object.entries(stats)) {
   const mapped = mapping[k];
-  if (mapped && v > 0) {
+  if (mapped && typeof v === 'number' && Number.isFinite(v) && v >= 0) {
     args.push('--' + mapped + '=' + v);
   }
 }
 // deep 指标 → 单行 JSON 文件（update-metrics --deep-file readfile 读入，
 // 免引号地狱），stdout 标记只表达标量指标有无
-if (data.deep && typeof data.deep === 'object' && Object.keys(data.deep).length > 0) {
+if (data.deep && typeof data.deep === 'object' && !Array.isArray(data.deep)) {
   require('fs').writeFileSync(process.argv[2], JSON.stringify(data.deep));
 }
 if (args.length === 0) {
@@ -372,7 +372,7 @@ DEEP_ARGS=()
 if [ -s "$DEEP_TMP" ]; then
   DEEP_ARGS=(--deep-file "$DEEP_TMP" --deep-source "${PLATFORM}:creator_item_list")
 fi
-eval "\"$UPDATE_SCRIPT\" --platform \"$PLATFORM\" ${UPDATE_LOCATE[*]} $METRICS_PARAMS ${DEEP_ARGS[*]}" 2>/dev/null || UPDATE_EXIT=$?
+eval "\"$UPDATE_SCRIPT\" --platform \"$PLATFORM\" ${UPDATE_LOCATE[*]} $METRICS_PARAMS ${DEEP_ARGS[*]}" >&2 || UPDATE_EXIT=$?
 UPDATE_EXIT=${UPDATE_EXIT:-0}
 rm -f "$DEEP_TMP"
 

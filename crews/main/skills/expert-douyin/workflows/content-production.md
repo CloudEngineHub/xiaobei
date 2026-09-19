@@ -6,6 +6,10 @@
 
 ## Step 0 - 入口判断
 
+### 0. 确定交付形态
+
+先按用户需求与素材确定 `video` 或 `note`，不确定时再问。用户要求图文、图片卡片或小红书图组同步抖音时走 `note`；不要为调用视频工具而把图片强制合成视频。只发布已有成品可直接到 Step 6，保留成品确认与发布记录。
+
 ### 1. 识别用户输入类型
 
 | 输入 | 模式 |
@@ -19,6 +23,7 @@
 
 | 路线 | 判断 | 执行方 |
 | --- | --- | --- |
+| 图文 | 新制图组或已有图片分发 | main 按图文 DNA 组织标题、描述、图序与配乐；复杂设计交 content-producer |
 | 素材组装 / 轻剪辑 | 用户手里有可用素材 | main 直接做：`video-edit` / `talking-head-cut` / `ui-demo` |
 | 从零制作 | 没有素材，需要出脚本、拍摄/生成画面 | main 出 Brief，委托 `content-producer` |
 | 脚本制作 | 用户已有脚本 | 用户脚本按素材处理（绝对路径写进 Brief 素材清单，必须保留的事实 / 结构要点写进 Brief 要求）；main 只调策略层（选题 / 口播口径 / 植入 / CTA），不改写脚本本体、不动分镜与画面执行——需动分镜即改走 Brief 委托，由 CP 重出 |
@@ -42,7 +47,7 @@
 生产必须绑定一个 DNA：
 
 1. 用户明确指定 `dna-id` 时，只用该 DNA。
-2. 用户没有指定时，用默认 `dna-0`。
+2. 用户没有指定时，视频用 `dna-0`，图文用独立图文 DNA（如 `dna-0-note`）；不可混用视频 DNA。
 3. 不得临场凭感觉拼一个风格。
 4. 若目标 DNA 不存在，先按 `account-setup.md` / `style-dna.md` 建立或更新 DNA；完成前不进入制作。
 5. 用户意图是把参考视频的风格吸收进 DNA 时，先按 `style-dna.md` 处理，完成 DNA 更新后再回到本流程；仅参考主题内容时直接按本流程生产，不动 DNA。
@@ -162,7 +167,7 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 
 - 有参考视频或用户文案时，必须参考其标题内容（如有），但不得照抄。
 - 用户已指定标题时，候选必须在该约束内生成，不得偷换方向。
-- 标题硬限制：不超过 30 字（抖音创作者平台上限）。
+- 标题限制：视频 ≤30 字；图文 ≤20 字、描述（含话题）≤1000 字。
 - 简介提及产品或业务，但不放明显引流信息；禁止二维码、联系方式；可引导用户主动搜索或点头像看主页。
 - 话题标签按 DNA template 的策略组织：主标签 + 场景词 + 痛点词，不堆砌。
 - 业务植入与 CTA 按 DNA 的 `biz-implant` / `interaction-cta` 落位：植入位置、载体与衔接句写清楚，一条只放一个主行动，不堆叠 CTA。
@@ -174,6 +179,10 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 ## Step 5 - 制作
 
 按 Step 0 判定的路线执行。所有路线的成品最终落在 `douyin/outputs/<video-name>/`。
+
+### 图文路线：图组与文案
+
+按图文 DNA template 编排封面、逐页内容、阅读顺序、正文与 CTA。已有跨平台图组优先复用，检查事实、裁切、平台文案与授权；缺图用 `awk-img-gen`，复杂设计交 content-producer。交付有序图片清单（1–35 张，单张 ≤50MB，jpg/jpeg/png/webp/bmp/tif，建议 3:4 或 4:3）及标题、描述。可选配乐记录精确歌名；不指定则保留原声。图文跳过视频 Brief、口播与剪辑步骤，直接确认整组图片、图序、文案和配乐后进入 Step 6。
 
 ### 路线 A：素材组装 / 轻剪辑（main 直接做）
 
@@ -229,26 +238,34 @@ Brief 硬性规则：
 
 ## Step 6 - 发布
 
-发布走 `douyin-publish`（工具说明见包内 `douyin-publish` 文档）：
+按成品形态选择工具，并先读对应工具说明。两工具共用持久化 `douyin` session，前置打开页面后由 agent 判定登录态。视频示例：
 
 ```bash
 # 1. open 上传页 + agent 判定登录态（必做，不可跳过）
-douyin-publish open-page
+douyin-video-publish open-page
 # 用页面元素（用户头像/用户名）判定登录态；未登录走 login-manager --platform douyin 有头重登
 
 # 2. 发布
-douyin-publish run --video douyin/outputs/<video-name>/<成片文件> --title "标题" --caption "简介 #话题1 #话题2"
+douyin-video-publish run --video douyin/outputs/<video-name>/<成片文件> --title "标题" --caption "简介 #话题1 #话题2"
+```
+
+图文示例：
+
+```bash
+douyin-note-publish open-page
+# 判定登录态后执行；--music 可省略，保留默认原声
+douyin-note-publish run --images /path/cover.png /path/page2.png --title "图文标题" --caption "描述 #话题" --music "目标歌曲完整名"
 ```
 
 - 发布前必做 `open-page` + 登录态判定，否则可能因 cookie 未预热而不生效。
 - AIGC 生成的内容按平台规则标注：`fill` 已内置自主声明"内容由AI生成"，无需额外操作；纯实拍素材不声明。
 - exit 2（登录失效）-> `login-manager --platform douyin` 有头重登后重试；exit 3（未捕获 aweme_id）-> 人工到创作者中心管理页核实是否真有新作品，不得当作发布成功。
-- 同一时间只能有一个 `douyin-publish` 发布任务在跑（浏览器 session 竞态），多平台分发时抖音这条必须串行。
+- 图文和视频合计同一时间只能有一个发布任务在跑（浏览器 session 竞态），多平台分发时抖音这条必须串行。
 - 限频：单抖音号每 24h ≤ 5 条；触发风控立即降级，30 分钟内不重试。
 
 ## Step 7 - 记录
 
-发布成功（拿到视频链接）后入库：
+发布成功（拿到与成品类型匹配的视频 `/video/` 或图文 `/note/` 链接）后入库：
 
 1. 写 `douyin/outputs/<video-name>/dna-meta.json`：
 
@@ -256,5 +273,5 @@ douyin-publish run --video douyin/outputs/<video-name>/<成片文件> --title "�
 {"platform": "douyin", "dna_id": "<dna-id>"}
 ```
 
-2. 调 `published-track record`：`--platform douyin`、`--source-folder douyin/outputs/<video-name>/`、`--account <发布所用账号 alias>`、`--publish-url <douyin-publish get-link 返回的链接>`（`dna_id` 自动从 `dna-meta.json` 读取）。
-3. 发布流程到此结束；互动数据由每日定时采集任务统一抓取，复盘走 `review.md`。
+2. 调 `published-track record`：`--platform douyin`、`--source-folder douyin/outputs/<video-name>/`、`--account <发布所用账号 alias>`、`--publish-url <对应发布工具返回的 url>`；图文 `--content-type post`、视频 `--content-type video`（`dna_id` 自动从 `dna-meta.json` 读取）。
+3. exit 3 仅补取链接或人工核实，禁止自动重新发布。发布流程到此结束；互动数据由 heartbeat 的 `published-track query --platform douyin --limit 30` + 逐条 `fetch-metrics --platform douyin --id <id>` 统一抓取（自动识别 note/video），复盘走 `review.md`。

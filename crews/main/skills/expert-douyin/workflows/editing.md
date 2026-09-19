@@ -56,6 +56,6 @@
 
 用户要求改完后发布 / 重新发布时，走 `content-production.md` 的发布与记录流程（Step 6-7）：
 
-1. **发布**：`douyin-publish open-page` + 登录态判定后 `run`；标题与文案用改后版本。
+1. **发布**：视频选 `douyin-video-publish`，图文选 `douyin-note-publish`；对应工具 `open-page` + 登录态判定后 `run`，标题与文案用改后版本。
 2. **记录**：`published-track record` 重新入库为新记录（新链接、新发布日期），`dna-meta.json` 沿用该视频目录的 DNA 绑定。
 3. 重新发布前提醒用户：旧作品是否自行在平台删除由用户决定，Agent 不代删。

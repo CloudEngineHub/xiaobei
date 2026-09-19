@@ -216,7 +216,7 @@ async function fetchComments(awemeId: string, limit: number): Promise<FetchResul
     const count = Math.min(PAGE_SIZE, Math.max(remaining, 1))
     let resp: Awaited<ReturnType<typeof douyinWebGet<CommentListResponse>>> | null = null
 
-    // status_code=8 为间歇鉴权抖动（同 douyin-publish work_list 的已知行为），重试 2 次
+    // status_code=8 为间歇鉴权抖动（同 douyin-video-publish work_list 的已知行为），重试 2 次
     for (let attempt = 0; attempt < 3; attempt++) {
       resp = await douyinWebGet<CommentListResponse>(
         COMMENT_URI,

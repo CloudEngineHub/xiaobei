@@ -146,7 +146,7 @@ login-manager check douyin   # wrapper 在 PATH 中
 | icp-filing | scripts/icp.sh | wrapper → sh |
 | exp-invite | scripts/invite.sh | wrapper → sh |
 | proactive-send | scripts/send.sh | wrapper → sh → mjs |
-| douyin-publish | scripts/publish_douyin.sh | wrapper → sh → py（scripts 里已有内部 wrapper，顶层只多一跳）|
+| douyin-video-publish | scripts/publish_douyin.sh | wrapper → sh → py（scripts 里已有内部 wrapper，顶层只多一跳）|
 | twitter-interact | scripts/twitter_interact.sh | wrapper → sh → py |
 | wx-mp-engagement | scripts/wx-mp-engagement.sh | wrapper → sh → py |
 | wx-mp-hunter | scripts/wx-mp-hunter.sh | wrapper → sh → ts |
@@ -260,7 +260,7 @@ dev plan §Phase 7 续 写"验收"：
 |-------|-------------------|------------------|--------------|
 | `crews/sales-cs/skills/exp-invite` | `scripts/invite.sh`（不变，已是真脚本） | —（无引导壳） | `scripts/invite.sh` |
 | `crews/sales-cs/skills/proactive-send` | `node scripts/send.mjs` | `scripts/send.sh` | `scripts/send.mjs` |
-| `crews/main/skills/douyin-publish` | `python3 scripts/publish_douyin.py` | `scripts/publish_douyin.sh` | `scripts/publish_douyin.py` |
+| `crews/main/skills/douyin-video-publish` | `python3 scripts/publish_douyin.py` | `scripts/publish_douyin.sh` | `scripts/publish_douyin.py` |
 | `crews/main/skills/wx-mp-hunter` | `node --experimental-strip-types scripts/wx_mp_hunter.ts` | `scripts/wx-mp-hunter.sh` | `scripts/wx_mp_hunter.ts` |
 | `crews/main/skills/wx-mp-engagement` | `python3 scripts/fetch_engagement.py` | `scripts/wx-mp-engagement.sh` | `scripts/fetch_engagement.py` |
 
@@ -274,7 +274,7 @@ dev plan §Phase 7 续 写"验收"：
 
 1. `crews/sales-cs/skills/exp-invite` — `./skills/exp-invite/scripts/invite.sh` → `exp-invite`
 2. `crews/sales-cs/skills/proactive-send` — `./skills/proactive-send/scripts/send.sh` → `proactive-send`
-3. `crews/main/skills/douyin-publish` — `python3 ./skills/.../publish_douyin.py` → `douyin-publish`
+3. `crews/main/skills/douyin-video-publish` — `python3 ./skills/.../publish_douyin.py` → `douyin-video-publish`
 4. `crews/main/skills/wx-mp-hunter` — 混用 `./scripts/wx-mp-hunter.sh` + 绝对路径 → `wx-mp-hunter`
 
 **B. 15 个已配 wrapper 但 SKILL.md 未更新的 skill**（仅改 SKILL.md 示例为 PATH 风格，不动 wrapper）：
