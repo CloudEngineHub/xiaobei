@@ -43,6 +43,21 @@ class NoteTests(unittest.TestCase):
         result=note.get_note_link(b,'标题')
         self.assertEqual(result['url'],'https://www.douyin.com/note/7687034742688058662')
         self.assertIn(unittest.mock.call('reload'),b.command.call_args_list)
+        self.assertFalse(any(c.args[0] == 'fill' for c in b.command.call_args_list))
+        self.assertIn(unittest.mock.call('press', 'Enter'), b.command.call_args_list)
+
+    def test_fill_uses_eval_and_stops_on_rejected_input(self):
+        b = Mock()
+        b.eval.side_effect = ['https://creator.douyin.com/creator-micro/content/post/image', False]
+        with self.assertRaisesRegex(RuntimeError, '读回不一致'):
+            note.fill(b, '标题', '描述', 'none')
+        b.command.assert_not_called()
+
+    def test_fill_stops_when_controlled_input_reverts(self):
+        b = Mock()
+        b.eval.side_effect = [True, False]
+        with self.assertRaisesRegex(RuntimeError, '更新后读回不一致'):
+            note.fill_input(b, 'input', '标题')
 
     def test_fill_failure_stops_before_publish_and_closes(self):
         with patch.object(note,'validate'), patch.object(note,'Browser') as browser, \

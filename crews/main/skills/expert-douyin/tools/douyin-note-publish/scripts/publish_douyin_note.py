@@ -138,10 +138,35 @@ def verify_music(b, name):
     }})()''')
 
 
+def fill_input(b, selector, value):
+    # camoufox-cli fill accepts snapshot refs only, not CSS selectors.
+    result = b.eval(f'''(() => {{
+      const inputs=[...document.querySelectorAll({json.dumps(selector)})].filter(e=>{VISIBLE});
+      if(inputs.length!==1) throw new Error('输入框缺失或不唯一');
+      const e=inputs[0];
+      if(!(e instanceof HTMLInputElement) || e.disabled || e.readOnly)
+        throw new Error('输入框不可编辑');
+      e.focus();
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+      setter.call(e,{json.dumps(value)});
+      e.dispatchEvent(new Event('input',{{bubbles:true}}));
+      e.dispatchEvent(new Event('change',{{bubbles:true}}));
+      return e.value==={json.dumps(value)};
+    }})()''')
+    if not result:
+        raise RuntimeError('输入框读回不一致')
+    # Read in a separate browser turn, after controlled-component updates.
+    if not b.eval(f'''(() => {{
+      const inputs=[...document.querySelectorAll({json.dumps(selector)})].filter(e=>{VISIBLE});
+      if(inputs.length!==1 || inputs[0].value!=={json.dumps(value)}) return false;
+      inputs[0].focus(); return true;
+    }})()'''):
+        raise RuntimeError('输入框更新后读回不一致')
+
+
 def fill(b, title, caption, declaration='ai'):
     check_login(b)
-    b.command('fill', 'input[placeholder="添加作品标题"]', title)
-    wait_for(b, lambda: b.eval(f'document.querySelector(\'input[placeholder="添加作品标题"]\')?.value === {json.dumps(title)}'), '标题读回不一致')
+    fill_input(b, 'input[placeholder="添加作品标题"]', title)
     js = f'''(() => {{const editors=[...document.querySelectorAll('div[contenteditable=true]')].filter(e=>{VISIBLE});
       if(editors.length!==1) return false; const e=editors[0]; e.focus();
       const r=document.createRange(); r.selectNodeContents(e); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
@@ -162,7 +187,7 @@ def get_note_link(b, title):
     b.command('reload')
     check_login(b)
     wait_for(b, lambda: b.eval('!!document.querySelector(\'input[placeholder*="搜索作品"]\')'), '管理页搜索框未出现')
-    b.command('fill', 'input[placeholder*="搜索作品"]', title)
+    fill_input(b, 'input[placeholder*="搜索作品"]', title)
     b.command('press', 'Enter')
     # Locate the smallest title-bearing card with one edit action; ambiguity fails closed.
     js = f'''(() => {{const titles=[...document.querySelectorAll('*')].filter(e=>{VISIBLE} &&
