@@ -15,22 +15,20 @@
 | 输入 | 模式 |
 | --- | --- |
 | 只有粗略想法或方向 | 想法模式 |
-| 参考视频（抖音链接或本地文件） | 参考模式 |
+| 参考作品（图文 / 视频链接或本地文件） | 参考模式 |
 | 已有素材（视频片段、图片、录音、产品演示） | 素材模式 |
 | 已有脚本（用户写好或别的来源） | 脚本模式 |
 
 ### 2. 识别制作路线
 
-| 路线 | 判断 | 执行方 |
-| --- | --- | --- |
-| 图文 | 新制图组或已有图片分发 | main 按图文 DNA 组织标题、描述、图序与配乐；复杂设计交 content-producer |
-| 素材组装 / 轻剪辑 | 用户手里有可用素材 | main 直接做：`video-edit` / `talking-head-cut` / `ui-demo` |
-| 从零制作 | 没有素材，需要出脚本、拍摄/生成画面 | main 出 Brief，委托 `content-producer` |
-| 脚本制作 | 用户已有脚本 | 用户脚本按素材处理（绝对路径写进 Brief 素材清单，必须保留的事实 / 结构要点写进 Brief 要求）；main 只调策略层（选题 / 口播口径 / 植入 / CTA），不改写脚本本体、不动分镜与画面执行——需动分镜即改走 Brief 委托，由 CP 重出 |
+先选图文或视频两条主路线：
+
+- **图文** → Step 5A：main 按图文 DNA 制作图组与正文；复杂视觉设计可委托 content-producer。
+- **视频** → Step 5B：仅素材组装或轻剪辑由 main 直接做；其余视频制作均出 Brief，按标准流程委托 content-producer。有脚本仍按视频路线判断，不另立制作路线；脚本作为素材保留，涉及新叙事或分镜交 CP。
 
 ### 3. 抖音链接的意图判断
 
-用户给抖音视频链接时，先判断意图：
+用户给抖音视频或图文链接时，先判断意图：
 
 - **风格吸收**："把这条的风格提取出来""以后照着这个味道做" -> 切换到 `style-dna.md`，生成 report 并更新 DNA。
 - **内容参考**："照着这条做一条""这个选题我们也做一条" -> 继续本流程（参考模式）。
@@ -38,7 +36,7 @@
 
 ### 4. 与改片的边界
 
-用户对一条已完成的视频（通常是我们此前产出的）改文案、重新剪辑、换封面，走 `editing.md`。本流程把用户输入当作素材，走完整生产链路产出新视频。
+用户对已有图文或视频改文案、调整图组、剪辑或换封面，走 `editing.md`。本流程用于产出一篇新图文或一条新视频。
 
 ## Step 1 - 生产契约锁定
 
@@ -81,12 +79,13 @@ DNA template 是 main agent 的生产输入模板：
 
 | 项目 | 规则 |
 | --- | --- |
-| 制作路线 | 素材组装 / 从零制作 / 脚本制作，判断依据见 Step 0 |
+| 作品形态与制作路线 | 图文或视频（直接组装 / 轻剪辑、委托 CP），判断依据见 Step 0 |
 | workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / narration-video / collage-broll）；未确定则省略（省略 = CP 按其通用制作流程做） |
 | 主题 / 方向 | 用户给了明确主题时不得另起炉灶，仅按 DNA template 细化选题和钩子 |
 | 素材 | 用户提供的视频片段、图片、录音、文案必须优先使用 |
 | 目标观众 | 未指定时按 `business_knowledge.md` 和 DNA 受众关系推导 |
-| 时长 | 未指定时按 DNA template 的时长带；再无要求默认 30-90 秒 |
+| 视频时长 | 仅视频：未指定时按 DNA template 的时长带；再无要求默认 30-90 秒 |
+| 图文图组 | 仅图文：确定图片数量、图序、逐页信息与首图要求，按图文 template 制作 |
 | 封面 | 默认生成；用户自带封面时优先使用 |
 | 简介与话题标签 | 用户指定时逐字使用；未指定时按 DNA template 标题与文案维度推导 |
 
@@ -104,10 +103,10 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 
 ## Step 2 - 素材获取与整理
 
-先建立视频目录 `douyin/outputs/<video-name>/`（video-name 用主题的短 slug；选题尚未确定时可先用暂代名，选题确定后随之定名），下设 `materials/` 子目录，获取到的素材统一放入 `materials/`。
+先建立作品目录 `douyin/outputs/<work-name>/`（work-name 用主题的短 slug；选题尚未确定时可先用暂代名，选题确定后随之定名），下设 `materials/` 子目录，获取到的素材统一放入 `materials/`。
 
 1. 按类型获取输入：
-   - 抖音参考视频链接 -> self-spawn subagent 走 `viral-chaser` 拆解，转录、关键帧、时长、互动线索落入 `douyin/outputs/<video-name>/references/`（仿照制作时它就是参考素材）。
+   - 抖音参考视频链接 -> self-spawn subagent 走 `viral-chaser` 拆解，转录、关键帧、时长、互动线索落入 `douyin/outputs/<work-name>/references/`（仿照制作时它就是参考素材）。
    - 本地视频 / 图片 / 音频素材 -> 复制进 `materials/`。
    - 用户文字输入（想法、脚本、要点）-> 保存为 `.md` 放入 `materials/`。
 2. 建立素材清单：用户原话、事实、数据、案例、画面素材、可用观点、待确认信息。
@@ -178,13 +177,21 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 
 ## Step 5 - 制作
 
-按 Step 0 判定的路线执行。所有路线的成品最终落在 `douyin/outputs/<video-name>/`。
+按 Step 0 判定的路线执行。所有路线的成品最终落在 `douyin/outputs/<work-name>/`。
 
-### 图文路线：图组与文案
+### Step 5A - 图文制作
 
-按图文 DNA template 编排封面、逐页内容、阅读顺序、正文与 CTA。已有跨平台图组优先复用，检查事实、裁切、平台文案与授权；缺图用 `awk-img-gen`，复杂设计交 content-producer。交付有序图片清单（1–35 张，单张 ≤50MB，jpg/jpeg/png/webp/bmp/tif，建议 3:4 或 4:3）及标题、描述。可选配乐记录精确歌名；不指定则保留原声。图文跳过视频 Brief、口播与剪辑步骤，直接确认整组图片、图序、文案和配乐后进入 Step 6。
+按图文 DNA template 编排封面、逐页内容、阅读顺序、正文与 CTA。已有跨平台图组优先复用，检查事实、裁切、平台文案与授权；缺图用 `awk-img-gen`，复杂设计交 content-producer。交付有序图片清单（1–35 张，单张 ≤50MB，jpg/jpeg/png/webp/bmp/tif，建议 3:4 或 4:3）及标题、描述。配乐只确定风格意图；上传后根据抖音实际推荐候选选择歌曲。
 
-### 路线 A：素材组装 / 轻剪辑（main 直接做）
+#### 【确认】图组与正文
+
+确认完整图组（含首图）、图片顺序、正文与配乐风格意图。确认后直接进入 Step 6，不执行视频制作、视频质检或“成片与封面确认”。
+
+### Step 5B - 视频制作
+
+视频仅分以下两种执行方式。
+
+#### 方式 1：素材组装 / 轻剪辑（main 直接做）
 
 只处理已有素材的简单加工，不升格为全案制作：
 
@@ -195,9 +202,9 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
 5. 产品操作演示 -> `ui-demo` 录制。
 6. 若需求超出“简单加工”（需要重写叙事、全新分镜、全案生成），停止自做，改走 Brief 委托路线。
 
-### 路线 B / C：委托 content-producer 制作
+#### 方式 2：其他视频制作（按标准流程委托 content-producer）
 
-1. 产出 **Brief** `douyin/outputs/<video-name>/brief.md`（Brief 是 main / CP 的唯一交接物）：
+1. 产出 **Brief** `douyin/outputs/<work-name>/brief.md`（Brief 是 main / CP 的唯一交接物）：
 
 ```markdown
 # 抖音视频制作 Brief
@@ -226,19 +233,19 @@ Brief 硬性规则：
 - **素材给绝对路径**：main 负责素材准备（用户素材预处理、`ui-demo` 录屏、从 `campaign_assets/` 挑选），把绝对路径写进 Brief。
 - **甲乙方关系**：需求方向、品牌事实、发布文案归 main；制作方案、分镜、渲染参数归 CP。
 
-2. 口播（真人出镜 / 数字人 / 真人录音）视频：口播稿一律由 main 写——`narration-script` 子模块启用时按其结构写，未启用时按用户要求与 Brief 核心传达写——落 `douyin/outputs/<video-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。剪辑配解说的旁白由 CP 写，main 不出旁白稿。
+2. 口播（真人出镜 / 数字人 / 真人录音）视频：口播稿一律由 main 写——`narration-script` 子模块启用时按其结构写，未启用时按用户要求与 Brief 核心传达写——落 `douyin/outputs/<work-name>/voiceover.md`，Brief 里给绝对路径；真人口播时指导用户按口播稿录音，完成后向用户取得录音文件。剪辑配解说的旁白由 CP 写，main 不出旁白稿。
 3. 参考模式下，把选题与创意结论写进 Brief 的「内容创意」段即可；`viral-chaser` 拆解报告是 main 的采样材料，**不作为 Brief 附件交给 CP**。
 4. spawn `content-producer` 委托制作：只交 Brief 一份——素材、口播文案 / 录音均已以绝对路径写在 Brief 内；不指定 CP 的工作区与制作方案。
 5. Brief 变更时更新版本并推送变更要点；已开工中间产物按新版取舍，弃用部分记入交付说明。
-6. CP 交付后，按其回报的绝对路径把成片与封面取回 `douyin/outputs/<video-name>/`（`video.mp4` / `cover.jpg`），并把交付说明要点记入作品目录。
+6. CP 交付后，按其回报的绝对路径把成片与封面取回 `douyin/outputs/<work-name>/`（`video.mp4` / `cover.jpg`），并把交付说明要点记入作品目录。
 
-## 【确认】成片与封面
+#### 【确认】成片与封面（仅视频）
 
-第三个必停节点。成片与封面确认后才可发布。用户有意见按意见修改，直至确认。
+main 自做的素材组装 / 轻剪辑先通过 `video-review`；CP 交付按其标准流程完成质检。用户确认成片与封面后进入 Step 6；有修改意见则回对应执行方式调整。
 
 ## Step 6 - 发布
 
-按成品形态选择工具，并先读对应工具说明。两工具共用持久化 `douyin` session，前置打开页面后由 agent 判定登录态。视频示例：
+按成品形态选择工具，先读对应工具说明及其引用的共用登录流程；打开页面并确认登录态后再发布。视频示例：
 
 ```bash
 # 1. open 上传页 + agent 判定登录态（必做，不可跳过）
@@ -246,20 +253,26 @@ douyin-video-publish open-page
 # 用页面元素（用户头像/用户名）判定登录态；未登录走 login-manager --platform douyin 有头重登
 
 # 2. 发布
-douyin-video-publish run --video douyin/outputs/<video-name>/<成片文件> --title "标题" --caption "简介 #话题1 #话题2"
+douyin-video-publish run --video douyin/outputs/<work-name>/<成片文件> --title "标题" --caption "简介 #话题1 #话题2"
 ```
 
 图文示例：
 
 ```bash
 douyin-note-publish open-page
-# 判定登录态后执行；--music 可省略，保留默认原声
-douyin-note-publish run --images /path/cover.png /path/page2.png --title "图文标题" --caption "描述 #话题" --music "目标歌曲完整名"
+# 判定登录态后上传；音乐候选由上传后的页面提供
+douyin-note-publish upload --images /path/cover.png /path/page2.png
+douyin-note-publish music-list
+# 根据作品内容选择实际候选，复制其 choice
+douyin-note-publish music-select --choice "实际候选choice"
+douyin-note-publish fill --title "图文标题" --caption "描述 #话题"
+douyin-note-publish publish
+douyin-note-publish get-note-link --title "图文标题"
 ```
 
 - 发布前必做 `open-page` + 登录态判定，否则可能因 cookie 未预热而不生效。
 - AIGC 生成的内容按平台规则标注：`fill` 已内置自主声明"内容由AI生成"，无需额外操作；纯实拍素材不声明。
-- exit 2（登录失效）-> `login-manager --platform douyin` 有头重登后重试；exit 3（未捕获 aweme_id）-> 人工到创作者中心管理页核实是否真有新作品，不得当作发布成功。
+- 登录异常按工具引用的共用登录流程处置。已点击发布后遇 exit 2 / exit 3 / 超时，先核实管理页并补取链接，不直接重跑 `run` 或 `publish`。
 - 图文和视频合计同一时间只能有一个发布任务在跑（浏览器 session 竞态），多平台分发时抖音这条必须串行。
 - 限频：单抖音号每 24h ≤ 5 条；触发风控立即降级，30 分钟内不重试。
 
@@ -267,11 +280,11 @@ douyin-note-publish run --images /path/cover.png /path/page2.png --title "图文
 
 发布成功（拿到与成品类型匹配的视频 `/video/` 或图文 `/note/` 链接）后入库：
 
-1. 写 `douyin/outputs/<video-name>/dna-meta.json`：
+1. 写 `douyin/outputs/<work-name>/dna-meta.json`：
 
 ```json
 {"platform": "douyin", "dna_id": "<dna-id>"}
 ```
 
-2. 调 `published-track record`：`--platform douyin`、`--source-folder douyin/outputs/<video-name>/`、`--account <发布所用账号 alias>`、`--publish-url <对应发布工具返回的 url>`；图文 `--content-type post`、视频 `--content-type video`（`dna_id` 自动从 `dna-meta.json` 读取）。
+2. 调 `published-track record`：`--platform douyin`、`--source-folder douyin/outputs/<work-name>/`、`--account <发布所用账号 alias>`、`--publish-url <对应发布工具返回的 url>`；图文 `--content-type post`、视频 `--content-type video`（`dna_id` 自动从 `dna-meta.json` 读取）。
 3. exit 3 仅补取链接或人工核实，禁止自动重新发布。发布流程到此结束；互动数据由 heartbeat 的 `published-track query --platform douyin --limit 30` + 逐条 `fetch-metrics --platform douyin --id <id>` 统一抓取（自动识别 note/video），复盘走 `review.md`。

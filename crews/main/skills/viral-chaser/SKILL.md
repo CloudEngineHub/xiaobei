@@ -152,6 +152,7 @@ The script outputs a **JSON object to stdout**. Read it and proceed with analysi
 **Exit codes:**
 - `0` = Success
 - `1` = Error（URL invalid / download failed），或 `SIGN_UNAVAILABLE`（签名缺 OFB_KEY，重登救不了，交 IT engineer 配凭证）
+- `3` = `SECURITY_BLOCK`（小红书软风控）— 脚本已做一次冷却重试；停止本轮该平台采样，不立即重跑、不换 cookie、不重登
 - `2` = `SESSION_EXPIRED`（cookie 失效）— 走 login-manager 重登（`login-manager --platform <p>` 导出+验证），重试一次
 
 ### Step 3 — Read key frames (if available)

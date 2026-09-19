@@ -9,6 +9,7 @@
  *   0  Success — prints JSON result to stdout
  *   1  General error (URL invalid, download failed, etc.)
  *   2  Cookie invalid / not logged in → caller should run login-manager
+ *   3  XHS SECURITY_BLOCK after one cooldown retry; stop, do not re-login
  */
 
 import { mkdirSync, existsSync, rmSync } from "fs"
@@ -22,6 +23,7 @@ import type { SessionData } from "./session.ts"
 import { checkSession } from "../../_shared/check-session.ts"
 import { getDouyinVideo } from "./platforms/douyin.ts"
 import { getBilibiliVideo } from "./platforms/bilibili.ts"
+import { XhsSecurityBlockError } from "../../_shared/xhs-html-note.ts"
 import { getXhsVideo } from "./platforms/xhs.ts"
 import { downloadVideo } from "./downloader.ts"
 import { extractAudio } from "./audio_extractor.ts"
@@ -189,6 +191,10 @@ async function main(): Promise<void> {
       errExit(`不支持的平台: ${platform}`)
     }
   } catch (e) {
+    if (e instanceof XhsSecurityBlockError) {
+      printJson({ ok: false, error: "SECURITY_BLOCK", platform: "xhs", reason: e.message })
+      process.exit(3)
+    }
     const msg = (e as Error).message
     if (msg.includes("cookie") || msg.includes("失效") || msg.includes("auth")) {
       process.stderr.write(JSON.stringify({ ok: false, error: "SESSION_EXPIRED" }) + "\n")

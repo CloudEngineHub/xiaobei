@@ -16,42 +16,11 @@ description: 通过浏览器自动化发布视频到抖音创作者中心。纯�
 
 ---
 
-## 发布前置：open 上传页 + agent 判定登录态（必做）
+## 发布前置与登录异常（必做）
 
-抖音 cookie 存在预热机制，直接 `douyin-video-publish run` 可能因 cookie 未激活而不生效。**每次发布前必须先 open 上传页**（无头 persistent session），由 agent 在此页面根据元素判定登录态，之后再走 `run`。
+先读并执行[共用登录流程](../_shared/publish-login.md)：`douyin-video-publish open-page` → agent 检查创作者页面登录态 → 已登录才执行 `run`。首次登录、登录弹窗、运行中 exit 2，均按该流程有头登录并交 login-manager 导出验证。
 
-```bash
-# 1. open 上传页(无头 persistent session `douyin`)
-douyin-video-publish open-page
-# 输出: {"ok": true, "session": "douyin", "url": "...", "hint": "agent 用 camoufox-cli eval/snapshot 判定登录态"}
-
-# 2. agent 判定登录态
-通过页面元素判定登录态,如用户头像/用户名等。示例:
-camoufox-cli --session douyin --persistent --json eval "document.querySelector('头像 selector') ? 'logged_in' : 'not_logged_in'"
-
-也可以直接截图调用视觉模型判定。
-
-# 3a. 判定为已登录 → 走发布
-douyin-video-publish run --video /path/to/video.mp4 --title "标题" --caption "描述"
-
-# 3b. 判定为未登录 → 走「登录失效处理」
-```
-
-> 脚本内 `_check_logged_in` 已 mute 成 no-op：登录态判定由 agent 在 open 上传页后自行根据页面元素完成，脚本不做检查、不因此退出。
-
----
-
-## 登录失效处理
-
-判定为未登录、或运行中得到 exit 2 时，走 `login-manager` 重登，复用 `douyin` 持久化 session：
-
-```bash
-camoufox-cli --session douyin --persistent --headed --json open "https://www.douyin.com"
-# 告知用户在窗口里手动完成创作者中心登录,确认后:
-login-manager --platform douyin
-```
-
-`login-manager` 一条命令闭环导出+验证+落中央存储+close session。重登后重新走「发布前置」。本工具**没有 `login` 子命令、也没有 `cleanup` 子命令**。
+`open-page` 成功不代表已登录；脚本的 `_check_logged_in` 不做自动判断。已点击发布后的任何异常先核实管理页，不因重登直接重发。
 
 ---
 
@@ -127,7 +96,7 @@ douyin-video-publish get-link --session <s>
 
 - **触发**：访问 `creator.douyin.com` 未登录态
 - **症状**：页面跳到 `creator.douyin.com/login` 或出现登录弹窗
-- **workaround**：脚本返回 `exit 2`，调用方走 `login-manager` 有头手动重登流。
+- **workaround**：agent 根据页面或 exit 2 判断后，按共用登录流程处理；不要依赖脚本自动识别登录弹窗。
 
 ### pitfall: real_name_auth_required
 

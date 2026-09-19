@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -24,7 +26,7 @@ status = load('platform_status', ROOT/'crews/main/skills/published-track/scripts
 class NoteTests(unittest.TestCase):
     def test_validate_before_browser(self):
         with patch.object(note, 'Browser') as browser:
-            self.assertEqual(note.main(['run','--images','missing.png','--title','X']),1)
+            self.assertEqual(note.main(['run','--original-sound','--images','missing.png','--title','X']),1)
             browser.return_value.command.assert_not_called()
         with self.assertRaises(ValueError):
             note.validate(title='中'*21)
@@ -33,17 +35,20 @@ class NoteTests(unittest.TestCase):
 
     def test_link_requires_image_edit_url_and_preserves_id(self):
         b=Mock()
-        b.eval.side_effect=['https://creator.douyin.com/creator-micro/content/manage',True,True,
-                           'https://creator.douyin.com/creator-micro/content/post/image?mid=7687034742688058662&enter_from=edit_item']
+        def evaluate(js):
+            if js == 'window.location.href':
+                return 'https://creator.douyin.com/creator-micro/content/post/image?mid=7687034742688058662&enter_from=edit_item'
+            return True
+        b.eval.side_effect=evaluate
         result=note.get_note_link(b,'标题')
         self.assertEqual(result['url'],'https://www.douyin.com/note/7687034742688058662')
         self.assertIn(unittest.mock.call('reload'),b.command.call_args_list)
 
-    def test_music_failure_stops_before_publish_and_closes(self):
+    def test_fill_failure_stops_before_publish_and_closes(self):
         with patch.object(note,'validate'), patch.object(note,'Browser') as browser, \
              patch.object(note,'upload'), patch.object(note,'fill',side_effect=RuntimeError('wrong music')), \
              patch.object(note,'publish') as publish:
-            self.assertEqual(note.main(['run','--images','x.png','--title','X','--music','song']),1)
+            self.assertEqual(note.main(['run','--original-sound','--images','x.png','--title','X']),1)
             publish.assert_not_called()
             browser.return_value.close.assert_called_once()
 
@@ -51,9 +56,92 @@ class NoteTests(unittest.TestCase):
         with patch.object(note,'validate'), patch.object(note,'Browser') as browser, \
              patch.object(note,'upload'), patch.object(note,'fill'), patch.object(note,'publish') as publish, \
              patch.object(note,'get_note_link',side_effect=RuntimeError('ambiguous title')):
-            self.assertEqual(note.main(['run','--images','x.png','--title','X']),3)
+            self.assertEqual(note.main(['run','--original-sound','--images','x.png','--title','X']),3)
             publish.assert_called_once()
             browser.return_value.close.assert_called_once()
+
+    def test_login_required_before_fill_does_not_modify_form(self):
+        b=Mock()
+        b.eval.return_value='https://creator.douyin.com/login?redirect=upload'
+        with self.assertRaises(note.LoginRequired):
+            note.fill(b,'标题','正文')
+        b.command.assert_not_called()
+
+    def test_wait_detects_login_redirect_without_waiting_for_timeout(self):
+        b=Mock()
+        b.eval.side_effect=['https://creator.douyin.com/creator-micro/content/upload',
+                            'https://creator.douyin.com/login']
+        action=Mock(return_value=False)
+        with patch.object(note.time,'sleep'):
+            with self.assertRaises(note.LoginRequired):
+                note.wait_for(b,action,'timeout')
+        action.assert_called_once()
+
+    def test_login_word_in_query_is_not_logout(self):
+        b=Mock()
+        b.eval.return_value='https://creator.douyin.com/creator-micro/content/upload?from=/login'
+        note.check_login(b)
+
+    def test_login_failure_run_stops_and_reports_publish_stage(self):
+        for after_publish in (False,True):
+            with self.subTest(after_publish=after_publish), patch.object(note,'validate'), \
+                 patch.object(note,'Browser') as browser, patch.object(note,'upload') as upload, \
+                 patch.object(note,'fill') as fill, patch.object(note,'publish') as publish, \
+                 patch.object(note,'get_note_link') as link:
+                if after_publish:
+                    link.side_effect=note.LoginRequired('SESSION_EXPIRED')
+                else:
+                    upload.side_effect=note.LoginRequired('SESSION_EXPIRED')
+                output=io.StringIO()
+                with redirect_stdout(output):
+                    code=note.main(['run','--original-sound','--images','x.png','--title','标题'])
+                self.assertEqual(code,2)
+                result=json.loads(output.getvalue())
+                self.assertEqual(result['error'],'SESSION_EXPIRED')
+                self.assertEqual(result['publish_attempted'],after_publish)
+                self.assertEqual(publish.call_count,1 if after_publish else 0)
+                if not after_publish:
+                    fill.assert_not_called()
+                browser.return_value.close.assert_called_once()
+
+    def test_music_choice_must_come_from_current_page(self):
+        b = Mock()
+        b.eval.side_effect = ['https://creator.douyin.com/creator-micro/content/post/image', None]
+        with self.assertRaisesRegex(RuntimeError, '候选已失效'):
+            note.select_music(b, 'invented-song')
+        self.assertEqual(b.eval.call_count, 2)
+        b.command.assert_not_called()
+
+    def test_publish_blocks_missing_or_mismatched_music(self):
+        for selected in (None, {'name': '实际候选'}):
+            with self.subTest(selected=selected):
+                b = Mock()
+                b.eval.side_effect = ['https://creator.douyin.com/creator-micro/content/post/image', selected]
+                with patch.object(note, 'verify_music', return_value=False), patch.object(note, 'click_text') as click:
+                    with self.assertRaisesRegex(RuntimeError, '尚未确认配乐'):
+                        note.publish(b)
+                    click.assert_not_called()
+
+    def test_upload_waits_for_all_images_before_returning(self):
+        b = Mock()
+        b.eval.side_effect = [
+            'https://creator.douyin.com/creator-micro/content/upload',
+            'https://creator.douyin.com/creator-micro/content/upload', True,
+            'https://creator.douyin.com/creator-micro/content/upload', True,
+            'https://creator.douyin.com/creator-micro/content/post/image', False,
+            'https://creator.douyin.com/creator-micro/content/post/image', True,
+        ]
+        with patch.object(note.time, 'sleep') as sleep:
+            note.upload(b, ['one.png', 'two.png'])
+        sleep.assert_called_once()
+        self.assertIn('已添加2张图片', b.eval.call_args.args[0])
+
+    def test_upfront_music_and_implicit_original_sound_rejected(self):
+        parser = note.build_parser()
+        for args in (['upload', '--images', 'x.png', '--music', 'song'],
+                     ['run', '--images', 'x.png', '--title', 'X']):
+            with self.subTest(args=args), self.assertRaises(SystemExit):
+                parser.parse_args(args)
 
     def test_shared_lock_fail_first(self):
         with note.publish_lock():

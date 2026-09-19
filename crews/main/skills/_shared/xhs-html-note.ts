@@ -183,13 +183,26 @@ export function parseXhsNoteFromHtml(html: string, noteId: string): XhsHtmlNote 
   let videoUrl = ""
   const video = note?.video
   if (video) {
-    const h264 = video?.media?.stream?.h264 ?? video?.media?.stream?.h265 ?? []
-    videoUrl = h264[0]?.masterUrl ?? h264[0]?.master_url ?? ""
-    if (!videoUrl) {
-      // consumer.originVideoKey 是个 key，需拼域名——仅当无直链时作最后线索，此处不拼，留空走 og:video
-      const originKey = video?.consumer?.originVideoKey ?? video?.consumer?.origin_video_key
-      if (originKey) videoUrl = "" // 不直接用 key，交给 og:video
+    // Stream bucket names can change (h264/h265/av1 → EF*). Inspect every
+    // array bucket, retaining only usable URLs and sorting numeric quality fields.
+    const stream = video?.media?.stream
+    const quality = (value: unknown): number => {
+      const n = Number(value)
+      return Number.isFinite(n) && n > 0 ? n : 0
     }
+    const candidates = stream && typeof stream === "object"
+      ? Object.values(stream).flatMap(bucket => Array.isArray(bucket) ? bucket : [])
+          .filter(item => item && typeof item === "object")
+          .map(item => ({
+            url: [item.masterUrl, item.master_url].find(url =>
+              typeof url === "string" && /^(?:https?:)?\/\//.test(url)),
+            height: quality(item.height),
+            bitrate: quality(item.avgBitrate ?? item.avg_bitrate),
+          }))
+          .filter(item => item.url)
+          .sort((a, b) => b.height - a.height || b.bitrate - a.bitrate)
+      : []
+    videoUrl = candidates[0]?.url ?? ""
   }
   if (!videoUrl && og.video) videoUrl = og.video
 

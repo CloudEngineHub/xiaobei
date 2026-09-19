@@ -20,14 +20,15 @@ class LoginRequired(RuntimeError):
 
 def check_login(b):
     url = b.eval('window.location.href') or ''
-    if '/login' in url:
+    if urlparse(url).path.rstrip('/') in ('/login', '/creator-micro/login'):
         raise LoginRequired('SESSION_EXPIRED: 创作者中心跳转登录页')
 
 
 
-def wait_for(action, message, timeout=60):
+def wait_for(b, action, message, timeout=60):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        check_login(b)
         value = action()
         if value:
             return value
@@ -60,44 +61,87 @@ def validate(images=None, title='', caption=''):
 def upload(b, images):
     b.command('open', UPLOAD_URL)
     check_login(b)
-    wait_for(lambda: click_text(b, '发布图文'), '找不到发布图文标签')
+    wait_for(b, lambda: click_text(b, '发布图文'), '找不到发布图文标签')
     b.command('upload', 'input[type=file][accept*="image"]',
               *[str(Path(p).resolve()) for p in images], timeout=300)
-    wait_for(lambda: b.eval('!!document.querySelector(\'input[placeholder="添加作品标题"]\')'),
+    wait_for(b, lambda: b.eval('!!document.querySelector(\'input[placeholder="添加作品标题"]\')'),
              '图片上传超时，标题表单未出现', timeout=300)
+    wait_for(b, lambda: b.eval(f"document.body.innerText.includes('已添加{len(images)}张图片') && !document.body.innerText.includes('取消上传')"),
+             '图片尚未全部上传成功，不能选择推荐音乐', timeout=300)
 
 
-def select_music(b, name, category=None):
-    if not click_text(b, '选择音乐'):
-        raise RuntimeError('找不到选择音乐入口')
-    if category:
-        wait_for(lambda: click_text(b, category), '找不到音乐分类')
-    else:
-        b.command('fill', 'input[placeholder*="搜索音乐"]', name)
-        b.command('press', 'Enter')
-    # Exact title and exactly one card; never choose a list-wide 使用 button.
-    js = f'''(() => {{const matches=[...document.querySelectorAll('div,span')]
-      .filter(e=>{VISIBLE} && !e.children.length && e.textContent.trim()==={json.dumps(name)});
-      const cards=[...new Set(matches.map(e=>e.closest('[class*="card-wrapper"]')).filter(Boolean))];
-      if(cards.length!==1) return false; cards[0].click(); return true;}})()'''
-    wait_for(lambda: b.eval(js), '目标歌曲不存在或重名，未选择配乐')
-    use = f'''(() => {{const cards=[...document.querySelectorAll('[class*="card-container-act"]')]
-      .filter(e=>{VISIBLE} && [...e.querySelectorAll('*')].some(n=>!n.children.length && n.textContent.trim()==={json.dumps(name)}));
-      if(cards.length!==1) return false;
-      const buttons=[...cards[0].querySelectorAll('button,span,div')].filter(e=>!e.children.length && e.textContent.trim()==='使用');
-      if(buttons.length!==1) return false; (buttons[0].closest('button')||buttons[0]).click(); return true;}})()'''
-    wait_for(lambda: b.eval(use), '目标歌曲激活卡片内未找到唯一使用按钮')
-    # The selector panel must close; an exact song label must remain beside 修改音乐.
-    verify = f'''(() => {{const labels=[...document.querySelectorAll('div,span')]
-      .filter(e=>{VISIBLE} && !e.children.length && e.textContent.trim()==={json.dumps(name)});
+# Candidate tokens and DOM references live in the current page, so reloading invalidates them.
+CARD_DATA = """const describe = e => ({
+  name:e.querySelector('[class*=song-name]')?.textContent.trim(),
+  author:e.querySelector('.song-author')?.textContent.trim(),
+  duration:e.querySelector('.song-duration')?.textContent.trim()
+});"""
+
+
+def list_music(b):
+    check_login(b)
+    opened = b.eval('''(() => {
+      if([...document.querySelectorAll('[class*=card-wrapper]')].some(e=>e.getClientRects().length)) return true;
+      const actions=[...document.querySelectorAll('span[class*=action]')].filter(e=>
+        e.getClientRects().length && ['选择音乐','修改音乐'].includes(e.textContent.trim()));
+      if(actions.length!==1) return false; actions[0].click(); return true;
+    })()''')
+    if not opened:
+        raise RuntimeError('找不到唯一音乐入口；先完成图片上传')
+    js = '''(() => {''' + CARD_DATA + '''
+      const cards=[...document.querySelectorAll('[class*=card-wrapper]')].filter(e=>e.getClientRects().length);
+      if(!cards.length) return null;
+      window.__noteMusicCandidates = new Map();
+      return cards.map(e=>{
+        const data=describe(e), choice=crypto.randomUUID();
+        window.__noteMusicCandidates.set(choice,{element:e,data});
+        return {choice,...data,usage:e.querySelector('[class*=user-count]')?.textContent.trim()};
+      });
+    })()'''
+    return wait_for(b, lambda: b.eval(js), '未获取到音乐候选；检查页面，不猜测歌名')
+
+
+def select_music(b, choice):
+    check_login(b)
+    key = json.dumps(choice)
+    selected = b.eval('''(() => {''' + CARD_DATA + f'''
+      const entry=window.__noteMusicCandidates?.get({key});
+      if(!entry || !entry.element.isConnected || !entry.element.getClientRects().length ||
+         JSON.stringify(describe(entry.element))!==JSON.stringify(entry.data)) return null;
+      window.__noteSelectedMusic=null;
+      if(!entry.element.closest('[class*=card-container-act]')) entry.element.click();
+      return entry.data;
+    }})()''')
+    if not selected:
+        raise RuntimeError('候选已失效或不存在；重新 music-list 后选择')
+    use = '''(() => {''' + CARD_DATA + f'''
+      const entry=window.__noteMusicCandidates?.get({key});
+      if(!entry || !entry.element.isConnected || JSON.stringify(describe(entry.element))!==JSON.stringify(entry.data)) return false;
+      const active=entry.element.closest('[class*=card-container-act]');
+      if(!active || !active.getClientRects().length) return false;
+      const buttons=[...active.querySelectorAll('button')].filter(e=>!e.disabled && e.textContent.trim()==='使用');
+      if(buttons.length!==1) return false; buttons[0].click(); return true;
+    }})()'''
+    wait_for(b, lambda: b.eval(use), '目标歌曲激活卡片内未找到唯一使用按钮')
+    wait_for(b, lambda: verify_music(b, selected['name']), '配乐断言失败，禁止发布')
+    b.eval(f'window.__noteSelectedMusic={json.dumps(selected,ensure_ascii=False)}')
+    return selected
+
+
+def verify_music(b, name):
+    return b.eval(f'''(() => {{
+      if([...document.querySelectorAll('[class*=card-wrapper]')].some(e=>e.getClientRects().length)) return false;
+      const labels=[...document.querySelectorAll('div,span')].filter(e=>
+        e.getClientRects().length && !e.children.length && e.textContent.trim()==={json.dumps(name)});
       return labels.some(e=>{{let p=e; for(let i=0;i<5 && p && p!==document.body;i++,p=p.parentElement)
-      {{if(p.innerText.includes('修改音乐') && !p.querySelector('[class*="card-container-act"]')) return true;}} return false;}});}})()'''
-    wait_for(lambda: b.eval(verify), '配乐断言失败，禁止发布')
+        {{if(p.innerText.includes('修改音乐')) return true;}} return false;}});
+    }})()''')
 
 
-def fill(b, title, caption, music=None, category=None, declaration='ai'):
+def fill(b, title, caption, declaration='ai'):
+    check_login(b)
     b.command('fill', 'input[placeholder="添加作品标题"]', title)
-    wait_for(lambda: b.eval(f'document.querySelector(\'input[placeholder="添加作品标题"]\')?.value === {json.dumps(title)}'), '标题读回不一致')
+    wait_for(b, lambda: b.eval(f'document.querySelector(\'input[placeholder="添加作品标题"]\')?.value === {json.dumps(title)}'), '标题读回不一致')
     js = f'''(() => {{const editors=[...document.querySelectorAll('div[contenteditable=true]')].filter(e=>{VISIBLE});
       if(editors.length!==1) return false; const e=editors[0]; e.focus();
       const r=document.createRange(); r.selectNodeContents(e); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
@@ -105,12 +149,10 @@ def fill(b, title, caption, music=None, category=None, declaration='ai'):
       return e.innerText.trim()==={json.dumps(caption.strip())};}})()'''
     if not b.eval(js):
         raise RuntimeError('描述框缺失、不唯一或读回不一致')
-    if music:
-        select_music(b, music, category)
     if declaration == 'ai':
         opened = click_text(b, '请选择自主声明') or click_text(b, '自主声明')
         if opened:
-            wait_for(lambda: click_text(b, '内容由AI生成'), 'AI 声明选项未找到')
+            wait_for(b, lambda: click_text(b, '内容由AI生成'), 'AI 声明选项未找到')
             if not click_text(b, '确定', 'button'):
                 raise RuntimeError('AI 声明确认失败')
 
@@ -119,7 +161,7 @@ def get_note_link(b, title):
     b.command('open', MANAGE_URL)
     b.command('reload')
     check_login(b)
-    wait_for(lambda: b.eval('!!document.querySelector(\'input[placeholder*="搜索作品"]\')'), '管理页搜索框未出现')
+    wait_for(b, lambda: b.eval('!!document.querySelector(\'input[placeholder*="搜索作品"]\')'), '管理页搜索框未出现')
     b.command('fill', 'input[placeholder*="搜索作品"]', title)
     b.command('press', 'Enter')
     # Locate the smallest title-bearing card with one edit action; ambiguity fails closed.
@@ -130,27 +172,32 @@ def get_note_link(b, title):
         const edits=[...p.querySelectorAll('button,a,span,div')].filter(e=>{VISIBLE} && !e.children.length && e.textContent.trim()==='编辑作品');
         if(edits.length) {{if(edits.length===1) actions.add(edits[0]); break;}}
       }}}} if(actions.size!==1) return false; [...actions][0].click(); return true;}})()'''
-    wait_for(lambda: b.eval(js), '未找到唯一同标题作品，需人工核实，不能重发')
+    wait_for(b, lambda: b.eval(js), '未找到唯一同标题作品，需人工核实，不能重发')
     def read_id():
         url = b.eval('window.location.href') or ''
         parsed = urlparse(url)
         mid = parse_qs(parsed.query).get('mid', [''])[0]
         return mid if parsed.hostname == 'creator.douyin.com' and parsed.path.endswith('/content/post/image') and re.fullmatch(r'\d{19}', mid) else None
-    mid = wait_for(read_id, '未捕获图文编辑页 mid')
+    mid = wait_for(b, read_id, '未捕获图文编辑页 mid')
     return {'ok': True, 'session': SESSION, 'content_id': mid, 'mid': mid,
             'url': f'https://www.douyin.com/note/{mid}'}
 
 
-def publish(b):
+def publish(b, original_sound=False):
+    check_login(b)
+    if not original_sound:
+        selected = b.eval('window.__noteSelectedMusic || null')
+        if not selected or not verify_music(b, selected['name']):
+            raise RuntimeError('尚未确认配乐；先 music-list / music-select，或明确选择 --original-sound')
     if not click_text(b, '发布', 'button'):
         raise RuntimeError('未找到唯一可见发布按钮')
-    wait_for(lambda: '/content/manage' in (b.eval('window.location.href') or ''), '发布后未跳转管理页，请核实后再操作')
+    wait_for(b, lambda: '/content/manage' in (b.eval('window.location.href') or ''), '发布后未跳转管理页，请核实后再操作')
 
 
 def build_parser():
     p = argparse.ArgumentParser(prog='douyin-note-publish')
     sub = p.add_subparsers(dest='cmd', required=True)
-    for cmd in ('open-page','upload','fill','publish','get-note-link','run'):
+    for cmd in ('open-page','upload','music-list','music-select','fill','publish','get-note-link','run'):
         s = sub.add_parser(cmd)
         s.add_argument('--headed', action='store_true')
         if cmd in ('run','upload'):
@@ -159,15 +206,19 @@ def build_parser():
             s.add_argument('--title', required=True)
         if cmd in ('run','fill'):
             s.add_argument('--caption', default='')
-            s.add_argument('--music')
-            s.add_argument('--music-category')
             s.add_argument('--declaration', choices=('ai','none'), default='ai')
+        if cmd == 'music-select':
+            s.add_argument('--choice', required=True)
+        if cmd in ('publish','run'):
+            s.add_argument('--original-sound', action='store_true', required=cmd == 'run',
+                           help='明确使用原声；有配乐时必须使用分步流程')
     return p
 
 
 def main(argv=None):
     a = build_parser().parse_args(argv)
     b = Browser(a.headed)
+    publish_attempted = False
     try:
         if a.cmd in ('run','fill','upload'):
             validate(getattr(a,'images',None), getattr(a,'title','上传'), getattr(a,'caption',''))
@@ -181,10 +232,15 @@ def main(argv=None):
                     result = {'ok':True,'session':SESSION}
                     if a.cmd in ('upload','run'):
                         upload(b,a.images)
+                    if a.cmd == 'music-list':
+                        result['candidates'] = list_music(b)
+                    if a.cmd == 'music-select':
+                        result['music'] = select_music(b,a.choice)
                     if a.cmd in ('fill','run'):
-                        fill(b,a.title,a.caption,a.music,a.music_category,a.declaration)
+                        fill(b,a.title,a.caption,a.declaration)
                     if a.cmd in ('publish','run'):
-                        publish(b)
+                        publish_attempted = True
+                        publish(b,a.original_sound)
                     if a.cmd in ('get-note-link','run'):
                         try:
                             result = get_note_link(b,a.title)
@@ -204,6 +260,9 @@ def main(argv=None):
                         print(f'close: {exc}',file=sys.stderr)
         return 0
     except LoginRequired as exc:
+        print(json.dumps({'ok':False, 'error':'SESSION_EXPIRED', 'platform':SESSION,
+                          'publish_attempted':publish_attempted,
+                          'hint':'按共用登录流程恢复；若已点击发布，先核实管理页，不重发'},ensure_ascii=False))
         print(f'error: {exc}',file=sys.stderr)
         return 2
     except Exception as exc:

@@ -74,7 +74,7 @@
 
 取数失败保留原始 stderr 和 exit code，继续下一平台；登录失效另记入 `EXPIRED_PLATFORMS`，不重登。`NOT_ON_FIRST_PAGE` 直接跳过，不补抓、不翻页。
 
-目前定时任务取数仅完整支持 expert 架构的四个平台（douyin、xhs、wx_channel、wx_mp）。其他平台直接跳过。
+目前定时任务取数仅支持已适配 expert 架构的四个平台（douyin、xhs、wx_channel、wx_mp），其他平台直接跳过。
 
 ---
 
@@ -88,7 +88,7 @@ content-calibrator eval --platform <platform> --check
 
 返回 JSON：`{dnas: [{dna_id, pending, triggered}]}`
 - 全部 `triggered=false` → 本轮评估跳过，不消耗后续 token
-- 有 `triggered=true` 的 DNA → 进入 Step 3a
+- 有 `triggered=true` 的 DNA → 进入 评估
 
 **对于douyin/wx_mp/wx_channel/xhs平台** → 走该平台专家包内的 review workflow
 
@@ -96,6 +96,8 @@ content-calibrator eval --platform <platform> --check
 
 > - **wx_mp** → expert-wx-mp 的 Review Workflow（`skills/expert-wx-mp/workflows/review.md`）
 > - **douyin** → expert-douyin 的 Review Workflow（`skills/expert-douyin/workflows/review.md`）
+> - **wx_channel** → expert-wx-channel 的 Review Workflow（`skills/expert-wx-channel/workflows/review.md`）
+> - **xhs** → expert-xhs 的 Review Workflow（`skills/expert-xhs/workflows/review.md`）
 
 **对于其他平台** → 尚未匹配DNA系统，直接跳过此步
 
@@ -128,7 +130,7 @@ content-calibrator eval --platform <platform> --check
    > ⚠️ 以下**取数端**登录态已失效，数据未能更新。请白天通知小贝重新登录：
    > - douyin（抖音）
    > - xhs-browse（小红书浏览端）
-   > - wechat-channel（微信视频号)
+   > - wx-channel（微信视频号)
 
 3. DNA 表现评估摘要（如有）：列出本轮评估的 DNA（平台 / dna-id / 覆盖篇数）+ 整体判定（改善 / 平稳 / 下滑）+ 关键归因；无触发 DNA 时写「无 DNA 达到评估阈值」并附各 DNA 待评估计数。
 4. **DNA 优化建议待确认（如有）**：列出评估报告中的逐条建议（建议内容 + 目标维度/template 部分 + 证据篇目）。**Agent 不得自动更新 DNA**。用户白天逐条确认后，指示走对应平台专家包的 style-dna workflow 回写 DNA。

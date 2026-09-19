@@ -9,7 +9,7 @@ description: 下载小红书图文笔记（正文 / 图片 / 作者 / 互动数�
 
 **用途**：按 URL 或 note-id 下载单篇小红书图文笔记的正文、图片、作者与互动数据（点赞/收藏/评论/分享），供对标分析、DNA 采样、仿写参考使用。
 
-**输入**：笔记 URL（`xhslink.com` 短链或 `xiaohongshu.com/explore/...` 完整链接），或 `note-id` + `xsec-token`；外加输出目录。
+**输入**：笔记 URL（`xhslink.com` / `xhslink.cn` 短链或 `xiaohongshu.com/explore/...` 完整链接），或 `note-id` + `xsec-token`；外加输出目录。
 **输出**：stdout JSON（正文 / 图片列表 / 作者 / stats）+ 图片落盘到输出目录。
 
 **边界**：只处理图文笔记。视频笔记（`noteType: "video"`）返回 `VIDEO_NOTE` 错误，转 `viral-chaser` 处理。
@@ -33,7 +33,7 @@ description: 下载小红书图文笔记（正文 / 图片 / 作者 / 互动数�
 通过 PATH 调用 wrapper：`xhs-content-ops <参数>`，无需手动拼接 node 命令或脚本路径。
 
 ```bash
-# 推荐：直接传 URL（支持 xhslink.com 短链和完整 explore 链接，脚本自动解析 note_id + xsec_token）
+# 推荐：直接传 URL（支持 xhslink.com / xhslink.cn 短链和完整 explore 链接，脚本自动解析 note_id + xsec_token）
 xhs-content-ops \
   --url <url> \
   --output-dir <output_dir>
@@ -50,7 +50,7 @@ xhs-content-ops \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--url` | 二选一 | 笔记 URL（`xhslink.com` 短链或 `xiaohongshu.com/explore/...` 完整链接），脚本自动解析 note_id + xsec_token |
+| `--url` | 二选一 | 笔记 URL（`xhslink.com` / `xhslink.cn` 短链或 `xiaohongshu.com/explore/...` 完整链接），脚本自动解析 note_id + xsec_token |
 | `--note-id` | 二选一 | 小红书笔记 ID（与 `--url` 二选一） |
 | `--xsec-token` | `--note-id` 时必填 | xsec_token（用 `--note-id` 时必传，否则 HTML 路线拿空页；用 `--url` 时脚本自动提取） |
 | `--xsec-source` | 否 | xsec_source，默认 `pc_feed` |

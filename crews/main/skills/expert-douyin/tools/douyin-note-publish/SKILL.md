@@ -1,6 +1,6 @@
 ---
 name: douyin-note-publish
-description: 用持久化浏览器发布抖音图文，支持多图、描述话题、精确配乐与图文链接回收。
+description: 用持久化浏览器发布抖音图文，支持多图、描述话题、上传后读取推荐音乐并选曲与图文链接回收。
 ---
 
 # 图文发布工具
@@ -11,25 +11,43 @@ description: 用持久化浏览器发布抖音图文，支持多图、描述话�
 
 - 图片：按传参顺序上传 1–35 张，jpg/jpeg/png/webp/bmp/tif，单张非空且 ≤50MB，建议 3:4 或 4:3。
 - 标题：1–20 字；描述（含内联 `#话题`）：≤1000 字。
-- `--music`：精确歌曲名；默认搜索，也可加 `--music-category "纯音乐"` 在分类中定位。不传则保留默认原声。重名或无法确认目标歌曲时停止，不猜歌。
+- 上传前只确定配乐风格或原声意图，不指定歌名。上传完成后读取页面实际推荐候选，根据内容选择合适配乐。
 - 默认声明 AI 生成；纯实拍且无需 AI 声明时显式传 `--declaration none`。
 - 成功返回 `url=https://www.douyin.com/note/<mid>`、`mid`、`content_id`。
 
+## 发布前置与登录异常（必做）
+
+先读并执行[共用登录流程](../_shared/publish-login.md)，图文与视频使用相同登录态和恢复步骤：
+
+1. `douyin-note-publish open-page`，用 snapshot / 截图检查头像、用户名及创作者页面。
+2. 未登录或运行中 exit 2：有头打开创作者中心，等用户完成登录，再执行 `login-manager --platform douyin` 导出验证；该命令本身不代用户登录。
+3. 验证成功后重新 `open-page` 并检查页面。若此前已点击发布，先核实管理页 / 补取链接，不重跑发布。
+
+同 session 的有头参数保持一致；登录期间不调用默认无头发布命令。详细命令、登录验证失败、限流及异常恢复见共用流程。
+
 ## 发布
 
-先 `douyin-note-publish open-page`，用页面头像、用户名或截图确认登录态，再调用：
+页面确认已登录后，按顺序执行；候选必须在上传完成后读取：
 
 ```bash
-douyin-note-publish run --images /path/cover.png /path/page2.png --title "图文标题" --caption "描述 #话题" --music "目标歌曲完整名"
+douyin-note-publish upload --images /path/cover.png /path/page2.png
+douyin-note-publish music-list
+# 阅读返回的 name / author / duration，根据作品内容选择候选，复制其 choice
+douyin-note-publish music-select --choice "上一步实际返回的choice"
+douyin-note-publish fill --title "图文标题" --caption "描述 #话题"
+douyin-note-publish publish
+douyin-note-publish get-note-link --title "图文标题"
 ```
 
-未登录时交 `login-manager --platform douyin` 有头重登，之后重新打开上传页。浏览器只复用持久化 session `douyin`，严禁 cookies import。需要有头操作时每次调用都传 `--headed`，直接 camoufox-cli 操作也保持同一模式，避免 daemon 重启。
+`upload` 等全部图片上传完成后才返回。`music-list` 打开音乐面板并读取当前候选，不预设歌名或搜索不存在的歌曲。需要其他分类时通过浏览器页面切换推荐 / 热门榜 / 纯音乐等实际可见分类，再运行 `music-list`。每次读取会更新候选编号；页面刷新、候选变化后必须重新读取。
 
-`run` 内部完成切图文、批量上传、填表并读回校验、选曲并校验、AI 声明、发布、刷新管理页、按标题定位唯一作品、进入图文编辑页取 mid，最后关闭 session。脚本不会通过视频列表首条或置顶视频猜图文链接，也不会在出错后自动重新发布。
+`music-select` 仅接受当前页面返回的 `choice`，校验歌曲名、作者、时长及对应卡片，激活后只点击该卡片内的“使用”，确认面板关闭且表单“修改音乐”旁显示目标歌曲。验证失败停止，不能继续发布。`publish` 再次核对已选配乐。
+
+只有明确决定使用原声时，跳过两个音乐命令，使用 `publish --original-sound`；也可调用 `run --original-sound --images ... --title ... --caption ...` 完成原声发布。不要为了省略选曲默认使用原声。`run` 不支持预先指定音乐。
 
 ## 分步与恢复
 
-可调用 `upload --images ...`、`fill --title ... --caption ... [--music ...]`、`publish`。分步之间中间态保留在同一 session；不要插入其他抖音任务。`publish` 仅表示已跳转管理页，必须接 `get-note-link --title "完整标题"`，拿到链接才记录成功。取链会进入编辑页，只读取 URL，不保存修改。
+中间态由脚本保存在同一浏览器 session / 页面；不要插入其他抖音任务。刷新后重新读取候选、选择并验证。`publish` 仅表示已跳转管理页，必须接 `get-note-link`，拿到链接才记录成功。取链刷新管理页，按完整标题定位唯一作品并进入图文编辑页，只读取 URL，不保存修改；不通过列表首条或置顶视频猜链接，不自动重新发布。
 
 `get-note-link` 完成后自动关闭 session；分步中途放弃时手动 `camoufox-cli --session douyin --persistent --json close`（有头时加 `--headed`）。
 

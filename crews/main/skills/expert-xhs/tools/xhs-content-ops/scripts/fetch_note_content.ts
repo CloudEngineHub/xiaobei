@@ -56,7 +56,7 @@ for (let i = 0; i < args.length; i++) {
 async function resolveXhsUrl(rawUrl: string): Promise<{ noteId: string; xsecToken: string; xsecSource: string }> {
   let resolved = rawUrl
   const hostname = (() => { try { return new URL(rawUrl).hostname } catch { return "" } })()
-  if (hostname === "xhslink.com") {
+  if (["xhslink.com", "xhslink.cn"].includes(hostname)) {
     try {
       const { stdout } = await execFileAsync(
         "curl",
