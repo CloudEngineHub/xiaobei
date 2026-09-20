@@ -10,8 +10,10 @@
 # Dispatch 顺序：
 #   1. argv 含 --platform <value> → 转发到对应 gen_*.py（剔除 --platform 参数）
 #   2. 否则按 env 自动判：MINIMAX_API_KEY → minimax；AWK_GEN_KEY → volcengine；
-#      MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY → dashscope
-#   3. 三者皆无 → 输出提示让 Agent 改用 pexels-footage / pixabay-footage（退出码 2）
+#      MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY/WORKSPACE_ID → dashscope；
+#      AWK_API_KEY → dashscope（agent plan 模式，排最后：它是主模型 key，
+#      只在没有任何显式视频平台凭据时才兜底触发百炼）
+#   3. 皆无 → 输出提示让 Agent 改用 pexels-footage / pixabay-footage（退出码 2）
 set -euo pipefail
 SELF="${BASH_SOURCE[0]}"
 # Resolve symlink (wrapper is ln -sfn'd into ~/.openclaw/bin) so SCRIPT_DIR points at the real skill dir.
@@ -55,11 +57,13 @@ if [ -z "$PLATFORM" ]; then
     PLATFORM="minimax"
   elif [ -n "${AWK_GEN_KEY:-}" ]; then
     PLATFORM="volcengine"
-  elif [ -n "${MODELSTUDIO_API_KEY:-}" ] || [ -n "${DASHSCOPE_API_KEY:-}" ]; then
+  elif [ -n "${MODELSTUDIO_API_KEY:-}" ] || [ -n "${DASHSCOPE_API_KEY:-}" ] || [ -n "${WORKSPACE_ID:-}" ]; then
+    PLATFORM="dashscope"
+  elif [ -n "${AWK_API_KEY:-}" ]; then
     PLATFORM="dashscope"
   else
     echo "[error] 未检测到任何视频生成平台的环境变量" >&2
-    echo "        （MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY / AWK_GEN_KEY / MINIMAX_API_KEY 均未设置）。" >&2
+    echo "        （MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY / WORKSPACE_ID / AWK_API_KEY / AWK_GEN_KEY / MINIMAX_API_KEY 均未设置）。" >&2
     echo "[hint] 请改用 pexels-footage 和 pixabay-footage 技能搜集素材：" >&2
     echo "       1) pexels-footage 搜索并下载 9:16 竖屏素材" >&2
     echo "       2) pexels 无结果时用 pixabay-footage 兜底" >&2

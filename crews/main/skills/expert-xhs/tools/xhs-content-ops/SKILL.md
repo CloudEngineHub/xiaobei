@@ -9,7 +9,7 @@ description: 下载小红书图文笔记（正文 / 图片 / 作者 / 互动数�
 
 **用途**：按 URL 或 note-id 下载单篇小红书图文笔记的正文、图片、作者与互动数据（点赞/收藏/评论/分享），供对标分析、DNA 采样、仿写参考使用。
 
-**输入**：笔记 URL（`xhslink.com` 短链或 `xiaohongshu.com/explore/...` 完整链接），或 `note-id` + `xsec-token`；外加输出目录。
+**输入**：笔记 URL（`xhslink.com` / `xhslink.cn` 短链或 `xiaohongshu.com/explore/...` 完整链接），或 `note-id` + `xsec-token`；外加输出目录。
 **输出**：stdout JSON（正文 / 图片列表 / 作者 / stats）+ 图片落盘到输出目录。
 
 **边界**：只处理图文笔记。视频笔记（`noteType: "video"`）返回 `VIDEO_NOTE` 错误，转 `viral-chaser` 处理。
@@ -33,7 +33,7 @@ description: 下载小红书图文笔记（正文 / 图片 / 作者 / 互动数�
 通过 PATH 调用 wrapper：`xhs-content-ops <参数>`，无需手动拼接 node 命令或脚本路径。
 
 ```bash
-# 推荐：直接传 URL（支持 xhslink.com 短链和完整 explore 链接，脚本自动解析 note_id + xsec_token）
+# 推荐：直接传 URL（支持 xhslink.com / xhslink.cn 短链和完整 explore 链接，脚本自动解析 note_id + xsec_token）
 xhs-content-ops \
   --url <url> \
   --output-dir <output_dir>
@@ -50,7 +50,7 @@ xhs-content-ops \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--url` | 二选一 | 笔记 URL（`xhslink.com` 短链或 `xiaohongshu.com/explore/...` 完整链接），脚本自动解析 note_id + xsec_token |
+| `--url` | 二选一 | 笔记 URL（`xhslink.com` / `xhslink.cn` 短链或 `xiaohongshu.com/explore/...` 完整链接），脚本自动解析 note_id + xsec_token |
 | `--note-id` | 二选一 | 小红书笔记 ID（与 `--url` 二选一） |
 | `--xsec-token` | `--note-id` 时必填 | xsec_token（用 `--note-id` 时必传，否则 HTML 路线拿空页；用 `--url` 时脚本自动提取） |
 | `--xsec-source` | 否 | xsec_source，默认 `pc_feed` |
@@ -88,7 +88,7 @@ xhs-content-ops \
 
 ## 注意事项
 
-- **控制频率**：批量下载时间隔 5-10 秒，串行执行，不并发。
+- **控制频率**：批量下载时间隔 5-10 秒，串行执行，不并发。note 详情页连读会触发**速度型软风控**（页面被换成 `website-login/error?error_code=300017/300031` 或「安全限制」文案）——脚本会 cooldown 后单次重试，但根源靠调用方控制节奏，被挡（exit 3）时应显著拉大间隔或暂停。
 - **仅处理图文笔记**：遇到视频笔记（返回 `VIDEO_NOTE`），提示转 `viral-chaser`。
 - 复合流程（搜索 → 筛选 → 批量下载 → 分析）中每一步都应向用户报告进度。
 
@@ -99,5 +99,6 @@ xhs-content-ops \
 | `exit 1` + `NO_XSEC_TOKEN` | 缺 xsec_token；从笔记链接里补提后重试 |
 | `exit 1` + `NEED_VERIFY` | 触发滑块；停止重试，走重登流程或换时间再试 |
 | `exit 2`（cookie 回退也失败） | `login-manager` 重登 `xhs-browse` 后重试一次 |
+| `exit 3` + `SECURITY_BLOCK` | 速度型风控软屏蔽（**非登录失效**，勿重登）。脚本内已 cooldown 单次重试仍被挡；调用方降速（拉大间隔）后晚些重试，勿短间隔连读 |
 | 笔记无法访问 | 该笔记可能已删除或设为私密，跳过 |
 | 视频笔记 | 转 `viral-chaser` |

@@ -21,6 +21,7 @@
  *   0  Success（含 VIDEO_NOTE 提示——视频笔记交 viral-chaser，非错误）
  *   1  General error / 无 xsec_token / SIGN_UNAVAILABLE
  *   2  Cookie expired → trigger login-manager（cookie 回退仍失败时）
+ *   3  SECURITY_BLOCK → 速度型风控软屏蔽（非登录失效）：降速冷却后重试，勿短间隔连读
  */
 
 import { mkdirSync, writeFileSync } from "fs"
@@ -55,7 +56,7 @@ for (let i = 0; i < args.length; i++) {
 async function resolveXhsUrl(rawUrl: string): Promise<{ noteId: string; xsecToken: string; xsecSource: string }> {
   let resolved = rawUrl
   const hostname = (() => { try { return new URL(rawUrl).hostname } catch { return "" } })()
-  if (hostname === "xhslink.com") {
+  if (["xhslink.com", "xhslink.cn"].includes(hostname)) {
     try {
       const { stdout } = await execFileAsync(
         "curl",
@@ -109,12 +110,13 @@ if (!xsecToken) {
 // 用 xhs-browse 同指纹 UA + cookie 重试一次。同时导入 cookie + UA——同一指纹下的
 // cookie 才不会被风控错配（spec §4 原则 4）。
 
-import { loadCookies, loadUa } from "../../_shared/check-session.ts"
+import { loadCookies, loadUa } from "../../../../_shared/check-session.ts"
 import {
   fetchXhsNoteFromHtml,
   XhsCaptchaError,
   XhsNoteInaccessibleError,
-} from "../../_shared/xhs-html-note.ts"
+  XhsSecurityBlockError,
+} from "../../../../_shared/xhs-html-note.ts"
 
 const XHS_BROWSE_PLATFORM = "xhs-browse"
 
@@ -177,6 +179,15 @@ async function main(): Promise<void> {
   try {
     note = await fetchXhsNoteFromHtml(noteId, { xsecToken, xsecSource })
   } catch (e) {
+    if (e instanceof XhsSecurityBlockError) {
+      // 软风控 ≠ 登录失效：不触发 cookie 回退（换 session 不是软风控的恢复路径），
+      // 交调用方降速后重试。cooldown 单次重试已在 fetchXhsNoteFromHtml 内完成并失败。
+      process.stderr.write(`[xhs-content-ops] ⛔ ${e.message}\n`)
+      process.stdout.write(
+        JSON.stringify({ ok: false, error: "SECURITY_BLOCK", msg: "速度型风控软屏蔽：稍后降速重试，勿短间隔连读" }) + "\n",
+      )
+      process.exit(3)
+    }
     if (e instanceof XhsCaptchaError || e instanceof XhsNoteInaccessibleError) {
       if (!cookieStr) {
         // 无 cookie 回退可用 → cookie 可能过期，交 login-manager
@@ -191,6 +202,13 @@ async function main(): Promise<void> {
       try {
         note = await fetchXhsNoteFromHtml(noteId, { xsecToken, xsecSource, cookieStr, ua: sessionUa })
       } catch (e2) {
+        if (e2 instanceof XhsSecurityBlockError) {
+          process.stderr.write(`[xhs-content-ops] ⛔ cookie 回退也命中软风控：${e2.message}\n`)
+          process.stdout.write(
+            JSON.stringify({ ok: false, error: "SECURITY_BLOCK", msg: "速度型风控软屏蔽：稍后降速重试，勿短间隔连读" }) + "\n",
+          )
+          process.exit(3)
+        }
         if (e2 instanceof XhsCaptchaError) {
           process.stdout.write(JSON.stringify({ ok: false, error: "NEED_VERIFY", msg: "小红书出现安全验证滑块，请扫码验证后重试" }) + "\n")
           process.exit(1)

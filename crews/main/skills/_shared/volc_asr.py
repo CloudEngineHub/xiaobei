@@ -1,11 +1,15 @@
-"""volc_asr.py — 火山方舟豆包语音极速版 ASR 公共调用（三处共用单源）。
+"""volc_asr.py — 火山方舟豆包语音极速版 ASR 公共调用（火山后端单源）。
 
-抽出前散在三处：
-  - crews/main/skills/talking-head-cut/scripts/cut_plan.py 的 volc_asr()
-  - crews/content-producer/skills/expert-video/tools/video-producer/scripts/narration-align.py 的 fallback_asr()
+⚠️ 消费方不要直接 import 本模块——统一走同目录 asr.py 路由
+（火山 → 百炼业务空间 → 百炼 agent plan，见 asr.py / bailian_asr.py）。
+本模块只作为路由的火山后端。
+
+三处消费方（均已经由 asr.py）：
+  - crews/main/skills/talking-head-cut/scripts/cut_plan.py
+  - crews/content-producer/skills/expert-video/tools/video-producer/scripts/narration-align.py
   - crews/main/skills/viral-chaser/scripts/transcriber.ts 的 PYTHON_SCRIPT 内联段
 
-三方调同一火山接口（volc.bigasr.auc_turbo），凭据同池：
+火山接口（volc.bigasr.auc_turbo），凭据：
   旧控制台双头 VOLC_ASR_APP_ID + VOLC_ASR_ACCESS_KEY
   新控制台单头 VOLC_ASR_APP_KEY
 

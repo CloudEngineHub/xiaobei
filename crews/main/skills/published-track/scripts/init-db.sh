@@ -130,6 +130,9 @@ CREATE TABLE IF NOT EXISTS pub_douyin (
   likes INTEGER DEFAULT 0,
   comments INTEGER DEFAULT 0,
   shares INTEGER DEFAULT 0,
+  deep_metrics TEXT,
+  deep_captured_at TEXT,
+  deep_source TEXT,
   favorites INTEGER DEFAULT 0,
   top_comment TEXT,
   notes TEXT,
@@ -599,4 +602,14 @@ for table in $(sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='table' 
   fi
 done
 
-echo '{"ok":true,"message":"published_track.db initialized (v3: dna_id + account + perf_evaluated)"}'
+# ── 迁移：douyin 创作侧深指标列（deep_metrics / deep_captured_at / deep_source）──
+# 只存最新值，不留历史快照（用户 2026-09-18 定调：不需要增长史）。
+# 其余平台接 deep 数据源（如 xhs-engagement）时按同款三列扩展。
+if [ "$(sqlite3 "$DB" "SELECT count(*) FROM pragma_table_info('pub_douyin') WHERE name='deep_metrics';")" = "0" ] \
+   && [ "$(sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='pub_douyin';")" = "1" ]; then
+  sqlite3 "$DB" "ALTER TABLE pub_douyin ADD COLUMN deep_metrics TEXT;"
+  sqlite3 "$DB" "ALTER TABLE pub_douyin ADD COLUMN deep_captured_at TEXT;"
+  sqlite3 "$DB" "ALTER TABLE pub_douyin ADD COLUMN deep_source TEXT;"
+fi
+
+echo '{"ok":true,"message":"published_track.db initialized (v4: douyin deep_metrics)"}'

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Stage 6 — character-register：角色三视图 + static/dynamic features 拱分。
+"""Stage 5 — character-register：角色三视图 + static/dynamic features 拆分。
 
 Usage:
   python3 scripts/character-register.py <project_dir>
 
-入：project_dir/storyboard/shot_decompose.json（Stage 5）+ story.md（Stage 2 人物段）
+入：project_dir/storyboard/shot_decompose.json（Stage 4）+ script.md（Stage 1 出场人物）
 出：project_dir/characters/registry.json（每个角色 static/dynamic features）
-    + project_dir/characters/<char-id>/front.png + side.png + back.png（调 siliconflow-img-gen）
+    + project_dir/characters/<char-id>/front.png + side.png + back.png（调 awk-img-gen）
 
 三视图：front / side / back 三张同角色不同视角的静照，保证后续镜头里角色机位一致性。
 static features：跨镜不变的（发色/衣着/体型/年龄感）
@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -28,15 +30,17 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 6 character-register")
+    parser = argparse.ArgumentParser(description="Stage 5 character-register")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 5 character-register"):
+        return
     decompose_path = project / "storyboard" / "shot_decompose.json"
-    story_path = project / "script" / "story.md"
-    if not decompose_path.is_file() or not story_path.is_file():
-        die("前置缺失: shot_decompose.json 或 story.md 不存在")
+    script_path = project / "script" / "script.md"
+    if not decompose_path.is_file() or not script_path.is_file():
+        die("前置缺失: shot_decompose.json 或 script.md 不存在")
 
     registry_path = project / "characters" / "registry.json"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,11 +53,11 @@ def main() -> None:
         return
 
     stub = {
-        "stage": 6,
+        "stage": 5,
         "characters": [],
         "instruction": (
-            "agent 据 story.md 人物段 + shot_decompose.json 列出所有出场角色，每个角色填 schema 并调 "
-            "siliconflow-img-gen 生成 front/side/back 三视图落 characters/<char-id>/。"
+            "agent 据 script.md 出场人物 + shot_decompose.json 列出所有出场角色，每个角色填 schema 并调 "
+            "awk-img-gen 生成 front/side/back 三视图落 characters/<char-id>/。"
             "static features 跨镜不变（发色/衣着/体型/年龄感），dynamic features 随镜变（表情/姿势/光影）。"
             "best_image_selector 走 agent 看 contact sheet 人核，不引 CLIP。"
         ),
@@ -77,7 +81,7 @@ def main() -> None:
     }
     registry_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] registry.json 模板已落：{registry_path}")
-    print(f"[next] agent 填角色 schema + 调 siliconflow-img-gen 生成三视图 → GATE A 文本闸门")
+    print(f"[next] agent 填角色 schema + 调 awk-img-gen 生成三视图 → GATE A 文本闸门")
 
 
 if __name__ == "__main__":

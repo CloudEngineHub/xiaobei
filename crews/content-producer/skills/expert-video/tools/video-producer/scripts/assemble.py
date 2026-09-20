@@ -32,6 +32,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _brief
+
 VALID_TRANSITIONS = {"hard", "fade", "dissolve", "xfade"}
 XFADE_TYPES = {"fade": "fade", "dissolve": "dissolve", "xfade": "fade"}
 
@@ -412,6 +414,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 12 assemble"):
+        return
     source_dir = project / args.source_dir if args.source_dir else project / "render"
     preset, crf = encode_opts(args.low_memory)
     audio_sr, audio_ch = parse_audio_format(args.audio_format)

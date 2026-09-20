@@ -8,13 +8,21 @@ metadata:
       bins:
       - node
       - ffmpeg
-      env:
-      - VOLC_ASR_APP_ID
 ---
 
-## 🔑 前置：开通火山语音模型（仅首次）
+## 🔑 前置：ASR 凭据（仅首次）
 
-本技能的语音转写（ASR）使用**火山引擎豆包语音 · 录音文件极速版**（资源 ID `volc.bigasr.auc_turbo`）。即便账号已订购火山 Code Plan，语音模型仍需**单独开通**，否则调用会返回鉴权/权限错误。
+本技能的语音转写走公共 ASR 路由（`crews/main/skills/_shared/asr.py`），凭据在哪家走哪家：
+
+1. **火山录音文件极速版**（`VOLC_ASR_*`，优先）——需单独开通语音模型，见下
+2. **百炼业务空间**（`WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`）
+3. **百炼 agent plan**（`AWK_API_KEY`）
+
+三组任一组在环境里即可运行；都缺失时分析器退出码 2 并提示配置。
+
+### 火山开通指引（选火山路线时）
+
+火山引擎豆包语音 · 录音文件极速版（资源 ID `volc.bigasr.auc_turbo`）。即便账号已订购火山 Code Plan，语音模型仍需**单独开通**，否则调用会返回鉴权/权限错误。
 
 **判断是否已开通**：直接跑 Step 3 分析器，若 ASR 报错含 `status=45xxxxx` 或权限相关码，说明未开通，按下面流程开通一次即可。
 
@@ -144,6 +152,7 @@ The script outputs a **JSON object to stdout**. Read it and proceed with analysi
 **Exit codes:**
 - `0` = Success
 - `1` = Error（URL invalid / download failed），或 `SIGN_UNAVAILABLE`（签名缺 OFB_KEY，重登救不了，交 IT engineer 配凭证）
+- `3` = `SECURITY_BLOCK`（小红书软风控）— 脚本已做一次冷却重试；停止本轮该平台采样，不立即重跑、不换 cookie、不重登
 - `2` = `SESSION_EXPIRED`（cookie 失效）— 走 login-manager 重登（`login-manager --platform <p>` 导出+验证），重试一次
 
 ### Step 3 — Read key frames (if available)
@@ -234,7 +243,7 @@ Read: <platform>/ref/<slug>/references/frames/frame_01_3s.jpg
 | 影视解说 / 剧情解说 + 反转植入（「万万没想到」式） | Content Producer `expert-video` → Reversal Ad workflow |
 | 口播类（真人口播出镜，或旁白 + 画面） | Content Producer `expert-video` → Narration Video workflow |
 | 一句文稿转视觉隐喻的纸拼贴动画 | Content Producer `expert-video` → Collage B-roll workflow |
-| 纯 AIGC 动画 / 剧情短片 / 蒙太奇（需从零出脚本分镜） | Content Producer `expert-video` → **不指定类型 workflow**（CP 按其通用制作流程做，Stage 1 定档位：narrative / motion / montage） |
+| 纯 AIGC 动画 / 剧情短片 / 蒙太奇（需从零出脚本分镜） | Content Producer `expert-video` → **不指定类型 workflow**（CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法） |
 | 已有素材简单拼接、加旁白、烧字幕 | main `video-edit` |
 | 已有真人口播素材去口气词、剪高光 | main `talking-head-cut` |
 | 产品操作录屏 | main `ui-demo` |

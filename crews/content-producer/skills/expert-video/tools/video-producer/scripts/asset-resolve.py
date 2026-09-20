@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 8 — asset-resolve：按 slot 拉素材（Fast path）。
+"""Stage 7 — asset-resolve：按 slot 拉素材（Fast path）。
 
 Usage:
   python3 scripts/asset-resolve.py <project_dir> [--source pexels|pixabay|both] [--no-confirm]
 
-入：project_dir/slots/slot-plan.json（Stage 7）
+入：project_dir/slots/slot-plan.json（Stage 6）
 出：project_dir/slots/asset-resolve.json（每 slot 选定素材 + rejected_picks 落盘）
     + 素材落 project_dir/raw_materials/
 
@@ -29,6 +29,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -36,13 +38,15 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 8 asset-resolve")
+    parser = argparse.ArgumentParser(description="Stage 7 asset-resolve")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     parser.add_argument("--source", default="both", choices=["pexels", "pixabay", "both"])
     parser.add_argument("--no-confirm", action="store_true", help="agent 已人核完毕，不再呈交")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 7 asset-resolve"):
+        return
     plan_path = project / "slots" / "slot-plan.json"
     if not plan_path.is_file():
         die(f"前置缺失: slot-plan.json 不存在")
@@ -59,7 +63,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": 8,
+        "stage": 7,
         "source": args.source,
         "raw_materials_dir": str(raw_dir),
         "instruction": (
@@ -83,7 +87,7 @@ def main() -> None:
     }
     resolve_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] asset-resolve.json 模板已落：{resolve_path}")
-    print(f"[next] agent 跑 Fast path 填 picks → 跑 slideshow-risk（Stage 9a）")
+    print(f"[next] agent 跑 Fast path 填 picks → 跑 slideshow-risk（Stage 8）")
 
 
 if __name__ == "__main__":

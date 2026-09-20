@@ -20,12 +20,12 @@ metadata:
 
 | 平台 | 环境变量 | 视频模型 | 音乐模型 |
 |------|---------|---------|---------|
-| 阿里云百炼（优先） | `MODELSTUDIO_API_KEY`（或 `DASHSCOPE_API_KEY`） | `happyhorse-1.1-i2v`、`happyhorse-1.1-t2v`、`happyhorse-1.1-r2v` | — |
+| 阿里云百炼（优先） | 业务空间：`WORKSPACE_ID` + `MODELSTUDIO_API_KEY`（或 `DASHSCOPE_API_KEY`）；agent plan：`AWK_API_KEY` | `happyhorse-1.1-i2v`、`happyhorse-1.1-t2v`、`happyhorse-1.1-r2v` | — |
 | 火山引擎方舟 | `AWK_GEN_KEY` | `doubao-seedance-2-0-fast-260128`、`doubao-seedance-2-0-260128`、`doubao-seedance-2-0-mini-260615` | — |
 | MiniMax Hailuo | `MINIMAX_API_KEY` | `MiniMax-H3` | `music-3.0` |
 
 - 三个平台的上述视频模型**均支持声画同出**（t2v / i2v / r2v 三种模式）。
-- **平台自动判断写在 `aigc-video-gen.sh` 里**：argv 含 `--platform <value>` 时转发到对应供应商脚本（剔除 `--platform` 参数）；无 `--platform` 时按 env 自动判——有 `MINIMAX_API_KEY` 走 MiniMax，否则有 `AWK_GEN_KEY` 走火山，否则有 `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` 走百炼，三者皆无则输出提示让 Agent 改用 `pexels-footage` / `pixabay-footage`（退出码 2）。
+- **平台自动判断写在 `aigc-video-gen.sh` 里**：argv 含 `--platform <value>` 时转发到对应供应商脚本（剔除 `--platform` 参数）；无 `--platform` 时按 env 自动判——有 `MINIMAX_API_KEY` 走 MiniMax，否则有 `AWK_GEN_KEY` 走火山，否则有 `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`/`WORKSPACE_ID` 走百炼，否则有 `AWK_API_KEY` 走百炼（agent plan 兜底，排最后：它是主模型 key，只在无显式视频平台凭据时触发），皆无则输出提示让 Agent 改用 `pexels-footage` / `pixabay-footage`（退出码 2）。
 - **三供应商脚本拆分**（共享逻辑在 `scripts/aigc_common.py`，与三脚本同目录）：
   - `scripts/gen_minimax.py` — MiniMax Hailuo 视频生成（含 `--ref-audio` 多模态参考）+ `music` 子命令
   - `scripts/gen_volc.py` — 火山引擎 Seedance 视频生成
@@ -59,11 +59,15 @@ Agent 读到此报错后的处理流程：
 - 候选链（每模式一条）：`happyhorse-1.1-{mode}` → `happyhorse-1.0-{mode}` → `wan2.7-{mode}`。首选模型不可用或任务失败时 `gen.py` 自动沿链降级，无需人工干预。
 - **`--model <id>` 可显式覆盖**（关闭候选链 fallback，只用该模型）；非必要不覆盖。
 
-### WORKSPACE_ID 端点规则
+### 百炼端点双模式规则
 
-配了 `WORKSPACE_ID` 时，happyhorse 走专属端点 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1`（华北2，更快）；没配则走默认 `https://dashscope.aliyuncs.com/api/v1`。
+| 模式 | 触发条件 | 端点 |
+|------|---------|------|
+| 业务空间（优先） | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` | `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1` |
+| agent plan | 无业务空间凭据时用 `AWK_API_KEY` | `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1` |
+| legacy 兼容 | 都没有但 `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` 在 | `https://dashscope.aliyuncs.com/api/v1`（老部署） |
 
-这个设置对于火山（doubao-seedance 系列模型）和 MiniMax 无效。
+> `WORKSPACE_ID` 配了但业务空间 key 缺失时打 warning 落 agent plan。端点模式对火山（doubao-seedance 系列）和 MiniMax 无效。
 
 ### 火山候选链
 
@@ -109,6 +113,15 @@ Agent 读到此报错后的处理流程：
 **脚本规划规则**（调用方约定，本脚本不强制）：
 - 每个片段时长 **不得超过 15 秒**
 - 超过上限的内容**必须在脚本中拆成多个片段**
+
+### 转场片段规范（i2v 首尾帧插值）
+
+用 i2v 生成两段素材之间的转场片段（如反转植入的「画面转场式」）时：
+
+- **首帧 / 尾帧图**分别取自前后两段素材的关键帧；**选帧即锁定景别**——首帧景别偏松会导致整段转场弃用重生成，用与前后段匹配的景别帧做首帧。
+- prompt 必须含**风格对齐要求**：对齐相邻素材的材质 / 光影 / 色调。AIGC 画风漂移是通病，靠「母题延续」弱化——用前后段共享的核心意象（如瞳孔→光晕→数据面板）做过渡主体，prompt 里写明。
+- 转场片段**帧率由生成端决定，无 CLI 参数指定**（实测 24fps）；与主素材帧率不一致时由调用方拼接工具统一，规划期预判最低公共规格。
+- 生成后先**抽帧自检**（确认首尾之间是真实渐变而非硬切、画风可接受），再进拼接；首版不满意时重生成优于硬修。
 
 ## Run
 
@@ -188,11 +201,12 @@ aigc-video-gen music \
 
 | Variable | Description |
 |----------|-------------|
-| `MODELSTUDIO_API_KEY` / `DASHSCOPE_API_KEY` | 阿里云百炼 API key（优先平台） |
+| `WORKSPACE_ID` + `MODELSTUDIO_API_KEY` / `DASHSCOPE_API_KEY` | 百炼业务空间（优先模式） |
+| `AWK_API_KEY` | 百炼 agent plan key（token-plan 端点；无业务空间凭据时启用） |
 | `AWK_GEN_KEY` | 火山方舟视频生成专用 key（不可与 `ARK_API_KEY` 混用） |
 | `MINIMAX_API_KEY` | MiniMax API key（Hailuo-H3 视频生成 + 背景音乐生成共用） |
 | `WORKSPACE_ID` | 可选，百炼专属端点加速 |
 
 ## Fallback 路径
 
-`MODELSTUDIO_API_KEY`、`AWK_GEN_KEY`、`MINIMAX_API_KEY` 均未配 → `gen.py` 退出码 2，Agent 应改用 `pexels-footage` / `pixabay-footage` 走 Stock Footage 模式兜底。
+`MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`/`WORKSPACE_ID`/`AWK_API_KEY`、`AWK_GEN_KEY`、`MINIMAX_API_KEY` 均未配 → `gen.py` 退出码 2，Agent 应改用 `pexels-footage` / `pixabay-footage` 走 Stock Footage 模式兜底。

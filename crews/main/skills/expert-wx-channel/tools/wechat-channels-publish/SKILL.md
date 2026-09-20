@@ -11,8 +11,8 @@ description: 通过 camoufox-cli 持久化 session wechat-channel 发布视频�
 
 **业务页 `snapshot` 一律加 `-s "wujie-app"` 作用域**（下文简写 `snapshot -s`）：wujie 页面里主文档与子应用各有一个 body，整页 `snapshot` 会报 `locator('body') resolved to 2 elements` strict violation，拿不到任何 ref。只有登录页（无 wujie）可整页 snapshot。`click` / `fill` / `type` 按 ref 操作；`upload` 支持 ref 或 CSS 选择器（底层 Playwright setInputFiles，穿透 shadow DOM），无需 CDP hack。
 
-**输入**：本地视频文件（`.mp4` / `.mov` / `.avi` / `.webm`）、**视频描述**（含话题标签，最长约 300 字）、**短标题**（6-16 字）。发布页改版后两项都能填，官方明确「填写短标题会获得更多流量」，因此**两项都必须填**，都由 main agent 拟定后交给本工具。
-**输出**：视频号已发布作品；能取到时附带公开链接（`https://weixin.qq.com/sph/xxxx`）。
+**输入**：本地视频文件（`.mp4` / `.mov` / `.avi` / `.webm`）、**视频描述**（含话题标签，约 300 字为建议值——实测 409 字符平台照常接受，以页面输入框实际限制为准）、**短标题**（6-16 字，**不得含标点符号，只能用空格分隔**——见 Step 6 硬约束）。发布页改版后两项都能填，官方明确「填写短标题会获得更多流量」，因此**两项都必须填**，都由 main agent 拟定后交给本工具。
+**输出**：视频号已发布作品。本工具**不抓取作品公开链接**——管理后台分享面板路线实践中不可靠（审核 / 转码中常不可用），链接由用户后补，调用方入库时升级（见文末「入库衔接约束」）。
 
 > **短标题只在发布页存在**：作品管理页与 `wx-channel-engagement` 抓取都拿不到短标题，所以入库与匹配一律只用视频描述（见文末「入库衔接约束」）。
 
@@ -80,10 +80,12 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 - `编辑 分享卡片 4:3`（朋友圈/聊天分享卡）
 
 ```
-1. snapshot -s "wujie-app" 找目标卡片的「编辑」按钮 ref → click
-   - ref click 弹不出弹窗时，eval 递归匹配文本点击（按卡片名区分两个入口，
-     个人主页卡片则把 '分享卡片' 换成 '个人主页卡片'）：
-   camoufox-cli --session wechat-channel --persistent --json eval "(()=>{let t=null;const walk=(r)=>{if(!r||t)return;if(r.nodeType===1){const x=(r.innerText||'').trim();if(x.indexOf('编辑')===0&&x.indexOf('分享卡片')>=0){t=x;r.click();return;}if(r.shadowRoot)walk(r.shadowRoot);}for(const c of r.children||[])walk(c);};walk(document);return t?'clicked':'not found';})()"
+1. 优先 eval dispatchEvent 点击目标卡片的「编辑」按钮（编辑按钮是缩略图上的悬浮层
+   DIV.edit-btn，snapshot 拿到的 ref click 常点到文本容器上超时），按卡片名区分两个
+   入口（个人主页卡 3:4 / 分享卡 4:3——个人主页卡片入口把 '分享卡片' 换成 '个人主页卡片'）：
+   camoufox-cli --session wechat-channel --persistent --json eval "(()=>{let t=null;const walk=(r)=>{if(!r||t)return;if(r.nodeType===1){const x=(r.innerText||'').trim();if(x.indexOf('编辑')===0&&x.indexOf('分享卡片')>=0){t=x;r.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));r.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));r.click();return;}if(r.shadowRoot)walk(r.shadowRoot);}for(const c of r.children||[])walk(c);};walk(document);return t?'clicked':'not found';})()"
+   - 悬浮层按钮只认完整事件序列：mousedown + mouseup + click 三连 dispatch，单 r.click() 可能不触发
+   - eval 返回 not found 或点击无效（弹窗没弹出）时，降级 snapshot -s "wujie-app" 拿「编辑」按钮 ref → click
 2. 封面编辑弹窗打开（标题如「编辑分享卡片」，副标题「将会用在朋友圈、聊天等场景」），两种封面来源：
    - 从视频中选择封面：一排视频帧缩略图（胶片条），click 选一帧
    - 上传封面：先点「上传封面」入口（`+` 号方框按钮；ref click，或 eval 递归匹配
@@ -107,7 +109,7 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
    camoufox-cli --session wechat-channel --persistent --json eval "(()=>{let t=null;const walk=(r)=>{if(!r||t)return;if(r.nodeType===1){if(r.getAttribute&&r.getAttribute('data-placeholder')==='添加描述'){t=r;return;}if(r.shadowRoot)walk(r.shadowRoot);}for(const c of r.children||[])walk(c);};walk(document);if(!t)return 'not found';t.scrollIntoView({block:'center'});t.focus();t.click();return 'focused';})()"
    - 返回 focused 才能继续；not found → 等 2 秒 wujie 初始化后重试
    - ❌ 不要按 contenteditable='true' 过滤——该属性是空串，按 data-placeholder 定位
-2. 插正文（execCommand 在当前焦点处插入，真实触发 input 事件；话题标签直接写在描述中，最长约 300 字）：
+2. 插正文（execCommand 在当前焦点处插入，真实触发 input 事件；话题标签直接写在描述中；约 300 字为建议值，不因字数疑虑截断文案——以页面输入框实际限制为准，插入后第 4 步 eval 校验长度）：
    camoufox-cli --session wechat-channel --persistent --json eval "(()=>{const ok=document.execCommand('insertText',false,'<正文>');return ok?'inserted':'execCommand failed';})()"
 3. 换行 + 逐段插署名/话题标签（insertParagraph 与 insertText 交替）：
    camoufox-cli --session wechat-channel --persistent --json eval "(()=>{document.execCommand('insertParagraph');document.execCommand('insertText',false,'<署名段>');document.execCommand('insertParagraph');document.execCommand('insertParagraph');document.execCommand('insertText',false,'<#话题标签段>');return 'done';})()"
@@ -117,6 +119,13 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
    camoufox-cli --session wechat-channel --persistent --json eval "(()=>{let t=null;const walk=(r)=>{if(!r||t)return;if(r.nodeType===1){if(r.getAttribute&&r.getAttribute('data-placeholder')==='添加描述'){t=r;return;}if(r.shadowRoot)walk(r.shadowRoot);}for(const c of r.children||[])walk(c);};walk(document);if(!t)return 'not found';const txt=t.innerText||'';return {len:txt.length,head:txt.slice(0,40),tail:txt.slice(-60)};})()"
    - 校验不过（缺段/串位）：重跑 1 聚焦后 execCommand('selectAll') + execCommand('delete') 清空，再从 2 重插
 ```
+
+> **话题标签段格式（硬约束）**：标签段只能是半角 `#` + 空格分隔的 `#标签` 项，整行不得出现任何其他字符——不加前缀或分组标题（如「【三层标签】」）、不加分隔符（／、/、—、顿号）、不用全角 `＃`。混入这些字符会导致**整行标签全部不被视频号识别渲染（失效）**。DNA 的分层/分组标签策略只用于挑标签，结构标记不进正文。
+>
+> - ✅ `#AI员工 #开源工具 #影视解说 #Wiseflow #一人成团 #Agent327`
+> - ❌ `【三层标签】＃影视解说 ＃反转 ＃悬疑短片 ／ ＃AI商机监控 ＃AI客服 ＃自媒体获客 ／ ＃遗憾 ＃十年`
+>
+> 定稿文案已含违规字符时，先清洗成纯标签行再插入，不要照插。
 
 **短标题**——真实 `<input>`（placeholder 含「短标题」，官方提示形如「填写短标题有机会获得更多流量」），aria snapshot 有独立 ref，直接填：
 
@@ -129,6 +138,13 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
    camoufox-cli --session wechat-channel --persistent --json eval "(()=>{let t=null;const walk=(r)=>{if(!r||t)return;if(r.nodeType===1){if(r.tagName==='INPUT'&&r.placeholder&&r.placeholder.indexOf('短标题')>=0){t=r;return;}if(r.shadowRoot)walk(r.shadowRoot);}for(const c of r.children||[])walk(c);};walk(document);return t?('value:'+(t.value||'')):'not found';})()"
    - value 与短标题一致 → 过；为空 → 重新 fill 再校验
 ```
+
+> **短标题不得含标点符号（硬约束）**：短标题里不能出现任何标点（逗号、顿号、问号、感叹号、冒号、引号等），分隔只能用空格——该字段按纯文本处理，标点会被平台拒掉或截断。
+>
+> - ✅ `兔子睁眼 恶霸慌了`
+> - ❌ `兔子睁眼，恶霸慌了`（逗号去掉后直接填会变 `兔子睁眼恶霸慌了` 短语粘连——标点要**替换成空格**，不是删除）
+>
+> 定稿文案已含标点时，先清洗（标点→空格、连续空格压成一个）再 fill，不要照填。
 
 > 改版后发布页字段名与提示文案可能微调：**以 snapshot -s 读到的实际 placeholder / 标签文本为准**定位，不要写死选择器。找不到短标题字段时（页面回滚或灰度未开），只填视频描述并在回报里注明「短标题字段未出现」，不要把它塞进描述。
 
@@ -148,24 +164,11 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 等待 4 秒后检查（`url` 命令 + `snapshot -s "wujie-app"`）：
 - 页面自动跳转到视频管理列表页
 - 或 URL 变为 `https://channels.weixin.qq.com/platform/post/list`
-- 刚发表的作品通常在第一个。但可能处于转码中——封面缩略图为灰色，转圈。每隔 5 秒 snapshot -s 看转码是否完成（封面缩略图出现），完成后才能取链接。
-
-### Step 9: 获取已发布视频链接
-
-发布成功后，在视频号管理后台的视频列表页获取视频公开链接：
-
-```
-1. snapshot -s "wujie-app" 找到刚发布的视频（列表第一条，或按完整视频描述匹配）ref
-2. snapshot -s 找该视频的"分享"按钮 ref → click
-3. snapshot -s 在弹出的分享面板中找"复制视频链接"按钮 ref → click
-4. eval 从剪贴板读取链接：
-   camoufox-cli --session wechat-channel --persistent --json eval "navigator.clipboard.readText()"
-   链接格式通常为 https://weixin.qq.com/sph/xxxxxx（sph 即视频号拼音缩写）
-```
+- 刚发表的作品通常在第一个；处于转码中（封面缩略图灰色、转圈）属正常，不影响发布成功判定，**不必等转码完成**。
 
 > 管理页若 `-s "wujie-app"` 报作用域不存在/为空（该页未走 wujie 容器），退回整页 snapshot。
 
-> **注意**：如果刚发布的视频还在审核中，"分享"按钮可能不可用。此时可先完成发布记录（publish_url 留空），待审核通过后再补充链接。
+确认发布成功后 close session 并回报。**不要尝试在管理后台抓取作品链接**——分享面板路线实践中不可靠（审核 / 转码中常不可用），已从本流程移除。回报时告知用户作品已提交，请其后续在手机端或后台「分享」中获取作品链接（`https://weixin.qq.com/sph/xxxx`）提供给我们，由调用方按「入库衔接约束」补录升级。
 
 ---
 
@@ -245,6 +248,12 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 - **症状**：跳转到扫码登录页，无用户名/密码选项
 - **workaround**：走前置条件的无头截图扫码流程（screenshot QR PNG → 发用户扫码 → 轮询 URL 确认登录就位）
 
+### pitfall: short_title_punctuation_rejected
+
+- **触发**：短标题文案含标点（逗号、顿号、问号、感叹号等）
+- **症状**：平台拒掉或截断短标题，或发布后短标题显示异常
+- **workaround**：短标题只能是「文字 + 空格」——标点**替换成空格**（不是删除，删了短语会粘连），连续空格压成一个再 fill
+
 ### pitfall: short_title_field_missing
 
 - **触发**：发布页填写短标题时
@@ -279,6 +288,8 @@ camoufox-cli --session wechat-channel --persistent --json upload "input[type=fil
 
 本工具只管发布到视频号后台，**不做发布记录入库**；入库由 Content Production Workflow 编排（调 `published-track record`）。调用方必须注意：
 
-> **`published-track record --platform wx_channel --title` 必须传 Step 6 填的完整视频描述**（含 hashtag，最长约 300 字）；**短标题不入库**。
+> **`published-track record --platform wx_channel --title` 必须传 Step 6 填的完整视频描述**（含 hashtag，约 300 字为建议值，实际以页面输入框为准）；**短标题不入库**。
 
 原因：作品管理页只展示视频描述，`wx-channel-engagement` 抓取匹配用的也是视频描述。`pub_wx_channel.title` 是数据库字段名，语义为完整视频描述；把短标题写进去会导致后续抓取匹配失败。短标题只留在作品目录的 `publish-copy.md` 里备查。
+
+> **首次入库不传 `--publish-url`**：本工具不抓取作品链接，链接由用户后补（同 `wx-mp-publisher` 的 URL 升级机制）。用户提供链接后，用相同 `--source-folder` 重跑 `published-track record` 补 `--publish-url`——upsert 语义升级记录，不重复插行。`wx-channel-engagement` 抓取不依赖 `publish_url`，留空不影响日常数据采集。

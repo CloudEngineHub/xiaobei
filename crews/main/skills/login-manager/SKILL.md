@@ -98,3 +98,5 @@ cookie 和 UA **必须同时导出**——同一指纹下的 cookie 才不会被
 **严禁 cookie import 造会话**：浏览器操作一律走真实登录后的**持久化 session**（登录态 + 指纹冻结在 session profile 里），不开临时 session 再 `cookies import`。xhs `a1`/`websectiga` 等设备指纹 cookie 导入到不同指纹的浏览器会话会错配 → 被风控检测。中央存储的 cookie+UA 只给下游**脚本**做 raw HTTP 抓取用（拼进 header 直接发请求，不经浏览器）。
 
 **HTML 登录墙检测**（脚本 / 纯 HTTP 用）：下游 raw HTTP fetch 期望 JSON 时，session 失效平台可能返回 HTML 登录页（200 `text/html` 或 302→login）而非 JSON error，`resp.json()` 抛乱码错。`_shared/relay-sign.ts` 的 `xhsFetch` 已内置登录墙检测（content-type 含 `text/html` 或 body 以 HTML 标签开头 → 抛 `LoginWallError`，消息以 `SESSION_EXPIRED:` 起头），下游捕获后 emit `SESSION_EXPIRED` + exit 2。新增 raw-HTTP 脚本若不走 `xhsFetch` 应复用同款检测（正则大小写不敏感）。
+
+**软风控 ≠ 登录失效**：xhs 速度型软风控页（redirect `website-login/error?error_code=300017/300031` 或「安全限制/请求太频繁」文案）也是 HTML，但语义是**节奏风控**不是登录过期。`xhsFetch` 会先判软风控抛 `XhsSecurityBlockError`（`SECURITY_BLOCK:` 起头）再判登录墙；HTML 路线 `_shared/xhs-html-note.ts` 同款。pong 撞软风控判 UNKNOWN 放行（`check-session.ts` pongXhs，同 douyin status_code=4 先例），**不触发重登**。下游捕获到 SECURITY_BLOCK 应降速/冷却重试。

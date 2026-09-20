@@ -17,12 +17,14 @@
  * Exit codes:
  *   0  成功
  *   1  一般错误（参数 / 网络 / 签名不可用）
- *   2  SESSION_EXPIRED — cookie 缺失或失效，调用方走 login-manager 重登
+ *   2  SESSION_EXPIRED — 本地 cookie 缺失，调用方走 login-manager
+ *   3  评论接口不可用 / 分页停滞，输出部分数据，不触发重登
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs"
 import { dirname, join } from "path"
 import { homedir } from "os"
+import { pathToFileURL } from "url"
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -145,7 +147,7 @@ function cookieHeader(dict: Record<string, string>): string {
 // ─── aweme_id 解析 ────────────────────────────────────────────────────────
 
 function extractAwemeId(url: string): string | null {
-  const match = url.match(/\/video\/(\d+)/)
+  const match = url.match(/\/(?:video|note)\/(\d+)/)
   return match ? match[1] : null
 }
 
@@ -206,54 +208,71 @@ async function fetchComments(awemeId: string, limit: number): Promise<FetchResul
   const ua = readUserAgent("douyin")
   const { douyinWebGet } = await import("../../../../_shared/douyin-web.ts")
 
+  return collectComments(awemeId, limit, (cursor, count) => douyinWebGet<CommentListResponse>(
+    COMMENT_URI, { aweme_id: awemeId, cursor, count, item_type: 0 }, cookieStr, ua,
+  ))
+}
+
+type CommentPage = { ok: boolean; status: number; data: CommentListResponse | null; text?: string }
+
+/** One bounded read per page. Endpoint failure is not proof of expired login. */
+export async function collectComments(
+  awemeId: string,
+  limit: number,
+  request: (cursor: number, count: number) => Promise<CommentPage>,
+  pause: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms)),
+): Promise<FetchResult> {
   const comments: FlatComment[] = []
+  const seen = new Set<string>()
   let cursor = 0
   let total = 0
-  let truncated = false
-
+  const interrupted = (error: string): FetchResult => ({
+    ok: false, awemeId, total, fetched: comments.length, truncated: true, comments, error,
+  })
   while (comments.length < limit) {
-    const remaining = limit - comments.length
-    const count = Math.min(PAGE_SIZE, Math.max(remaining, 1))
-    let resp: Awaited<ReturnType<typeof douyinWebGet<CommentListResponse>>> | null = null
-
-    // status_code=8 为间歇鉴权抖动（同 douyin-publish work_list 的已知行为），重试 2 次
-    for (let attempt = 0; attempt < 3; attempt++) {
-      resp = await douyinWebGet<CommentListResponse>(
-        COMMENT_URI,
-        { aweme_id: awemeId, cursor, count, item_type: 0 },
-        cookieStr,
-        ua,
-      )
-      if (resp.data?.status_code !== 8) break
-      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
+    let resp: CommentPage
+    try {
+      resp = await request(cursor, Math.min(PAGE_SIZE, limit - comments.length))
+    } catch (e) {
+      return interrupted(`COMMENT_REQUEST_FAILED: ${(e as Error).message}`)
     }
-
-    const data = resp?.data
-    if (!resp?.ok || !data || data.status_code !== 0) {
-      const code = data?.status_code ?? resp?.status ?? "unknown"
-      // 登录态失效常见表现为非 0 状态码 + 空评论；首屏即失败按 SESSION_EXPIRED 交重登
-      if (comments.length === 0) {
-        return { ok: false, awemeId, total: 0, fetched: 0, truncated: false, comments: [], error: `SESSION_EXPIRED(comment list status_code=${code})` }
+    const data = resp.data
+    if (!resp.ok || !data || data.status_code !== 0 || !Array.isArray(data.comments)) {
+      return interrupted(`COMMENT_API_UNAVAILABLE: HTTP=${resp.status}, status_code=${data?.status_code ?? "missing"}`)
+    }
+    if (typeof data.total === "number" && data.total >= 0) total = data.total
+    const before = comments.length
+    for (const raw of data.comments) {
+      if (!raw || typeof raw !== "object") continue
+      const item = flatten(raw)
+      if (!item.text) continue
+      const key = item.cid || JSON.stringify([item.userName, item.text, item.createTime])
+      if (!seen.has(key)) {
+        seen.add(key)
+        comments.push(item)
       }
-      truncated = true
-      break
     }
-
-    total = data.total || total
-    const page = (data.comments || []).map(flatten).filter(c => c.text)
-    comments.push(...page)
-
     const hasMore = Boolean(data.has_more)
-    if (!hasMore || page.length === 0) break
-    cursor = typeof data.cursor === "number" ? data.cursor : cursor + count
+    if (!hasMore) {
+      // Explicit empty list + no-more + total=0 is valid; empty positive totals are ambiguous.
+      if (!comments.length && (data.total !== 0 || ![0, false].includes(data.has_more as number | boolean))) {
+        return interrupted("COMMENT_API_UNAVAILABLE: empty comments without explicit zero total and end-of-list")
+      }
+      const truncated = comments.length > limit
+      return { ok: true, awemeId, total, fetched: Math.min(comments.length, limit),
+        truncated, comments: comments.slice(0, limit) }
+    }
+    if (comments.length >= limit) {
+      return { ok: true, awemeId, total, fetched: limit, truncated: true, comments: comments.slice(0, limit) }
+    }
+    if (comments.length === before || typeof data.cursor !== "number" ||
+        !Number.isFinite(data.cursor) || data.cursor <= cursor) {
+      return interrupted("COMMENT_PAGINATION_STALLED: no new comments or cursor did not advance")
+    }
+    cursor = data.cursor
+    await pause(1000 + Math.floor(Math.random() * 2000))
   }
-
-  if (comments.length > limit) {
-    comments.length = limit
-    truncated = true
-  }
-
-  return { ok: true, awemeId, total, fetched: comments.length, truncated, comments }
+  return { ok: true, awemeId, total, fetched: comments.length, truncated: false, comments }
 }
 
 // ─── Markdown 摘要 ────────────────────────────────────────────────────────
@@ -265,7 +284,7 @@ function markdownDigest(result: FetchResult): string {
     "",
     `- 抓取时间：${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
     `- 评论总数（平台口径）：${result.total}`,
-    `- 本次抓取：${result.fetched} 条${result.truncated ? "（已达 --limit，未抓全）" : ""}`,
+    `- 本次抓取：${result.fetched} 条${result.truncated ? "（未抓全）" : ""}`,
     "- 排序：点赞降序",
     "",
     "| # | 点赞 | 回复 | 评论 | 用户 | IP | 日期 |",
@@ -312,12 +331,9 @@ async function main(): Promise<void> {
   const result = await fetchComments(awemeId, limit)
 
   if (!result.ok) {
-    if (result.error?.startsWith("SESSION_EXPIRED")) {
-      process.stderr.write(JSON.stringify({ ok: false, error: "SESSION_EXPIRED", platform: "douyin" }) + "\n")
-      process.exit(2)
-    }
-    process.stderr.write(`❌ ${result.error}\n`)
-    process.exit(1)
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n")
+    process.stderr.write(`❌ ${result.error}；停止本轮评论抓取，不据此重登。\n`)
+    process.exit(3)
   }
 
   console.error(`  ✓ 抓到 ${result.fetched}/${result.total} 条评论`)
@@ -331,7 +347,7 @@ async function main(): Promise<void> {
   process.stdout.write(JSON.stringify(result, null, 2) + "\n")
 }
 
-main().catch(e => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch(e => {
   process.stderr.write(`❌ ${e}\n`)
   process.exit(1)
 })

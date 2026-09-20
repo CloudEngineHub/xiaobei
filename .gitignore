@@ -5,6 +5,7 @@ package-lock.json
 # default ignore
 /shelf/
 /workspace.xml
+/tmp
 .DS_Store
 .idea/
 __pycache__
@@ -23,7 +24,6 @@ __pycache__/
 patchright/
 patchright-v*/
 openclaw/
-tests/
 
 # addon crews copied into crews/ at install time — not tracked
 .pnpm-store/
@@ -43,3 +43,4 @@ crews/main/db/
 
 # engagement 技能 probe 调试输出（dump 截图/HTML/innerText，不入仓）
 *-engagement-probe/
+docs/mediacrawlerpro-catchup-2026-09-19.md

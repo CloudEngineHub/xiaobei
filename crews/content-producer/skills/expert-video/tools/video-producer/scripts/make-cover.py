@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 14a — make-cover：封面（siliconflow-img-gen，必含封面主文案）。
+"""Stage 14a — make-cover：封面（awk-img-gen，必含封面主文案）。
 
 Usage:
   python3 scripts/make-cover.py <project_dir> --title "..."
@@ -7,7 +7,7 @@ Usage:
 入：project_dir/brief.md（封面主文案）+ storyboard 关键帧
 出：project_dir/cover.jpg（含封面主文案的封面图）
 
-封面硬约束：必含封面主文案。主文案由甲方在 Brief 中给出（有平台标题时用标题，视频号用短标题）；Brief 未给时回退核心传达。siliconflow-img-gen 不一定能把中文封面主文案烤进图，
+封面硬约束：必含封面主文案。主文案由甲方在 Brief 中给出（有平台标题时用标题，视频号用短标题）；Brief 未给时回退核心传达。awk-img-gen 不一定能把中文封面主文案烤进图，
 agent 生成后用 image 工具看，确认封面主文案可见——不可见就用 ImageMagick/Pillow 烧字上去。
 """
 
@@ -52,14 +52,14 @@ def main() -> None:
     stub = {
         "cover_copy": title,
         "instruction": (
-            "agent 调公共 siliconflow-img-gen 生成封面图，prompt 必含封面主文案指令。"
+            "agent 调公共 awk-img-gen 生成封面图，prompt 必含封面主文案指令。"
             "生成后用 image 工具看，确认封面主文案可见——不可见就用 ImageMagick/Pillow 烧字上去。"
             "落 cover.jpg 到项目根。"
         ),
         "cover_path": str(cover),
     }
     print(f"[plan] cover.jpg 封面主文案：{title}")
-    print(f"[next] agent 调 siliconflow-img-gen 生成 → 确认封面主文案可见 → 落 {cover}")
+    print(f"[next] agent 调 awk-img-gen 生成 → 确认封面主文案可见 → 落 {cover}")
 
 
 if __name__ == "__main__":

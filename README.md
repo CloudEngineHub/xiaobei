@@ -5,7 +5,7 @@
 - 微信公众号文章写作、排版与推送
 - 小红书/小绿书图文创作与发布
 - 图文海报生成
-- 短视频生成与多平台分发（支持视频号、抖音、小红书）
+- 视频生成与多平台分发（支持视频号、抖音、小红书）
 - Twitter/X、微博、知乎等平台发文
 - 微信朋友圈内容发布（通过企业微信接口）
 - 爆款视频追爆分析、仿写与再创作（支持抖音、B站和小红书视频链接）
@@ -32,13 +32,15 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ---
 
-## 🚀 **v5.7.1 更新**
+## 🚀 **V5.7.1~5.7.2 更新**
 
 - 小红书、抖音、视频号 DNA系统升级到2.0架构，Let's do this like an expert！
 - content producer 升级为专家系统，现在除了AIGC大片外，还可以复刻众多短视频平台流行的“套路”，更易获得平台推荐流量：
   > 效果展示，xiaobei的视频号：https://openclaw-for-business.com/xiaobei-wxchannel.jpg
 - xiaobei 可直接指挥content producer，用户可选择将brief出具、节点验收等委托xiaobei
-- 修复一键安装脚本中，openclaw-weixin不会自动升级的问题
+- 新增抖音平台图文音乐内容发布能力，支持多图上传、选择推荐配乐与发布链接回收。
+- AIGC 端点支持阿里云百炼 Agent Plan：现在无需去多个平台开通不同账号，最简只用初始安装时的百炼账号就可获得全部能力。
+- 修复一键安装脚本openclaw-weixin不会自动升级的问题
 
 详见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -48,11 +50,11 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ### 0. 准备 API Key
 
-推荐开通 [阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..)——一个套餐覆盖 DeepSeek-V4-Flash、GLM-5.2、Qwen3.6-Flash 等主流模型，**无月限额、不限购**，xiaobei 默认主力模型 DeepSeek-V4-Flash 即走此通道。开通后获得 `AWK_API_KEY`，主力模型、视觉模型、替补模型**一个 key 全覆盖**。
+推荐开通 [阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..)——一个套餐覆盖**思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成**全部大模型能力，无需为这些能力分别准备其他供应商账号或 Key。
 
 > 💡 **套餐选择**：前期熟悉安装可选 **Lite 版 39 元/月**；正常使用建议 **Standard 版 139 元/月**。想继续使用火山CodePlan见下方 "模型费用说明"
 
-> 🎬 **想用视频生成能力？** 开通百炼Token Plan后，会免费获得一定额度的 `happyhorse-1.1` ，只需把对应 key（`MODELSTUDIO_API_KEY`）配置到 `daemon.env`。
+> 🎬 **想用视频生成能力？** 默认可直接复用百炼 `AWK_API_KEY` 调用 `happyhorse` 系列，也可通过配置 `MODELSTUDIO_API_KEY` 和 `WORKSPACE_ID`使用百炼平台的赠送额度和“节省计划“包。
 
 > 除了阿里云的`happyhorse`系列，我们现在也支持 minimax 的H3！详见下方[视频生成模型配置](#-视频生成模型配置)
 
@@ -161,27 +163,28 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 >
 > xiaobei 底层基于 openclaw，建议先准备好大模型 API：
 >
-> - **主力模型（强烈推荐）**：[阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..) — 一个套餐覆盖 DeepSeek-V4-Flash、GLM-5.2、Qwen3.6-Flash 等主流模型，**无月限额、不限购**。前期熟悉安装可选 Lite 版 39 元/月，正常使用建议 Standard 版 139 元/月。开通后获得 `AWK_API_KEY`，xiaobei 默认主力模型 DeepSeek-V4-Flash 即走此通道。
+> - **主力模型（强烈推荐）**：[阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..) — 一个套餐已经可以覆盖xiaobei系统所需的所有大模型（思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成)。
 >
 > - **仍想用火山方舟 Coding Plan 的用户**：在默认配置模板基础上参考 [openclaw-awk.json](config-templates/openclaw-awk.json)，手动替换 `provider` 和 `agents.default` 字段即可。
 
 > **🎬 视频生成模型配置**
 >
-> AI 视频生成（`aigc-video-gen`，短视频制作与素材补充都会用到）需额外开通视频生成模型，并把对应 key 配置到 `daemon.env`（任选其一，百炼优先）：
+> AI 视频生成（`aigc-video-gen`，短视频制作与素材补充都会用到）默认复用百炼 `AWK_API_KEY`，走 Agent Plan 端点。也可按需配置百炼业务空间、火山或 MiniMax：
 >
 > | 平台 | 环境变量 | 模型 |
 > |------|---------|------|
-> | 阿里云百炼（优先） | `MODELSTUDIO_API_KEY`（或 `DASHSCOPE_API_KEY`） | `happyhorse-1.1-i2v` / `happyhorse-1.1-t2v` / `happyhorse-1.1-r2v` |
+> | 阿里云百炼 Agent Plan（默认） | `AWK_API_KEY` | `happyhorse-1.1-i2v` / `happyhorse-1.1-t2v` / `happyhorse-1.1-r2v` |
+> | 阿里云百炼业务空间（可选） | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`（或 `DASHSCOPE_API_KEY`） | 同上 |
 > | 火山引擎方舟 | `AWK_GEN_KEY` | `doubao-seedance-2-0-fast-260128` / `doubao-seedance-2-0-260128` / `doubao-seedance-2-0-mini-260615` |
 > | minimax海螺 | `MINIMAX_API_KEY` | `minimax-H3` |
 >
-> 若上述都没配则自动降级为 pexels/pixabay 免费素材模式（也得注册才能获得key，只不过是免费）。注意 `AWK_GEN_KEY` 与主力模型的 `AWK_API_KEY` 是一个 key，但必须在环境变量中以不同变量名称赋值，火山视频生成只认 `AWK_GEN_KEY`。申请成功后可以让小贝喊系统内置的IT Engineer帮你完成配置。
+> 只配置百炼 `AWK_API_KEY` 时自动走 Agent Plan；若已有其他视频凭据，自动选择顺序为 MiniMax → 火山 → 百炼业务空间 → 百炼 Agent Plan。均未配置时，小贝改用 pexels/pixabay 素材模式（仍需注册获取对应的免费 Key）。`AWK_GEN_KEY` 是火山视频生成凭据，与百炼 `AWK_API_KEY` 不可混用。需要调整配置时，可以让小贝调用内置 IT Engineer 协助。
 
 > **🧠 进阶：记忆增强与 dream（可选）**
 >
 > 默认配置下，小贝的记忆走 FTS 全文检索，已经够用且零额外配置。如果你记忆体量很大、想要更好的语义召回，可以接入一个 embedding 模型；也可以选择打开凌晨"做梦"机制让小贝在夜间整理记忆。
 >
-> 推荐用 [SiliconFlow](https://cloud.siliconflow.cn/i/WNLYbBpi)（🎁 xiaobei 邀请链接，注册认证后你可获得一张 16 元代金券），它提供 `BAAI/bge-m3` 与 `Qwen/Qwen3-VL-Embedding` 系列，均为 OpenAI 接口格式，可直接配置为 `memorySearch` 的 embedding provider。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`；想开做梦就把 `plugins.entries.memory-core.config.dreaming.enabled` 改回 `true`。改完重启 gateway 生效。可以让小贝帮你完成配置。
+> 任何 OpenAI 接口格式的 embedding 服务都可以接（如阿里云百炼的 `text-embedding-v3/v4` 系列）。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`；想开做梦就把 `plugins.entries.memory-core.config.dreaming.enabled` 改回 `true`。改完重启 gateway 生效。可以让小贝帮你完成配置。
 
 ### 配置繁琐，不想操心？
 
@@ -274,7 +277,7 @@ v5.6.0 中我们几乎重构了 OpenClaw 原版的浏览器自动化方案（详
 | `smart-search` | 智能搜索——绕开 openclaw 内置 web search 的 api key 依赖，零部署免费方案 |
 | `web-form-fill` | 网络表单填报——从信息搜集到浏览器填报的完整工作流，强制有头模式便于用户随时介入 |
 | `login-manager` | 平台登录态管理——5 平台统一有头手动登录、探活规则、中央 cookie+UA 存储约定 |
-| 各平台发布/互动 skill | `twitter-post` / `twitter-interact` / `weibo-publish` / `zhihu-publish` / `xhs-publish` / `xhs-content-ops` / `douyin-publish` / `wechat-channels-publish` / `xianyu-ops` / `wx-mp-hunter` / `wx-mp-engagement` 等平台专属浏览器自动化技能 |
+| 各平台发布/互动 skill | `twitter-post` / `twitter-interact` / `weibo-publish` / `zhihu-publish` / `xhs-publish` / `xhs-content-ops` / `douyin-video-publish` / `wechat-channels-publish` / `xianyu-ops` / `wx-mp-hunter` / `wx-mp-engagement` 等平台专属浏览器自动化技能 |
 
 这些技能共享同一套 forked camoufox-cli + 持久化 session 机制，登录态在 session profile 里闭环，按场景分离有头/无头模式（登录+填报走有头，自动化操作走无头），靠 session 名字符串约定共享 profile 目录与登录态。
 
@@ -340,6 +343,7 @@ wiseflow/
 - html-video（nexu-io 的 HTML 视频渲染方案 — `video-producer` 的 Stage 10 静帧→成片渲染思路与素材组装约定参考自此） https://github.com/nexu-io/html-video
 - ViMax（HKUDS 的视频生成框架 — `video-producer` 的机位一致性约束与素材 slot 规划借鉴其镜头规划策略） https://github.com/HKUDS/ViMax
 - OpenMontage（calesthio 的开源蒙太奇剪辑方案 — `video-producer` 的 Stage 12 拼接成片+转场工作流借鉴其片段组装与节奏控制思路） https://github.com/calesthio/OpenMontage
+- gbro-collage-broll（MIT — 半调纸拼贴 B-roll 三闸门方法论 — `expert-video` 的 Collage B-roll workflow 移植自此：隐喻设计法、语义色场表、visual-spec schema、静帧/视频 QA 标准照搬，闸门映射为 GATE A/B、渲染栈换成 awk-img-gen + aigc-video-gen i2v） https://github.com/pyang5166/gbro-collage-broll
 - agent-skills-launch-pack_（起号方法论知识来源） https://github.com/chenjin-cmd/agent-skills-launch-pack_
 
 ## Citation

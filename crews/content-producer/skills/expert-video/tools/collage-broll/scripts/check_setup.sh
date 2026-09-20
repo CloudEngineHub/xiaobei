@@ -2,7 +2,7 @@
 # collage-broll environment self-check.
 # Exit 0 = all good; exit 1 = at least one item missing (details on stdout).
 #
-# 探依赖：ffmpeg / ffprobe / AWK_API_KEY（Gate 2 静帧）/ 视频平台 key（Gate 3 视频）
+# 探依赖：ffmpeg / ffprobe / AWK_API_KEY（Phase 2 静帧）/ 视频平台 key（Stage 10 i2v 视频）
 # 不探 venv——仓根 requirements.txt 统一装，不留独立 venv（xiaobei 语境）
 
 set -u
@@ -12,20 +12,20 @@ FAIL=0
 ok()   { printf 'PASS  %s\n' "$1"; }
 bad()  { printf 'FAIL  %s\n' "$1"; FAIL=1; }
 
-# 1. AWK_API_KEY（Gate 2 静帧生成要——siliconflow-img-gen / Seedream）
+# 1. 百炼生图凭据（Phase 2 静帧生成要——awk-img-gen：WORKSPACE_ID+MODELSTUDIO_API_KEY 或 AWK_API_KEY）
 if [ -n "${AWK_API_KEY:-}" ]; then
-  ok "AWK_API_KEY 已设置（Gate 2 静帧可用）"
+  ok "AWK_API_KEY 已设置（Phase 2 静帧可用）"
 else
-  bad "AWK_API_KEY 未设置（Gate 2 静帧生成要——到 https://console.volcengine.com/ark 创建后 export 到 shell 配置）"
+  bad "AWK_API_KEY 未设置（Phase 2 静帧生成要——到 https://console.volcengine.com/ark 创建后 export 到 shell 配置）"
 fi
 
-# 2. 视频平台 key（Gate 3 视频生成要——aigc-video-gen / 百炼或火山）
+# 2. 视频平台 key（Stage 10 i2v 视频生成要——aigc-video-gen / 百炼或火山）
 if [ -n "${MODELSTUDIO_API_KEY:-}" ] || [ -n "${DASHSCOPE_API_KEY:-}" ]; then
-  ok "MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY 已设置（Gate 3 走百炼 happyhorse-1.1-i2v）"
+  ok "MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY 已设置（Stage 10 i2v 走百炼 happyhorse-1.1-i2v）"
 elif [ -n "${AWK_GEN_KEY:-}" ]; then
-  ok "AWK_GEN_KEY 已设置（Gate 3 走火山 Seedance，百炼未配）"
+  ok "AWK_GEN_KEY 已设置（Stage 10 i2v 走火山 Seedance，百炼未配）"
 else
-  bad "视频平台 key 都未设置（Gate 3 要 MODELSTUDIO_API_KEY 百炼 或 AWK_GEN_KEY 火山）"
+  bad "视频平台 key 都未设置（Stage 10 i2v 要 MODELSTUDIO_API_KEY 百炼 或 AWK_GEN_KEY 火山）"
 fi
 
 # 3. ffmpeg / ffprobe

@@ -142,7 +142,7 @@ video-edit audio-mix input.mp4 --narration speech.mp3 --bgm music.mp3 --output o
 旁白音频的生成：
 
 1. **优先使用 OpenClaw 内置 TTS 工具**（`tts_generate` 或 agent 内置语音合成能力）
-2. 内置 TTS 不可用时，使用公共 `awk-tts` 技能（火山方舟豆包语音合成 2.0，要求环境变量已配置 `VOLC_TTS_*` 凭据）
+2. 内置 TTS 不可用时，使用公共 `awk-tts` 技能（多供应商：火山豆包 2.0 → 百炼业务空间 → 百炼 agent plan，凭据在哪家走哪家）
 3. 旁白时长必须与视频时长匹配（TTS 语速可微调以适配），混音前先核对两者时长
 
 BGM（`--bgm` 文件）的来源：
@@ -246,7 +246,7 @@ verdict=pass 才交付；fail 按 critical 项修复后重审；warn 向用户�
 - 竖屏封面 1080x1920
 - 可以使用视频关键画面作为背景，但文字是必须元素
 
-使用公共 `siliconflow-img-gen` 技能制作封面，保存为 `<project-dir>/cover.jpg`。
+使用公共 `awk-img-gen` 技能制作封面，保存为 `<project-dir>/cover.jpg`。
 
 > 仅对交付成片的项目做封面；中间加工产物（如只是帮用户给一段素材加 BGM）不需要封面。
 

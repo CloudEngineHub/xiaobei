@@ -132,21 +132,21 @@ login-manager check douyin   # wrapper 在 PATH 中
 | email-ops | scripts/send_email.py | wrapper → py |
 | pexels-footage | scripts/pexels_search.py | wrapper → py |
 | pixabay-footage | scripts/pixabay_search.py | wrapper → py |
-| siliconflow-img-gen | scripts/gen.py | wrapper → py |
+| awk-img-gen | scripts/gen.py | wrapper → py |
 | wxwork-drive | scripts/drive.py | wrapper → py |
 | youtube-publish | scripts/publish_youtube.py | wrapper → py |
 | bilibili-publish | scripts/publish_bilibili.py | wrapper → py |
 | design-system-picker | scripts/pick.sh | wrapper → sh |
 | init-workspace | scripts/init.sh | wrapper → sh |
 | ~~manim-explainer~~ | scripts/render-manim.sh | wrapper → sh（**2026-09-10 技能删除**，wrapper 与 bin 软链由 `expose_skill_wrappers` 的悬挂清理回收） |
-| siliconflow-tts | scripts/tts.py | wrapper → py |
-| siliconflow-video-gen | scripts/gen.py | wrapper → py |
+| awk-tts | scripts/tts.py | wrapper → py |
+| ~~siliconflow-video-gen~~ | scripts/gen.py | wrapper → py（**已删除**，CP 视频生成统一走公共 `aigc-video-gen`） |
 | awada-channel-setup | scripts/apply-awada-config.py | wrapper → py |
 | icp-exemption | scripts/generate_pdf.py | wrapper → py |
 | icp-filing | scripts/icp.sh | wrapper → sh |
 | exp-invite | scripts/invite.sh | wrapper → sh |
 | proactive-send | scripts/send.sh | wrapper → sh → mjs |
-| douyin-publish | scripts/publish_douyin.sh | wrapper → sh → py（scripts 里已有内部 wrapper，顶层只多一跳）|
+| douyin-video-publish | scripts/publish_douyin.sh | wrapper → sh → py（scripts 里已有内部 wrapper，顶层只多一跳）|
 | twitter-interact | scripts/twitter_interact.sh | wrapper → sh → py |
 | wx-mp-engagement | scripts/wx-mp-engagement.sh | wrapper → sh → py |
 | wx-mp-hunter | scripts/wx-mp-hunter.sh | wrapper → sh → ts |
@@ -260,7 +260,7 @@ dev plan §Phase 7 续 写"验收"：
 |-------|-------------------|------------------|--------------|
 | `crews/sales-cs/skills/exp-invite` | `scripts/invite.sh`（不变，已是真脚本） | —（无引导壳） | `scripts/invite.sh` |
 | `crews/sales-cs/skills/proactive-send` | `node scripts/send.mjs` | `scripts/send.sh` | `scripts/send.mjs` |
-| `crews/main/skills/douyin-publish` | `python3 scripts/publish_douyin.py` | `scripts/publish_douyin.sh` | `scripts/publish_douyin.py` |
+| `crews/main/skills/douyin-video-publish` | `python3 scripts/publish_douyin.py` | `scripts/publish_douyin.sh` | `scripts/publish_douyin.py` |
 | `crews/main/skills/wx-mp-hunter` | `node --experimental-strip-types scripts/wx_mp_hunter.ts` | `scripts/wx-mp-hunter.sh` | `scripts/wx_mp_hunter.ts` |
 | `crews/main/skills/wx-mp-engagement` | `python3 scripts/fetch_engagement.py` | `scripts/wx-mp-engagement.sh` | `scripts/fetch_engagement.py` |
 
@@ -274,7 +274,7 @@ dev plan §Phase 7 续 写"验收"：
 
 1. `crews/sales-cs/skills/exp-invite` — `./skills/exp-invite/scripts/invite.sh` → `exp-invite`
 2. `crews/sales-cs/skills/proactive-send` — `./skills/proactive-send/scripts/send.sh` → `proactive-send`
-3. `crews/main/skills/douyin-publish` — `python3 ./skills/.../publish_douyin.py` → `douyin-publish`
+3. `crews/main/skills/douyin-video-publish` — `python3 ./skills/.../publish_douyin.py` → `douyin-video-publish`
 4. `crews/main/skills/wx-mp-hunter` — 混用 `./scripts/wx-mp-hunter.sh` + 绝对路径 → `wx-mp-hunter`
 
 **B. 15 个已配 wrapper 但 SKILL.md 未更新的 skill**（仅改 SKILL.md 示例为 PATH 风格，不动 wrapper）：
@@ -282,7 +282,7 @@ dev plan §Phase 7 续 写"验收"：
 5. `skills/email-ops`
 6. `skills/pexels-footage`
 7. `skills/pixabay-footage`
-8. `skills/siliconflow-img-gen`
+8. `skills/awk-img-gen`
 9. `skills/wxwork-drive`
 10. `crews/main/skills/xhs-publish`
 11. `crews/main/skills/xhs-content-ops`

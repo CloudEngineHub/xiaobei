@@ -40,7 +40,7 @@ login-manager 只管以下 5 个平台，**其他平台完全不涉及**：
 | `weixin-channel` | `wechat-channels-publish` | — | 视频号，与公众号独立；不导出 Cookie |
 | `weibo` | `weibo-publish` | — | 不导出 Cookie |
 | `twitter` | `twitter-post`、`twitter-interact` | **共用** | 不导出 Cookie |
-| `douyin` | `douyin-publish`、`viral-chaser`、`published-track` | — | login-manager 导出 Cookie 供脚本类下游（viral-chaser / published-track）消费；`douyin-publish` 自身不吃 Cookie，纯浏览器操作 |
+| `douyin` | `douyin-video-publish`、`viral-chaser`、`published-track` | — | login-manager 导出 Cookie 供脚本类下游（viral-chaser / published-track）消费；`douyin-video-publish` 自身不吃 Cookie，纯浏览器操作 |
 | `bilibili` | `viral-chaser`、`published-track` | — | 导出 Cookie（目前无发布/浏览/互动技能） |
 | `kuaishou` | `published-track` | — | 导出 Cookie（目前无发布/浏览/互动技能） |
 
@@ -94,7 +94,7 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 
 **关键**：所有消费方**同时导入 Cookie 和 UA**——同一指纹下的 Cookie 才不会被风控错配（spec §8，2026-06-29 CDP 注入 22 cookie 触发风控的教训）。
 
-> **`douyin-publish` 不在本表**——它是**纯浏览器操作**技能（形态仿 `wechat-channels-publish`），自身不吃中央 Cookie。它的探活/有头登录/导出 Cookie+UA 全交 `login-manager` 负责，导出的 `douyin.json` + `douyin.ua.json` 仅供本表中的脚本类下游（`viral-chaser` / `published-track`）消费。`douyin-publish` 自身复用 login-manager 留下的持久化 session `douyin` 做浏览器发布操作，**严禁 `cookies import`**。
+> **`douyin-video-publish` 不在本表**——它是**纯浏览器操作**技能（形态仿 `wechat-channels-publish`），自身不吃中央 Cookie。它的探活/有头登录/导出 Cookie+UA 全交 `login-manager` 负责，导出的 `douyin.json` + `douyin.ua.json` 仅供本表中的脚本类下游（`viral-chaser` / `published-track`）消费。`douyin-video-publish` 自身复用 login-manager 留下的持久化 session `douyin` 做浏览器发布操作，**严禁 `cookies import`**。
 
 **xhs 双 Cookie 流向值得专门留意**：
 - `xhs-browse.json` 被 `xhs-content-ops` + `published-track` + `viral-chaser` **三方**消费
@@ -110,7 +110,7 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 - `wechat-channels-publish`（session `weixin-channel`，与公众号独立）
 - `weibo-publish`（session `weibo`）
 - `zhihu-publish`（session `zhihu`）
-- `douyin-publish`（session `douyin`，**特档**：见下方专门说明）
+- `douyin-video-publish`（session `douyin`，**特档**：见下方专门说明）
 
 **纠正要点**（每个技能 SKILL.md 都要写明）：
 1. **优先使用 camoufox-cli �持久化 session**，登录态在 session profile 里，**除非用户有明确要求别的**才走其他方案。
@@ -120,25 +120,25 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 
 注：`wx-mp-hunter` + `wx-mp-engagement` 虽然也共用 session + 部分导出 Cookie，但归 §4 wx_mp 特例管，不在本节简单话术纠正清单里。
 
-### 6.1 douyin-publish 特档（需要 login-manager 探活/有头登录/导出，但自身不吃 Cookie）
+### 6.1 douyin-video-publish 特档（需要 login-manager 探活/有头登录/导出，但自身不吃 Cookie）
 
-`douyin-publish` 与上面 5 个不导出 Cookie 的技能**同构**——纯浏览器操作，自身不吃 Cookie、严禁 `cookies import`，形态仿 `wechat-channels-publish`。但有一个关键差异让它单独成档：
+`douyin-video-publish` 与上面 5 个不导出 Cookie 的技能**同构**——纯浏览器操作，自身不吃 Cookie、严禁 `cookies import`，形态仿 `wechat-channels-publish`。但有一个关键差异让它单独成档：
 
-| 维度 | 不导出 Cookie 的 5 技能（§6 主清单） | `douyin-publish` |
+| 维度 | 不导出 Cookie 的 5 技能（§6 主清单） | `douyin-video-publish` |
 |------|----------------------------------|------------------|
 | 自身吃 Cookie | 否 | 否 |
 | 自管探活 + 登录 | 是（写在 SKILL.md 里，与 login-manager 无关） | **否——探活/有头登录/导出全交 login-manager** |
 | 导出 Cookie+UA | 不导出 | **由 login-manager 导出**，落 `~/.openclaw/logins/douyin.json` + `~/.openclaw/logins/douyin.ua.json` |
-| 导出的用途 | — | 供**脚本类下游**消费（`viral-chaser` / `published-track`）；**douyin-publish 自身不用** |
+| 导出的用途 | — | 供**脚本类下游**消费（`viral-chaser` / `published-track`）；**douyin-video-publish 自身不用** |
 | 登录模式 | 各自有头/无头 QR | **强制有头手动**（手机号+验证码 / 抖音 APP 扫码，login-manager §2 5 平台统一有头） |
 
-**为什么 douyin-publish 不归 §6 主清单的「与 login-manager 完全无关」一档**：它需要 login-manager 帮它准备持久化 session（探活 + 有头登录 + 导出 Cookie+UA），自己**没有** login 子命令、**不**自管探活。但导出的 Cookie 它自己也不读——浏览器操作严禁 `cookies import`，session 内的登录态 + 指纹冻结就位即可做发布操作。
+**为什么 douyin-video-publish 不归 §6 主清单的「与 login-manager 完全无关」一档**：它需要 login-manager 帮它准备持久化 session（探活 + 有头登录 + 导出 Cookie+UA），自己**没有** login 子命令、**不**自管探活。但导出的 Cookie 它自己也不读——浏览器操作严禁 `cookies import`，session 内的登录态 + 指纹冻结就位即可做发布操作。
 
-**douyin-publish SKILL.md 必须写明**：
+**douyin-video-publish SKILL.md 必须写明**：
 1. **形态仿 `wechat-channels-publish`**：纯浏览器操作方案，走 camoufox-cli 持久化 session `douyin`（一个且只有一个持久化 session，fail-first 队列）。
 2. **探活 / 有头登录 / 导出 Cookie+UA 全交 login-manager**——本 skill 不自管，不调用 `cookies export` / `identity export` / `cookies import`。
 3. **自身不吃 Cookie**：发布脚本直接复用 login-manager 准备好的持久化 session `douyin`（`--session douyin --persistent`），不开临时 session、不 import cookie。
-4. **导出的 Cookie+UA 落中央存储仅供脚本类下游消费**（`viral-chaser` / `published-track`）——douyin-publish 自身不读这两个文件。
+4. **导出的 Cookie+UA 落中央存储仅供脚本类下游消费**（`viral-chaser` / `published-track`）——douyin-video-publish 自身不读这两个文件。
 5. **发布任务跑完即 close 持久化 session `douyin`**——登录态在磁盘 profile，不留进程占内存，下次发布 `--session douyin --persistent` 重起无头即恢复；只在 session 卡死时 `camoufox-cli --session douyin --json close` teardown。
 6. 子命令清单**无 `login`**：`upload` / `fill` / `publish` / `get-link` / `cleanup` / `run`（run 一键跑 upload → fill → publish → get-link，**不**自管探活）。
 
@@ -226,7 +226,7 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 7. **published-track 中 xhs 取数重构**（§9）：做 fetch-xhs-with-xsec.ts，整合拿映射+抓数。
 8. **HEARTBEAT.md 简化**：删 xhs 那段 CDP 描述，指向新脚本。
 9. **viral-chaser/scripts 核实+补齐**（§10）：UA 同步导入全链路核实 + Platform 类型补齐。
-10. **douyin-publish 重构**（§6.1）：之前误把它定位为「导出 Cookie 自己吃」一档（同 xhs-publish 模式），导致昨天改造走错。实际它**与 wechat-channels-publish 同构**——纯浏览器操作，自身不吃 Cookie、严禁 `cookies import`。差别在于：探活/有头登录/导出 Cookie+UA 全交 login-manager（供脚本类下游 viral-chaser / published-track 消费，douyin-publish 自身不读）。脚本删 `login` 子命令 + `login_manager_check` 自管探活；SKILL.md 重写职责划分。
+10. **douyin-video-publish 重构**（§6.1）：之前误把它定位为「导出 Cookie 自己吃」一档（同 xhs-publish 模式），导致昨天改造走错。实际它**与 wechat-channels-publish 同构**——纯浏览器操作，自身不吃 Cookie、严禁 `cookies import`。差别在于：探活/有头登录/导出 Cookie+UA 全交 login-manager（供脚本类下游 viral-chaser / published-track 消费，douyin-video-publish 自身不读）。脚本删 `login` 子命令 + `login_manager_check` 自管探活；SKILL.md 重写职责划分。
 11. **xhs-publish / xhs-content-ops 复核**：现状已对齐新体系，最后扫一遍确认话术与 login-manager SKILL.md 新版一致。
 
 ## 12. 附：核实清单（重构时必查）
@@ -240,5 +240,5 @@ camoufox-cli --session wx_mp --persistent --json identity export ~/.openclaw/log
 - [ ] HEARTBEAT.md：xhs CDP 段删，指向新脚本
 - [ ] viral-chaser/scripts：UA 同步导入全链路；Platform 类型补齐
 - [ ] 不导出 Cookie 的 5 技能：话术按 §6 改；共享 session 名约定（twitter / weixin-channel 等）写清
-- [ ] douyin-publish（§6.1）：纯浏览器操作话术（仿 wechat-channels-publish）；探活/有头登录/导出交 login-manager；脚本无 `login` 子命令、无 `login_manager_check`；自身不吃 Cookie 严禁 `cookies import`
+- [ ] douyin-video-publish（§6.1）：纯浏览器操作话术（仿 wechat-channels-publish）；探活/有头登录/导出交 login-manager；脚本无 `login` 子命令、无 `login_manager_check`；自身不吃 Cookie 严禁 `cookies import`
 - [ ] xhs-publish / xhs-content-ops：话术复核与新版 login-manager 一致

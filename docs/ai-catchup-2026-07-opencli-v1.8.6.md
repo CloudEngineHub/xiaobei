@@ -146,7 +146,7 @@ def camoufox_eval_with_reliability(
 1. 在 `crews/main/skills/login-manager/scripts/login_manager.py`（已是 Python 核心）加 reliable_eval helper
 2. `crews/main/skills/twitter-interact/scripts/twitter_interact.py`（已有 27 单测）替换所有 camoufox_eval
 3. 加 `journal` 字段到 `cmd_*.json` 输出，部署后做排故更清晰
-4. `crews/main/skills/douyin-publish/scripts/publish_douyin.py` + `wx-mp-engagement/scripts/fetch_engagement.py` 同样替换
+4. `crews/main/skills/douyin-video-publish/scripts/publish_douyin.py` + `wx-mp-engagement/scripts/fetch_engagement.py` 同样替换
 
 ### 2.2 中等相关：v1.8.6 exactly-once command transport (journal)
 
@@ -185,7 +185,7 @@ def camoufox_eval_with_reliability(
 **本仓**：
 - `crews/main/skills/twitter-interact/scripts/twitter_interact.py` 主入口已有 try/except → sys.exit(1)
 - login-manager 同
-- douyin-publish 同
+- douyin-video-publish 同
 - **本仓已基本做对**（exit code 1 + stderr message）
 
 **借鉴**：

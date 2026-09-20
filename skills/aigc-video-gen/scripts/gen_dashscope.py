@@ -9,12 +9,11 @@
 模型候选链（每模式一条）：
   happyhorse-1.1-{mode} → happyhorse-1.0-{mode} → wan2.7-{mode}
 
-鉴权：HTTP header `Authorization: Bearer ${MODELSTUDIO_API_KEY}`（或 DASHSCOPE_API_KEY）。
-
-端点规则：
-  - 配了 WORKSPACE_ID 时，happyhorse 走专属端点 {WorkspaceId}.cn-beijing.maas.aliyuncs.com（更快）
-  - 没配则走默认 dashscope.aliyuncs.com
-  - wan2.7 始终走默认端点
+端点/key 双模式（2026-09 provider 收敛，ds_resolve）：
+  - 业务空间（优先）：WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY
+    → https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1
+  - agent plan：否则 AWK_API_KEY → https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1
+  - legacy 兼容：都没有但 MODELSTUDIO/DASHSCOPE 在 → 默认 dashscope.aliyuncs.com
 """
 
 from __future__ import annotations
@@ -44,8 +43,9 @@ from aigc_common import (  # noqa: E402
 
 # ---- 百炼端点与常量 -----------------------------------------------------------
 
-DS_DEFAULT_BASE = "https://dashscope.aliyuncs.com/api/v1"
+DS_DEFAULT_BASE = "https://dashscope.aliyuncs.com/api/v1"  # legacy 兼容端点
 DS_WS_BASE_TEMPLATE = "https://{wsid}.cn-beijing.maas.aliyuncs.com/api/v1"
+DS_AGENT_PLAN_BASE = "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
 DS_CREATE_PATH = "/services/aigc/video-generation/video-synthesis"
 DS_QUERY_PATH = "/tasks/{task_id}"
 
@@ -62,17 +62,30 @@ DS_POLL_INTERVAL = 15
 DS_TIMEOUT = 900
 
 
-def ds_base_for_model(model: str) -> str:
-    """Resolve the DashScope base URL for a given model.
+def ds_resolve() -> tuple[str, str, str]:
+    """解析百炼端点模式。返回 (base, api_key, mode)。
 
-    happyhorse-1.1 / 1.0 在默认 dashscope.aliyuncs.com 端点可正常调用（WorkspaceId 端点
-    只是华北2的性能优化，非必需）。WORKSPACE_ID 设置时走专属端点更快，否则走默认。
-    wan2.7 始终走默认端点。
+    - 业务空间（优先）：WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY
+    - agent plan：否则 AWK_API_KEY（token-plan 端点）
+    - legacy 兼容：都没有但 MODELSTUDIO/DASHSCOPE 在 → 默认端点（老部署无 AWK_API_KEY 时）
+    - 都不可用 → die
     """
     wsid = (os.environ.get("WORKSPACE_ID") or "").strip()
-    if model.startswith("happyhorse") and wsid:
-        return DS_WS_BASE_TEMPLATE.format(wsid=wsid)
-    return DS_DEFAULT_BASE
+    ws_key = (
+        os.environ.get("MODELSTUDIO_API_KEY")
+        or os.environ.get("DASHSCOPE_API_KEY")
+        or ""
+    ).strip()
+    if wsid and ws_key:
+        return DS_WS_BASE_TEMPLATE.format(wsid=wsid), ws_key, "workspace"
+    if wsid:
+        log("WORKSPACE_ID 已配置但 MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY 缺失，尝试 agent plan")
+    awk_key = (os.environ.get("AWK_API_KEY") or "").strip()
+    if awk_key:
+        return DS_AGENT_PLAN_BASE, awk_key, "agent-plan"
+    if ws_key:
+        return DS_DEFAULT_BASE, ws_key, "legacy"
+    die("百炼视频生成凭据未配置：需 WORKSPACE_ID+MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY（业务空间）或 AWK_API_KEY（agent plan）")
 
 
 # ---- 百炼视频生成 -------------------------------------------------------------
@@ -166,7 +179,7 @@ def ds_candidates(args: argparse.Namespace, mode: str) -> list[str]:
 
 def run_one(platform: str, model: str, args: argparse.Namespace, api_key: str) -> str:
     """Submit + poll for a single DashScope model. Returns video URL or raises."""
-    base = ds_base_for_model(model)
+    base, _key, _mode = ds_resolve()
     task_id = ds_submit(model, args, api_key, base)
     log(f"dashscope task submitted: {task_id} (model={model} base={base})")
     return ds_poll(task_id, api_key, base)
@@ -179,13 +192,7 @@ def cmd_video(args: argparse.Namespace) -> None:
     # --prev-segment: 抽取上一段末帧作为本段首帧（人物故事首尾帧对齐）
     resolve_prev_segment(args)
 
-    api_key = (
-        os.environ.get("MODELSTUDIO_API_KEY")
-        or os.environ.get("DASHSCOPE_API_KEY")
-        or ""
-    ).strip()
-    if not api_key:
-        die("MODELSTUDIO_API_KEY / DASHSCOPE_API_KEY 未设置")
+    base, api_key, provider_mode = ds_resolve()
 
     has_ref = bool(args.ref_image or args.ref_video)
     has_i2v = bool(args.image or args.last_frame)
@@ -197,7 +204,7 @@ def cmd_video(args: argparse.Namespace) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     log(
-        f"platform=dashscope mode={mode} candidates={candidates} "
+        f"platform=dashscope provider={provider_mode} mode={mode} candidates={candidates} "
         f"duration={args.duration}s ratio={args.ratio} resolution={args.resolution}"
     )
     video_url = generate("dashscope", candidates, args, api_key, run_one)
@@ -208,6 +215,7 @@ def cmd_video(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 "platform": "dashscope",
+                "provider_mode": provider_mode,
                 "mode": mode,
                 "model_candidates": candidates,
                 "duration": args.duration,

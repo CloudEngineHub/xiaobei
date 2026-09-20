@@ -2,8 +2,10 @@
 /**
  * fetch-retro-data.ts — 复盘数据抓取（第一层：纯 HTTP + cookie + 签名）
  *
- * 这是复盘数据抓取的第一层，只拿基础互动指标（播放/点赞/评论数）。
- * 第二层（完播率/转粉率/评论内容等深度数据）通过 browser tool + evaluate
+ * 这是复盘数据抓取的第一层，拿基础互动指标（播放/点赞/评论数）+ 抖音创作侧深指标
+ * （2026-09 起 douyin 走 creator item/list：view_count 播放量公开侧恒 0 仅创作侧可见，
+ * 另有完播率/封面 CTR 等 26 字段，视频+图文(note)作品通用；见 _shared/douyin-web.ts
+ * douyinCreatorItem）。其余深度数据（评论内容等）通过 browser tool + evaluate
  * CDP 拦截实现，不在此脚本中。
  *
  * 签名方案复用：
@@ -47,6 +49,8 @@ interface RetroResult {
   platform: string
   contentId: string
   stats: Record<string, number>
+  /** 创作侧深指标（douyin item/list：完播率/封面 CTR 等，键为平台原名）。经 fetch-and-update 落 pub_douyin.deep_metrics（只存最新值）。 */
+  deep?: Record<string, number>
   comments: Array<{ cid: string; text: string; likeCount: number; userName: string }>
   error?: string
   msg?: string
@@ -145,7 +149,9 @@ async function fetchDouyin(awemeId: string): Promise<RetroResult> {
   // 视频详情（aweme/detail 接口）——只取数，不碰评论
   // （参考 wiseflow4-pro douyin aweme_processor.__call__ → get_video_by_id →
   //  update_douyin_aweme：读 statistics 的 digg_count/collect_count/comment_count/share_count。）
-  console.error("  → 调抖音 API 获取视频详情...")
+  // 图文(note)作品的 mid 同样走此端点。play_count 公开侧恒为 0（播放量仅创作者可见），
+  // 下方创作侧 lane 是播放量的唯一来源。
+  console.error("  → 调抖音 API 获取作品详情...")
   try {
     const { status, data } = await douyinWebGet<any>(
       "/aweme/v1/web/aweme/detail/",
@@ -156,19 +162,62 @@ async function fetchDouyin(awemeId: string): Promise<RetroResult> {
     const aweme = data?.aweme_detail
     if (aweme) {
       const stats = aweme.statistics || {}
-      result.stats = {
-        playCount: stats.play_count || 0,
-        likeCount: stats.digg_count || 0,
-        commentCount: stats.comment_count || 0,
-        shareCount: stats.share_count || 0,
-        collectCount: stats.collect_count || 0,
+      // 公开侧播放量不可用；其余指标仅接受明确返回的数值，缺失不补零。
+      const mapping = {
+        digg_count: "likeCount",
+        comment_count: "commentCount",
+        share_count: "shareCount",
+        collect_count: "collectCount",
       }
-      console.error(`  ✓ 播放 ${result.stats.playCount} / 点赞 ${result.stats.likeCount} / 评论 ${result.stats.commentCount}`)
+      for (const [key, target] of Object.entries(mapping)) {
+        const value = stats[key]
+        if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+          result.stats[target] = value
+        }
+      }
+      console.error(`  ✓ 点赞 ${result.stats.likeCount} / 评论 ${result.stats.commentCount} / 分享 ${result.stats.shareCount}`)
     } else {
-      console.error(`  ⚠️ 视频详情接口返回 ${status} 但无 aweme_detail（cookie 可能失效）`)
+      console.error(`  ⚠️ 作品详情接口返回 ${status} 但无 aweme_detail（cookie 可能失效）`)
     }
   } catch (e) {
-    console.error(`  ⚠️ 视频详情获取失败: ${e}`)
+    console.error(`  ⚠️ 作品详情获取失败: ${e}`)
+  }
+
+  // 创作侧 item/list（借鉴 OpenCLI #2307）：26 字段深指标，视频+图文都在；
+  // creator 域 cookie-only 无需 a_bogus。失败不影响公开侧数据（graceful 降级）。
+  console.error("  → 调创作侧 item/list 获取深指标（含播放量）...")
+  try {
+    const { douyinCreatorItem } = await import("../../_shared/douyin-web.ts")
+    const item = await douyinCreatorItem(awemeId, cookieStr, ua)
+    if (item) {
+      const m = item.metrics
+      // 有常规列的指标全部写 stats，创作侧优先；其余指标才放 deep。
+      // view_count 是播放量唯一来源；缺失字段保留公开侧结果，明确的 0 正常覆盖。
+      const mapping: Record<string, string> = {
+        view_count: "playCount",
+        like_count: "likeCount",
+        comment_count: "commentCount",
+        share_count: "shareCount",
+        favorite_count: "collectCount",
+      }
+      result.deep = {}
+      for (const [key, value] of Object.entries(m)) {
+        if (mapping[key]) {
+          if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+            result.stats[mapping[key]] = value
+          }
+        } else {
+          result.deep[key] = value
+        }
+      }
+      console.error(
+        `  ✓ 播放 ${m.view_count ?? "?"} / 5s完播率 ${m.completion_rate_5s ?? "?"} / 2s跳出率 ${m.bounce_rate_2s ?? "?"} / 封面点击率 ${m.cover_click_rate ?? "?"}（审核 ${item.review ?? "?"}）`,
+      )
+    } else {
+      console.error("  ⚠️ 创作侧列表未找到该作品（cookie 非本账号，或作品超出列表深度）——播放量/深指标缺失，公开侧数据不受影响")
+    }
+  } catch (e) {
+    console.error(`  ⚠️ 创作侧深指标获取失败（不影响公开侧数据）: ${e}`)
   }
 
   return result

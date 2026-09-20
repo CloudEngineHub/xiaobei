@@ -18,5 +18,5 @@
 | `pexels-footage` | Pexels 免费素材搜索下载 | main + content-producer 继承 |
 | `pixabay-footage` | Pixabay 免费素材搜索下载 | main + content-producer 继承 |
 | `wxwork-drive` | 企业微信微盘 | main + content-producer 继承 |
-| `siliconflow-img-gen` | 硅基流动生图（Phase 5 改火山） | main + content-producer 继承 |
+| `awk-img-gen` | 阿里云百炼生图/编辑（业务空间 qwen-image / agent plan wan2.7-image） | main + content-producer 继承 |
 | `youtube-publish` | YouTube 视频发布（Data API v3 + OAuth2） | main + content-producer 继承 |

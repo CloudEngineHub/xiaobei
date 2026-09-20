@@ -158,13 +158,13 @@ video-review <project-dir>/highlight.mp4
 | 依赖 | 来源 | 说明 |
 |------|------|------|
 | ffmpeg / ffprobe | 系统 | 抽 WAV、剪拼、concat |
-| 火山引擎豆包语音极速版 | env `VOLC_ASR_*` | ASR 转写拿 word 级时间戳 |
-| requests | 仓根 requirements.txt | 调火山 ASR HTTP API |
+| 公共 ASR 路由 | env 任一组凭据 | 火山极速版（`VOLC_ASR_*`）→ 百炼业务空间 → 百炼 agent plan；拿 word 级时间戳 |
+| requests | 仓根 requirements.txt | 调 ASR HTTP API |
 | `video-edit` 技能 | 同 workspace | Step 3 剪拼（apply-cut）+ 后续加 BGM（audio-mix） |
 | `video-review` 技能 | 公共 skills | Step 4 成片自检 |
 | `bgm-library` 技能 | 公共 skills | 加 BGM 时的曲源（ccMixter 免版税，免 key，优先于 aigc-video-gen music） |
 
-**火山 ASR 凭证**：需 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`（旧控制台双头）或 `VOLC_ASR_APP_KEY`（新控制台单头）。未配置时退出码 2 并提示走 viral-chaser 开通流程。
+**ASR 凭证**（任一组）：火山 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`（旧控制台双头）或 `VOLC_ASR_APP_KEY`（新控制台单头）；百炼业务空间 `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`；百炼 agent plan `AWK_API_KEY`。全部未配置时退出码 2 并提示走 viral-chaser 开通流程。
 
 ---
 

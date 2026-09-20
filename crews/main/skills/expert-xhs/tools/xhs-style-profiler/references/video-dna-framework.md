@@ -22,7 +22,7 @@ DNA 文档 -> DNA template
 |--------|----------|
 | 选题与观看理由、标题与封面写法、内容创意原型、匹配的用户问题（搜索流量）、业务植入套路、互动引导与 CTA 套路、视频内容形态与制作指向、制作规格与视听倾向、（口播类）口播文案子DNA、（对标账号）账号运营子模块 | 创作细节、脚本结构、逐句台词、镜头表、转场与编码参数——那些归 Content Producer |
 
-视频 DNA 的用途是指导 main agent 出具 **Brief.md** 与（口播类的）**口播文案**。template 就是 Brief 正文模板 + 口播文案模板（可选），不是成片制作模板。账号运营子模块（简介写法、内容形式比例、发布习惯）只写进 DNA 文档，**不进 template**。
+视频 DNA 的用途是指导 main agent 出具 **Brief.md** 与**口播**（真人出镜 / 数字人）的**口播文案**；旁白（剪辑配的解说）由 CP 写，不在 DNA 指导范围。template 就是 Brief 正文模板 + 口播文案模板（可选），不是成片制作模板。账号运营子模块（简介写法、内容形式比例、发布习惯）只写进 DNA 文档，**不进 template**。
 
 ## 维度（11 维）
 
@@ -104,14 +104,14 @@ DNA template = **Brief.md 正文模板 + 口播文案模板（可选）**，固�
 | DNA 观测到的内容形态 | 制作指向（只能写真实存在的资源名） | Brief `workflow` 字段值 |
 |---------------------|-----------------------------------|------------------------|
 | 影视解说 / 剧情解说 + 反转植入（「万万没想到」式） | Content Producer `expert-video` → **Reversal Ad** workflow | `reversal-ad` |
-| 口播类（真人口播出镜，或旁白 + 画面） | Content Producer `expert-video` → **Narration Video** workflow | `narration-video` |
+| 口播 / 旁白类（真人口播或数字人出镜；或旁白 + 画面） | Content Producer `expert-video` → **Narration Video** workflow | `narration-video` |
 | 一句文稿转视觉隐喻的纸拼贴动画 | Content Producer `expert-video` → **Collage B-roll** workflow | `collage-broll` |
-| 纯 AIGC 动画 / 剧情短片 / 蒙太奇拼接（需从零出脚本分镜） | Content Producer `expert-video` → **不指定类型 workflow**：CP 按其通用制作流程做，Stage 1 定档位（narrative / motion / montage） | 省略 |
+| 纯 AIGC 动画 / 剧情短片 / 蒙太奇拼接（需从零出脚本分镜） | Content Producer `expert-video` → **不指定类型 workflow**：CP 按其通用制作流程做，据创意自定叙事 / 动效 / 蒙太奇手法 | 省略 |
 | 已有素材简单拼接、加旁白、烧字幕 | main `video-edit`（不委托 CP） | — |
 | 已有真人口播素材去口气词、剪高光 | main `talking-head-cut`（不委托 CP） | — |
 | 产品操作录屏 | main `ui-demo`（不委托 CP） | — |
 
-Brief 写了 `workflow` 时 Content Producer 必须直接采用，不得替换成自创流程；未写时 CP 按其**通用制作流程**做——那是 CP 所有视频工作的基准准则，不是与其他 workflow 并列的选项，也不是 fallback，档位由 Stage 1 `intent-router` 定。
+Brief 写了 `workflow` 时 Content Producer 必须直接采用，不得替换成自创流程；未写时 CP 按其**通用制作流程**做——那是 CP 所有视频工作的基准准则，不是与其他 workflow 并列的选项，也不是 fallback，叙事 / 动效 / 蒙太奇手法由 CP 据创意自定；Brief 缺失或创意不足以直接写剧本时，CP 会走其 story-develop intake workflow 与 Brief owner 收敛 Brief。
 
 ## Focus ID 表
 

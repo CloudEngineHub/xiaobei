@@ -70,7 +70,7 @@
 | `bilibili-publish` | B 站上传 | ⚠️ 同上 |
 | `viral-chaser` | 下载分析抖音/B 站/小红书爆款视频，**仅产出追爆报告**，视频生产需另行委托 content-producer | ⚠️ main 的 viral-chaser 与 content-producer 的衔接关系，重构后需重新明确 |
 
-main agent 其余发布/运营技能（douyin-publish / wechat-channels-publish / weibo-publish / wx-mp-publisher / wx-mp-engagement / xhs-publish / xhs-content-ops / xianyu-ops / zhihu-publish / wxwork-moments 等）属平台运营范畴，按出发点 1.1 仍归 main agent，不在本次重构内。
+main agent 其余发布/运营技能（douyin-video-publish / wechat-channels-publish / weibo-publish / wx-mp-publisher / wx-mp-engagement / xhs-publish / xhs-content-ops / xianyu-ops / zhihu-publish / wxwork-moments 等）属平台运营范畴，按出发点 1.1 仍归 main agent，不在本次重构内。
 
 ### 2.2 content-producer 现有视频相关技能清单
 

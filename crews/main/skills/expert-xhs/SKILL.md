@@ -50,7 +50,7 @@ DNA 存储目录是 `xhs/dna/`。未指定 DNA 时默认使用并更新 `dna-0`�
 
 DNA 是**从一批作品样本提取并聚合出的内容生产规则集**：图文 10 维——选题与观看理由、标题与封面图组、内容创意、**匹配的用户问题**、正文表达与语气、图组视觉、**业务植入套路**、**互动引导与 CTA 套路**，加账号运营子模块（简介写法、内容形式比例、发布习惯）；视频 11 维——前四项加**业务植入套路**、**互动引导与 CTA 套路**、视频内容形态与制作指向、制作规格与视听倾向、口播文案子模块与账号运营子模块。搜索维度是小红书必备：最大流量池来自搜索，关键词必须落到用户可能的提问原句。DNA 指导 main agent 写图文或出视频 Brief（+ 口播文案），不规定创作细节与成片制作。维度框架 v2 位于 `xhs-style-profiler` 的 `references/note-dna-framework.md` 与 `references/video-dna-framework.md`。
 
-**视频全案分工硬边界**：main 负责选题策划、按 DNA 出 **Brief**、拟定标题与简介、准备素材（用户素材预处理 / `ui-demo` 录屏 / 从 `campaign_assets/` 挑选，绝对路径写进 Brief）、监督推动 CP、成片后的发布与运营，也直接做图文内容与已有素材轻加工；视频全案的成片制作委托 `content-producer`。口播类视频的口播文案由 main 按 `narration-script` 子模块写好并随 Brief 交付（真人口播时，指导用户录音并取得录音文件），CP 不重写策略文案。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做（那是 CP 的基准准则，不是备选 workflow），档位由 Stage 1 定。Brief **不含 DNA 信息**，main 也不替 CP 建工作区（双方 T3 权限可互访取文件）。
+**视频全案分工硬边界**：除非是基于已有素材轻加工，否则视频全案的制作均应委托 `content-producer`。main 负责选题策划、按 DNA 出 **Brief**、拟定标题与简介、准备素材（用户素材预处理 / `ui-demo` 录屏 / 从 `campaign_assets/` 挑选，绝对路径写进 Brief）、监督推动 CP、成片后的发布与运营；**口播**（真人出镜 / 数字人 / 真人录音）的口播稿一律由 main 写好并随 Brief 交付（`narration-script` 子模块启用时按其结构写，未启用时按用户要求与 Brief 核心传达写；真人口播时，指导用户录音并取得录音文件），CP 不重写；**旁白**（剪辑配的解说）完全由 CP 写，main 不出旁白稿。Brief 指定 `workflow` 时 CP 必须采用；未指定时 CP 按其通用制作流程做；Brief 缺失或创意不足以直接写剧本时，CP 会走其 story-develop intake workflow 与 Brief owner 收敛 Brief。Brief **不含 DNA 信息**，main 也不替 CP 建工作区（双方 T3 权限可互访取文件）。
 
 ## 数据与记录
 

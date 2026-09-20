@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage 5 — shot-decompose：每镜拆首帧静照 / 尾帧静照 / 运动描述。
+"""Stage 4 — shot-decompose：每镜拆首帧静照 / 尾帧静照 / 运动描述。
 
 Usage:
   python3 scripts/shot-decompose.py <project_dir>
 
-入：project_dir/storyboard/storyboard.json（Stage 4）
+入：project_dir/storyboard/storyboard.json（Stage 3）
 出：project_dir/storyboard/shot_decompose.json（每镜 first_frame/last_frame 文字描述 + motion + variation_type）
 
 variation_type 三档（定传给 aigc-video-gen 的参考图数）：
@@ -20,18 +20,28 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
+
+def die(msg: str) -> None:
+    print(f"[error] {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
 VALID_VARIATIONS = {"static", "dynamic", "transition"}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 5 shot-decompose")
+    parser = argparse.ArgumentParser(description="Stage 4 shot-decompose")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 4 shot-decompose"):
+        return
     board_path = project / "storyboard" / "storyboard.json"
     if not board_path.is_file():
-        die(f"前置缺失: storyboard.json 不存在，先跑 storyboard-build（Stage 4）")
+        die(f"前置缺失: storyboard.json 不存在，先跑 storyboard-build（Stage 3）")
 
     decompose_path = project / "storyboard" / "shot_decompose.json"
     decompose_path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +57,7 @@ def main() -> None:
     shots = board.get("shots", [])
 
     stub = {
-        "stage": 5,
+        "stage": 4,
         "decompose": [],
         "instruction": "agent 为 storyboard.json 每镜拆首尾帧文字描述 + 运动 + variation_type。运动描述禁角色名用外观特征。",
         "decompose_schema": {
@@ -62,7 +72,7 @@ def main() -> None:
     }
     decompose_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[done] shot_decompose.json 模板已落：{decompose_path}")
-    print(f"[next] agent 填每镜首尾帧+运动+variation_type → 跑 character-register（Stage 6）")
+    print(f"[next] agent 填每镜首尾帧+运动+variation_type → 跑 character-register（Stage 5）")
 
 
 if __name__ == "__main__":

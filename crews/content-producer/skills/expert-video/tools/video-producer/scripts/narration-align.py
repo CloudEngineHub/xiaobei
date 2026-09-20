@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""Stage 11b — narration-align：旁白时间戳对齐。
+"""Stage 11 — narration-align：旁白时间戳对齐。
 
 Usage:
   python3 scripts/narration-align.py <project_dir>
 
-入：project_dir/audio/narration.mp3（Stage 11a 一次性 TTS 生成的整段旁白）
+入：project_dir/audio/narration.mp3（Stage 11 场景 B 一次性 TTS 生成的整段旁白）
     + project_dir/audio/narration.subtitle.json（awk-tts --enable-subtitle 落盘的 TTS 原生字级时间戳，优先复用）
 出：project_dir/audio/narration-segments.json
     {
       "text": "全文",
       "segments": [{"start": 0.0, "end": 2.3, "text": "第一句"}, ...],
-      "source": "tts-native" | "volc.bigasr.auc_turbo"
+      "source": "tts-native" | "asr"
     }
 
 路径优先级：
   1. TTS 原生字级时间戳（narration.subtitle.json 存在时直接复用，零额外调用）
-  2. 火山 ASR 极速版回退（narration.subtitle.json 缺失时，base64 直传 narration.mp3
-     调 volc.bigasr.auc_turbo，拿 utterance 级真实时间戳）
+  2. 公共 ASR 路由回退（narration.subtitle.json 缺失时，base64 直传 narration.mp3，
+     拿 utterance/word 级真实时间戳）
 
-凭据复用 viral-chaser 同池：VOLC_ASR_APP_ID + VOLC_ASR_ACCESS_KEY（旧控制台双头）
-或 VOLC_ASR_APP_KEY（新控制台单头）。
+ASR 供应商路由（_shared/asr.py）：火山极速版 → 百炼业务空间 → 百炼 agent plan。
+凭据：VOLC_ASR_*（火山）或 WORKSPACE_ID+MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY
+（百炼业务空间）或 AWK_API_KEY（百炼 agent plan），任一组即可。
 
 agent 拿到 segments 后，按各 shot 时长把旁白切片对应到镜。
 """
@@ -30,10 +31,10 @@ import os
 import sys
 from pathlib import Path
 
-# 注入 main 侧 _shared 到 sys.path，复用公共火山 ASR 脚本（与 talking-head-cut/scripts/cut_plan.py 同范式）
-# 跨 crew 引用：content-producer → main/_shared，凭据同池 VOLC_ASR_*，无新增配置
-sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "crews" / "main" / "skills" / "_shared"))
-from volc_asr import volc_asr  # noqa: E402
+# 注入 main 侧 _shared 到 sys.path，复用公共 ASR 路由（与 talking-head-cut/scripts/cut_plan.py 同范式）
+# 跨 crew 引用：content-producer → main/_shared，供应商路由 火山→百炼业务空间→百炼 agent plan，凭据同池无新增配置
+sys.path.insert(0, str(Path(__file__).resolve().parents[6] / "main" / "skills" / "_shared"))
+from asr import asr  # noqa: E402
 
 
 def die(msg: str) -> None:
@@ -116,22 +117,22 @@ def try_tts_native(narration: Path, subtitle_arg: str | None, out_path: Path) ->
 
 
 def fallback_asr(narration: Path, out_path: Path) -> None:
-    """回退路径：调公共 volc_asr（火山录音文件极速版），拿 word 级真实时间戳。
+    """回退路径：调公共 ASR 路由（火山 → 百炼），拿 word 级真实时间戳。
 
-    统一走 _shared/volc_asr.py，与 talking-head-cut / viral-chaser 共一份逻辑。
+    统一走 _shared/asr.py，与 talking-head-cut / viral-chaser 共一份逻辑。
     原先本函数只拿 utterance 级，现统一拿 word 级（更精细对齐）。
     """
-    print(f"[info] {narration.stem}.subtitle.json 缺失，调火山 ASR 极速版转写 {narration.name} ...")
-    result = volc_asr(str(narration))
+    print(f"[info] {narration.stem}.subtitle.json 缺失，调公共 ASR 路由转写 {narration.name} ...")
+    result = asr(str(narration))
     if not result.get("ok"):
-        die(f"火山 ASR 失败: {result.get('error', '未知错误')}")
+        die(f"ASR 失败: {result.get('error', '未知错误')}")
 
     words = result.get("words") or []
     if not words:
         # word 级为空时兜底用 utterance 级
         utterances = result.get("utterances") or []
         if not utterances:
-            die("火山 ASR 未返回 utterances/words，无法对齐")
+            die("ASR 未返回 utterances/words，无法对齐")
         segs = [
             {"start": round(u["start"], 3), "end": round(u["end"], 3), "text": u["text"]}
             for u in utterances
@@ -145,7 +146,7 @@ def fallback_asr(narration: Path, out_path: Path) -> None:
     out = {
         "text": result.get("text", "") or "",
         "segments": segs,
-        "source": "volc.bigasr.auc_turbo",
+        "source": "asr",
     }
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -153,7 +154,7 @@ def fallback_asr(narration: Path, out_path: Path) -> None:
 def main() -> None:
     load_env_file()
 
-    parser = argparse.ArgumentParser(description="Stage 11b narration-align")
+    parser = argparse.ArgumentParser(description="Stage 11 narration-align")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     parser.add_argument(
         "--audio",
@@ -198,9 +199,9 @@ def main() -> None:
     if try_tts_native(narration, args.subtitle, out_path):
         print(f"[done] {out_path.name} 已落（TTS 原生字级时间戳）：{out_path}")
     else:
-        # 回退路径：火山 ASR 极速版
+        # 回退路径：公共 ASR 路由（火山 → 百炼）
         fallback_asr(narration, out_path)
-        print(f"[done] {out_path.name} 已落（火山 ASR 回退）：{out_path}")
+        print(f"[done] {out_path.name} 已落（ASR 回退）：{out_path}")
 
     # 统一打印结果摘要
     result = json.loads(out_path.read_text(encoding="utf-8"))

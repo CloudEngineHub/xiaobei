@@ -132,3 +132,123 @@ export async function douyinWebGet<T = unknown>(
   try { data = JSON.parse(text) as T } catch { /* 非 JSON，交消费方看 text */ }
   return { status: resp.status, ok: resp.ok, data, text }
 }
+
+// ─── 创作侧 item/list（creator 域，cookie-only，无需 a_bogus）────────────────
+//
+// 借鉴 OpenCLI #2307（2026-08 实测）：`item_analysis/metrics_trend` 端点已下线（全量
+// status_code 4），替代端点 `web/api/creator/item/list` 是创作侧每作品指标的家——
+// 26 字段深指标（view_count / bounce_rate_2s / completion_rate_5s / avg_view_second /
+// cover_show / cover_click_rate / fan_view_proportion / subscribe_count …），
+// 视频 + 图文(note) 作品都在列表里。公开侧 aweme/detail 的 play_count 恒为 0
+// （播放量仅创作者可见），view_count 是播放量的唯一来源。
+// creator 域 janus/api 只要 cookie（同 work_list 先例：publish_douyin.py 页内
+// credentials:'include' fetch，无签名），raw HTTP 带 .douyin.com cookie 即可。
+
+const CREATOR_ITEM_LIST_URL = "https://creator.douyin.com/web/api/creator/item/list"
+const ITEM_LIST_PAGE_SIZE = 50
+/** 游标遍历上限：500 个作品内找不到即放弃（按发布时间倒序，新作品必在前几页） */
+const ITEM_LIST_MAX_HOPS = 10
+/** 创作侧 API 间歇鉴权抖动（同 work_list status_code=8 先例），短等纯重试 */
+const ITEM_LIST_AUTH_RETRIES = 3
+
+/**
+ * id 匹配带数值比较兜底：item/list 把 work id 序列化成 JSON number，JSON.parse
+ * 已按 IEEE-754 精度舍入（19 位 aweme_id 必中），字符串比较会全部 miss。
+ * （借鉴 OpenCLI sameAwemeId。）
+ */
+export function sameAwemeId(value: unknown, target: string): boolean {
+  if (value == null) return false
+  const source = String(value)
+  if (source === target) return true
+  return /^\d+$/.test(source) && Number(source) === Number(target)
+}
+
+/** item.metrics 值是字符串数字（'1173' / '0.288638'），归一化为 number */
+function normalizeMetrics(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const n = typeof v === "number" ? v : parseFloat(String(v ?? ""))
+    if (Number.isFinite(n)) out[k] = n
+  }
+  return out
+}
+
+export interface DouyinCreatorItem {
+  /** 归一化数值指标（键为平台原名：view_count / completion_rate_5s / …） */
+  metrics: Record<string, number>
+  /** 审核状态（fields=review） */
+  review?: string
+  /** 可见性（fields=visibility） */
+  visibility?: string
+}
+
+/**
+ * 遍历创作侧 item/list 游标，按 aweme_id 匹配单个作品的深指标。
+ * @returns 匹配作品；列表遍历尽未找到返回 null；鉴权持续失败抛错（交消费方决定降级）。
+ */
+export async function douyinCreatorItem(
+  awemeId: string,
+  cookieStr: string,
+  ua: string = DOUYIN_UA,
+): Promise<DouyinCreatorItem | null> {
+  let cursor: number | undefined
+  for (let hop = 0; hop < ITEM_LIST_MAX_HOPS; hop++) {
+    const params = new URLSearchParams({
+      count: String(ITEM_LIST_PAGE_SIZE),
+      order_by: "1",
+      fields: "metrics,review,visibility",
+      need_cooperation: "true",
+      need_long_article: "true",
+    })
+    if (cursor !== undefined) params.set("max_cursor", String(cursor))
+
+    let data: any = null
+    let ok = false
+    for (let attempt = 1; attempt <= ITEM_LIST_AUTH_RETRIES && !ok; attempt++) {
+      const resp = await fetch(`${CREATOR_ITEM_LIST_URL}?${params.toString()}`, {
+        headers: {
+          "Cookie": cookieStr,
+          "User-Agent": ua,
+          "Referer": "https://creator.douyin.com/",
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+        },
+        signal: AbortSignal.timeout(30_000),
+      })
+      const text = await resp.text()
+      try { data = JSON.parse(text) } catch { data = null }
+      // 间歇鉴权抖动：sc != 0 / 非 JSON 短等重试（同 work_list sc=8 先例，同页连发就稳）
+      const sc = data?.status_code
+      ok = resp.ok && data != null && (typeof sc !== "number" || sc === 0)
+      if (!ok && attempt < ITEM_LIST_AUTH_RETRIES) await new Promise(r => setTimeout(r, 2_000))
+    }
+    if (!ok) {
+      const sc = data?.status_code
+      throw new Error(`creator item/list 失败（status_code=${sc ?? "?"}——鉴权持续抖动或 cookie 失效）`)
+    }
+
+    const items = (data.items ?? []) as Array<Record<string, unknown>>
+    const hit = items.find(it => sameAwemeId(it.id, awemeId))
+    if (hit) {
+      const review = hit.review
+      const visibility = hit.visibility
+      return {
+        metrics: normalizeMetrics(hit.metrics),
+        review: typeof review === "string" ? review : review == null ? undefined : String(review),
+        visibility: typeof visibility === "string" ? visibility : visibility == null ? undefined : String(visibility),
+      }
+    }
+
+    const nextCursor = data.max_cursor
+    if (
+      !data.has_more ||
+      nextCursor === undefined || nextCursor === null ||
+      (cursor !== undefined && String(nextCursor) === String(cursor))
+    ) {
+      return null
+    }
+    cursor = Number(nextCursor)
+  }
+  return null
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 9b — delivery-promise-lock：交付承诺八类锁定 + motion_ratio 预估。
+"""Stage 9 — delivery-promise-lock：交付承诺八类锁定 + motion_ratio 预估。
 
 Usage:
   python3 scripts/delivery-promise-lock.py <project_dir>
@@ -25,6 +25,8 @@ import json
 import sys
 from pathlib import Path
 
+import _brief
+
 
 def die(msg: str) -> None:
     print(f"[error] {msg}", file=sys.stderr)
@@ -32,11 +34,13 @@ def die(msg: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stage 9b delivery-promise-lock")
+    parser = argparse.ArgumentParser(description="Stage 9 delivery-promise-lock")
     parser.add_argument("project_dir", help="项目目录（CP 自建工作区 output_videos/<topic-en-slug>/）")
     args = parser.parse_args()
 
     project = Path(args.project_dir).resolve()
+    if _brief.collage_guard(project, "Stage 9 delivery-promise-lock"):
+        return
     board_path = project / "storyboard" / "storyboard.json"
     if not board_path.is_file():
         die(f"前置缺失: storyboard.json 不存在")
@@ -52,7 +56,7 @@ def main() -> None:
         return
 
     stub = {
-        "stage": "9b",
+        "stage": "9",
         "promises": {
             "has_dialogue": None,
             "has_narration": None,

@@ -19,7 +19,7 @@ camoufox-cli upload @ref|selector <file> [more files...]
 - Variadic — one or more file paths. (Upstream has no upload at all.)
 - Fails fast with `File not found: <p>` before touching the browser if any path is missing.
 
-Used by the publish skills (`douyin-publish` / `xhs-publish` / `weibo-publish` / `zhihu-publish` / `wechat-channels-publish` / `youtube-publish`).
+Used by the publish skills (`douyin-video-publish` / `xhs-publish` / `weibo-publish` / `zhihu-publish` / `wechat-channels-publish` / `youtube-publish`).
 
 ### 2. Fail-first queue (daemon-side)
 
@@ -82,8 +82,8 @@ cd patches/camoufox-cli && npm test
 ```
 
 Upstream tests are vendored unchanged. New tests:
-- `tests/cli.test.ts` — `upload` / `identity` arg parsing.
-- `tests/server-queue.test.ts` — fail-first queue + `close` bypass (mocks `execute`).
+- `../../test/camoufox-cli/cli.test.ts` — `upload` / `identity` arg parsing.
+- `../../test/camoufox-cli/server-queue.test.ts` — fail-first queue + `close` bypass (mocks `execute`).
 
 ## Attribution
 

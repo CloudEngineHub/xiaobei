@@ -1,28 +1,22 @@
 #!/usr/bin/env -S node --experimental-strip-types
 /**
- * transcriber.ts — ASR transcription via 火山引擎豆包语音（录音文件极速版）
+ * transcriber.ts — ASR transcription via 公共 ASR 路由（_shared/asr.py）
  *
- * 接口：POST https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash
- * 资源 ID：volc.bigasr.auc_turbo（需在火山控制台「开通管理 → 语音模型」开通）
+ * 供应商优先级（2026-09 拍板）：
+ *   1. 火山录音文件极速版（volc.bigasr.auc_turbo，VOLC_ASR_* 凭据）
+ *   2. 百炼业务空间（qwen-audio-3.0-asr-flash，WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY）
+ *   3. 百炼 agent plan（qwen-audio-3.0-asr-flash，AWK_API_KEY，token-plan 端点）
+ * 某家失败自动落下一家；协议细节见 _shared/volc_asr.py 与 _shared/bailian_asr.py。
  *
- * 选型说明：viral-chaser 的输入是本地 audio.wav（16kHz mono，≤10min），
- * 极速版支持 audio.data（base64）直传本地文件，一次请求即返回，无需对象
- * 存储/公网 URL，且原生返回 utterances 带 start_time/end_time（毫秒）和
- * word 级时间戳——正好替代原先 SiliconFlow SenseVoiceSmall 无时间戳、
- * 靠字数比例估算的方案。标准版 2.0（volc.seedasr.auc）单价更低但只接受
- * audio.url，需自备 TOS 托管，未采用。
- *
- * 鉴权：兼容新旧控制台（二选一，优先旧控制台双头）。
- *   - 旧控制台双头：VOLC_ASR_APP_ID（数字 APP ID）+ VOLC_ASR_ACCESS_KEY（Access Token）
- *     → X-Api-App-Key=APP_ID, X-Api-Access-Key=Token, user.uid=APP_ID
- *   - 新控制台单头：VOLC_ASR_APP_KEY（APP Key）→ X-Api-Key=APP_KEY, user.uid=APP_KEY
- *   注意：旧控制台 X-Api-App-Key 要的是数字 APP ID，不是 Secret Key/APP Key
- *   （把 Secret Key 塞进 X-Api-App-Key 会得到 45000010 request and grant appid mismatch）。
+ * 选型说明：viral-chaser 的输入是本地 audio.wav（16kHz mono，≤10min）。
+ * 两家都支持 base64 直传本地文件并返回 word 级时间戳（百炼超 10MB 自动
+ * ffmpeg 压成 32kbps mp3 再传），无需对象存储/公网 URL。百炼把整段并成
+ * 单 sentence，_shared/bailian_asr.py 按词级标点切回 utterances，与火山同构。
  *
  * 实现说明：沿用 xhs.ts 同一模式（python3 -c 内联脚本调 requests），避免
  * Node fetch/FormData 在部分环境的兼容异常。
  *
- * 注意：保留 synthesizeSegments 作为兜底——正常情况下火山会返回真实
+ * 注意：保留 synthesizeSegments 作为兜底——正常情况下路由会返回真实
  * utterances，estimated=false；仅当接口异常未返回 utterances 时才按音频
  * 时长估算，estimated=true。
  */
@@ -94,16 +88,16 @@ function synthesizeSegments(text: string, durationSeconds: number): TranscriptSe
   return segs
 }
 
-// 调公共 _shared/volc_asr.py（与 talking-head-cut / video-producer narration-align 共一份逻辑）。
-// 范式：python3 -c 加载 _shared 到 sys.path，import volc_asr，调它拿 {ok, text, utterances, words}，
+// 调公共 _shared/asr.py 路由（与 talking-head-cut / video-producer narration-align 共一份逻辑）。
+// 范式：python3 -c 加载 _shared 到 sys.path，import asr，调它拿 {ok, text, utterances, words}，
 // 输出 JSON 到 stdout 供 Node 解析。_shared 路径按本剧本位置算（crews/main/skills/_shared）。
 const SHARED_DIR = fileURLToPath(new URL("../../_shared/", import.meta.url))
 const PYTHON_CALL = `
 import json, os, sys
 sys.path.insert(0, ${JSON.stringify(SHARED_DIR)})
-from volc_asr import volc_asr, load_env_file
+from asr import asr, load_env_file
 load_env_file()
-result = volc_asr(sys.argv[1])
+result = asr(sys.argv[1])
 # 降级到 utterance 级供旧 TranscriptResult 结构兼容（viral-chaser 只用 utterance 级）
 segs = []
 if result.get("ok"):
@@ -117,10 +111,11 @@ export async function transcribeAudio(audioPath: string, durationSeconds = 0): P
     throw new Error(`音频文件不存在: ${audioPath}`)
   }
 
-  // 极速版硬限 100MB；本地 audio.wav（16kHz mono ≤10min）约 19MB，远低于上限。
+  // 兜底上限 100MB（火山极速版硬限；百炼路径 >10MB 会在 _shared 内自动转码压缩）。
+  // 本地 audio.wav（16kHz mono ≤10min）约 19MB，正常远低于上限。
   const sizeMb = statSync(audioPath).size / (1024 * 1024)
   if (sizeMb > 100) {
-    throw new Error(`音频文件过大 (${sizeMb.toFixed(1)}MB)，火山极速版上限 100MB`)
+    throw new Error(`音频文件过大 (${sizeMb.toFixed(1)}MB)，超出 ASR 输入上限 100MB`)
   }
 
   const { stdout } = await execFileAsync(

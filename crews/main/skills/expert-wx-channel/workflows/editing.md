@@ -49,7 +49,7 @@
 ## 换封面
 
 1. 读目标 DNA 的 `title-cover` 与 `production-spec`，保留封面三要素：身份 + 痛点 + 解决方案。
-2. 按新主题出 2-3 个候选：素材截帧优先，无合适素材走 `siliconflow-img-gen` 生成。
+2. 按新主题出 2-3 个候选：素材截帧优先，无合适素材走 `awk-img-gen` 生成。
 3. 用户确认后替换 `wx_channel/outputs/<video-name>/cover.jpg`。
 
 ## 压缩 / 展开时长
@@ -67,7 +67,7 @@
 
 ## 改后发布
 
-用户要求改完后发布 / 重新发布时，走 `content-production.md` 的成片后流程（Step 5-7）：
+用户要求改完后发布 / 重新发布时，走 `content-production.md` 的改后制作与发布流程（Step 5-7）：
 
 1. **成片同步**：脚本改动涉及画面或口播的，按 `content-production.md` Step 5 重新走视频制作（已有成片只需轻剪辑时走 `talking-head-cut` / `video-edit`）。
 2. **存文件**：稿件与成片归位 `wx_channel/outputs/<video-name>/`，同步更新 `brief.md`、`voiceover.md`（如有）、`cover.jpg` 与 `dna-meta.json`。
