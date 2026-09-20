@@ -10,7 +10,7 @@ Usage:
     {
       "text": "全文",
       "segments": [{"start": 0.0, "end": 2.3, "text": "第一句"}, ...],
-      "source": "tts-native" | "volc.bigasr.auc_turbo"
+      "source": "tts-native" | "asr"
     }
 
 路径优先级：
@@ -33,7 +33,7 @@ from pathlib import Path
 
 # 注入 main 侧 _shared 到 sys.path，复用公共 ASR 路由（与 talking-head-cut/scripts/cut_plan.py 同范式）
 # 跨 crew 引用：content-producer → main/_shared，供应商路由 火山→百炼业务空间→百炼 agent plan，凭据同池无新增配置
-sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "crews" / "main" / "skills" / "_shared"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[6] / "main" / "skills" / "_shared"))
 from asr import asr  # noqa: E402
 
 
@@ -146,7 +146,7 @@ def fallback_asr(narration: Path, out_path: Path) -> None:
     out = {
         "text": result.get("text", "") or "",
         "segments": segs,
-        "source": "volc.bigasr.auc_turbo",
+        "source": "asr",
     }
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 

@@ -18,6 +18,10 @@ class LoginRequired(RuntimeError):
     pass
 
 
+class WaitTimeout(RuntimeError):
+    pass
+
+
 def check_login(b):
     url = b.eval('window.location.href') or ''
     if urlparse(url).path.rstrip('/') in ('/login', '/creator-micro/login'):
@@ -33,7 +37,7 @@ def wait_for(b, action, message, timeout=60):
         if value:
             return value
         time.sleep(1)
-    raise RuntimeError(message)
+    raise WaitTimeout(message)
 
 
 def click_text(b, text, selector='button,div,span,a,li,label'):
@@ -182,28 +186,81 @@ def fill(b, title, caption, declaration='ai'):
                 raise RuntimeError('AI 声明确认失败')
 
 
+def note_link_candidate(b, title, *, click=False):
+    # 管理页的标题区域实际展示标题+正文；搜索结果也可能包含无关作品。
+    # 前缀仅用于定位候选，最终必须在图文编辑页完整校验标题。
+    return b.eval(f'''(() => {{
+      const title={json.dumps(title)};
+      const nodes=[...document.querySelectorAll('[class*="info-title-text-"]')]
+        .filter(e=>{VISIBLE} && (e.textContent||'').trim().startsWith(title));
+      const actions=new Set();
+      for(const t of nodes) {{
+        const card=t.closest('[class*="info-title-operation-"]');
+        if(!card) continue;
+        const edits=[...card.querySelectorAll('button,a,span,div')].filter(e=>
+          {VISIBLE} && !e.children.length && e.textContent.trim()==='编辑作品');
+        if(edits.length===1) actions.add(edits[0]);
+      }}
+      const result={{titles:nodes.length,actions:actions.size}};
+      if(nodes.length===1 && actions.size===1) {{
+        if({json.dumps(click)}) [...actions][0].click();
+        result.status='unique';
+      }} else result.status=nodes.length>1 || actions.size>1 ? 'ambiguous' : 'missing';
+      return result;
+    }})()''')
+
+
+def wait_note_edit(b, title, timeout=30):
+    diagnostic = {}
+    def locate_and_click():
+        nonlocal diagnostic
+        # DOM 判定和点击在同一次 JS 执行内完成，列表刷新不能插入两者之间。
+        diagnostic = note_link_candidate(b, title, click=True)
+        if diagnostic['status'] == 'ambiguous':
+            raise RuntimeError(f'多个标题前缀候选，需人工核实，不能重发: {diagnostic}')
+        return diagnostic['status'] == 'unique'
+    try:
+        wait_for(b, locate_and_click, '作品列表尚未出现目标', timeout=timeout)
+    except WaitTimeout as exc:
+        raise WaitTimeout(f'作品列表等待超时: {diagnostic}') from exc
+
+
 def get_note_link(b, title):
+    if not title.strip():
+        raise ValueError('取链需要完整非空标题')
     b.command('open', MANAGE_URL)
-    b.command('reload')
-    check_login(b)
-    wait_for(b, lambda: b.eval('!!document.querySelector(\'input[placeholder*="搜索作品"]\')'), '管理页搜索框未出现')
-    fill_input(b, 'input[placeholder*="搜索作品"]', title)
-    b.command('press', 'Enter')
-    # Locate the smallest title-bearing card with one edit action; ambiguity fails closed.
-    js = f'''(() => {{const titles=[...document.querySelectorAll('*')].filter(e=>{VISIBLE} &&
-      (e.textContent||'').trim()==={json.dumps(title)} && !e.children.length);
-      const actions=new Set(); for(const t of titles) {{let p=t.parentElement;
-      for(let i=0;i<7 && p && p!==document.body;i++,p=p.parentElement) {{
-        const edits=[...p.querySelectorAll('button,a,span,div')].filter(e=>{VISIBLE} && !e.children.length && e.textContent.trim()==='编辑作品');
-        if(edits.length) {{if(edits.length===1) actions.add(edits[0]); break;}}
-      }}}} if(actions.size!==1) return false; [...actions][0].click(); return true;}})()'''
-    wait_for(b, lambda: b.eval(js), '未找到唯一同标题作品，需人工核实，不能重发')
+    attempts = 4
+    for attempt in range(attempts):
+        b.command('reload')
+        check_login(b)
+        wait_for(b, lambda: b.eval('!!document.querySelector(\'input[placeholder*="搜索作品"]\')'), '管理页搜索框未出现')
+        fill_input(b, 'input[placeholder*="搜索作品"]', title)
+        b.command('press', 'Enter')
+        # 等待搜索后的列表替换，避免立即点击尚未刷新的旧列表。
+        time.sleep(5)
+        try:
+            wait_note_edit(b, title)
+        except WaitTimeout as exc:
+            if attempt == attempts - 1:
+                raise RuntimeError(f'重新搜索{attempts}次仍未找到唯一作品，不能重发: {exc}') from exc
+            print(f'[retry] 取链搜索 {attempt + 1}/{attempts}: {exc}; 3秒后重新搜索', file=sys.stderr)
+            time.sleep(3)
+            continue
+        break
     def read_id():
         url = b.eval('window.location.href') or ''
         parsed = urlparse(url)
         mid = parse_qs(parsed.query).get('mid', [''])[0]
         return mid if parsed.hostname == 'creator.douyin.com' and parsed.path.endswith('/content/post/image') and re.fullmatch(r'\d{19}', mid) else None
     mid = wait_for(b, read_id, '未捕获图文编辑页 mid')
+    def read_title():
+        return b.eval(f'''(() => {{
+          const inputs=[...document.querySelectorAll('input[placeholder="添加作品标题"]')].filter(e=>{VISIBLE});
+          return inputs.length===1 && inputs[0].value ? {{title:inputs[0].value}} : null;
+        }})()''')
+    actual = wait_for(b, read_title, '图文编辑页标题未加载，链接待核实')
+    if actual['title'] != title:
+        raise RuntimeError(f'图文编辑页标题不一致，链接待核实: {actual["title"]!r}')
     return {'ok': True, 'session': SESSION, 'content_id': mid, 'mid': mid,
             'url': f'https://www.douyin.com/note/{mid}'}
 

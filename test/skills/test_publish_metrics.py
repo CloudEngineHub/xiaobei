@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-ROOT = Path(__file__).resolve().parents[7]
+ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT/'crews/main/skills/expert-douyin/tools'
 
 
@@ -24,6 +24,11 @@ status = load('platform_status', ROOT/'crews/main/skills/published-track/scripts
 
 
 class NoteTests(unittest.TestCase):
+    def setUp(self):
+        sleeper = patch.object(note.time, 'sleep')
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
+
     def test_validate_before_browser(self):
         with patch.object(note, 'Browser') as browser:
             self.assertEqual(note.main(['run','--original-sound','--images','missing.png','--title','X']),1)
@@ -38,6 +43,10 @@ class NoteTests(unittest.TestCase):
         def evaluate(js):
             if js == 'window.location.href':
                 return 'https://creator.douyin.com/creator-micro/content/post/image?mid=7687034742688058662&enter_from=edit_item'
+            if 'const result={titles:' in js:
+                return {'status':'unique','titles':1,'actions':1}
+            if 'return inputs.length===1 && inputs[0].value' in js:
+                return {'title':'标题'}
             return True
         b.eval.side_effect=evaluate
         result=note.get_note_link(b,'标题')
@@ -45,6 +54,83 @@ class NoteTests(unittest.TestCase):
         self.assertIn(unittest.mock.call('reload'),b.command.call_args_list)
         self.assertFalse(any(c.args[0] == 'fill' for c in b.command.call_args_list))
         self.assertIn(unittest.mock.call('press', 'Enter'), b.command.call_args_list)
+
+    def test_link_rejects_editor_title_mismatch(self):
+        b=Mock()
+        def evaluate(js):
+            if js == 'window.location.href':
+                return 'https://creator.douyin.com/creator-micro/content/post/image?mid=7687034742688058662'
+            if 'return inputs.length===1 && inputs[0].value' in js:
+                return {'title':'标题加长版'}
+            return True
+        b.eval.side_effect=evaluate
+        with patch.object(note,'note_link_candidate',return_value={'status':'unique'}):
+            with self.assertRaisesRegex(RuntimeError,'标题不一致'):
+                note.get_note_link(b,'标题')
+
+    def test_link_ambiguity_never_clicks(self):
+        b=Mock()
+        b.eval.return_value=True
+        with patch.object(note,'check_login'), patch.object(note,'fill_input'), \
+             patch.object(note,'note_link_candidate',return_value={'status':'ambiguous','titles':2,'actions':2}) as candidate:
+            with self.assertRaisesRegex(RuntimeError,'多个标题前缀候选'):
+                note.get_note_link(b,'标题')
+            candidate.assert_called_once_with(b,'标题',click=True)
+
+    def test_link_research_is_bounded_and_never_publishes(self):
+        b=Mock()
+        b.eval.return_value=True
+        def wait(browser, action, message, timeout=60):
+            if not action():
+                raise note.WaitTimeout(message)
+            return True
+        with patch.object(note,'check_login'), patch.object(note,'fill_input'), \
+             patch.object(note,'wait_for',side_effect=wait), \
+             patch.object(note,'note_link_candidate',return_value={'status':'missing','titles':0,'actions':0}), \
+             patch.object(note,'publish') as publish:
+            with self.assertRaisesRegex(RuntimeError,'重新搜索4次'):
+                note.get_note_link(b,'标题')
+            self.assertEqual(b.command.call_args_list.count(unittest.mock.call('press','Enter')),4)
+            publish.assert_not_called()
+
+    def test_link_recovers_after_search_refresh(self):
+        b=Mock()
+        def evaluate(js):
+            if js == 'window.location.href':
+                return 'https://creator.douyin.com/creator-micro/content/post/image?mid=7687034742688058662'
+            if 'return inputs.length===1 && inputs[0].value' in js:
+                return {'title':'标题'}
+            return True
+        b.eval.side_effect=evaluate
+        def wait(browser, action, message, timeout=60):
+            result=action()
+            if not result:
+                raise note.WaitTimeout(message)
+            return result
+        with patch.object(note,'wait_for',side_effect=wait), \
+             patch.object(note,'note_link_candidate',side_effect=[
+                 {'status':'missing'}, {'status':'unique'}]) as candidate:
+            self.assertEqual(note.get_note_link(b,'标题')['mid'],'7687034742688058662')
+            self.assertEqual(b.command.call_args_list.count(unittest.mock.call('press','Enter')),2)
+            self.assertEqual(candidate.call_args_list[-1],unittest.mock.call(b,'标题',click=True))
+
+    def test_candidate_missing_during_list_replacement_is_retried(self):
+        b=Mock()
+        with patch.object(note,'check_login'), patch.object(note,'note_link_candidate',side_effect=[
+                {'status':'missing','titles':0,'actions':0},
+                {'status':'missing','titles':0,'actions':0},
+                {'status':'unique','titles':1,'actions':1}]) as candidate:
+            note.wait_note_edit(b,'标题')
+            self.assertEqual(candidate.call_count,3)
+            self.assertTrue(all(call.kwargs == {'click':True} for call in candidate.call_args_list))
+
+    def test_click_transport_error_is_not_retried(self):
+        b=Mock()
+        with patch.object(note,'check_login'), patch.object(note,'note_link_candidate',
+                side_effect=RuntimeError('browser transport failed')) as candidate:
+            with self.assertRaisesRegex(RuntimeError,'browser transport failed'):
+                note.wait_note_edit(b,'标题')
+            candidate.assert_called_once()
 
     def test_fill_uses_eval_and_stops_on_rejected_input(self):
         b = Mock()

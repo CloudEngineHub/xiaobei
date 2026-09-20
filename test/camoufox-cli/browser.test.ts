@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BrowserManager } from "../src/browser.js";
+import { BrowserManager } from "../../patches/camoufox-cli/src/browser.js";
 
 describe("BrowserManager", () => {
   it("starts as not running", () => {

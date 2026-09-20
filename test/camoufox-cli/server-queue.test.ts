@@ -12,7 +12,7 @@ const queueState = vi.hoisted(() => ({
 }));
 queueState.firstGate = new Promise<void>((r) => { queueState.resolveFirst = r; });
 
-vi.mock("../src/commands.js", () => ({
+vi.mock("../../patches/camoufox-cli/src/commands.js", () => ({
   execute: async (_mgr: unknown, command: { id?: string; action?: string }) => {
     queueState.calls++;
     if (queueState.calls === 1) await queueState.firstGate;
@@ -21,7 +21,7 @@ vi.mock("../src/commands.js", () => ({
 }));
 
 // Imported after vi.mock so DaemonServer picks up the mocked execute.
-import { DaemonServer } from "../src/server.js";
+import { DaemonServer } from "../../patches/camoufox-cli/src/server.js";
 
 const TEST_SESSION = `queue-test-${process.pid}`;
 const SOCK_PATH = `/tmp/camoufox-cli-${TEST_SESSION}.sock`;

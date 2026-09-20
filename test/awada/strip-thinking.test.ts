@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripThinkingFromText } from "./strip-thinking.js";
+import { stripThinkingFromText } from "../../awada/src/strip-thinking.js";
 
 describe("stripThinkingFromText", () => {
   it("returns empty/falsy input unchanged", () => {

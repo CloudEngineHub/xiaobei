@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { execute } from "../src/commands.js";
-import { BrowserManager } from "../src/browser.js";
+import { execute } from "../../patches/camoufox-cli/src/commands.js";
+import { BrowserManager } from "../../patches/camoufox-cli/src/browser.js";
 
 describe("command dispatch", () => {
   let manager: BrowserManager;

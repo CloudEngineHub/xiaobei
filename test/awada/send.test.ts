@@ -4,8 +4,8 @@ import {
   buildOutboundTarget,
   decodeAwadaTo,
   encodeAwadaTo,
-} from "./send.js";
-import type { OutboundTarget } from "./redis-types.js";
+} from "../../awada/src/send.js";
+import type { OutboundTarget } from "../../awada/src/redis-types.js";
 
 const makeTarget = (overrides: Partial<OutboundTarget> = {}): OutboundTarget => ({
   platform: "wx",

@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = Path(__file__).resolve().parents[2] / 'skills/awk-img-gen/scripts'
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import gen  # noqa: E402

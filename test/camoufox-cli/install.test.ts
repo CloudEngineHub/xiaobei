@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { assetsViaWeb, iterReleaseAssets } from "../src/install.js";
+import { assetsViaWeb, iterReleaseAssets } from "../../patches/camoufox-cli/src/install.js";
 
 const RELEASES_PAGE_1 =
   '<a href="/daijro/camoufox/releases/tag/v150.0.2-beta.25">x</a>' +

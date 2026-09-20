@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 
-SCRIPT_PATH = Path(__file__).with_name("publish_xhs.py")
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "crews/main/skills/expert-xhs/tools/xhs-publish/scripts/publish_xhs.py"
 SPEC = importlib.util.spec_from_file_location("publish_xhs", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 publish_xhs = importlib.util.module_from_spec(SPEC)

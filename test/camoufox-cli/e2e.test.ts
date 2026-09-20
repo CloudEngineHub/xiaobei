@@ -7,7 +7,7 @@ import * as net from "node:net";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DaemonServer } from "../src/server.js";
+import { DaemonServer } from "../../patches/camoufox-cli/src/server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = path.resolve(__dirname, "fixture.html");

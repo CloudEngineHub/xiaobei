@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import * as net from "node:net";
 import * as fs from "node:fs";
-import { DaemonServer } from "../src/server.js";
-import { getSocketPath, getPidPath } from "../src/cli.js";
+import { DaemonServer } from "../../patches/camoufox-cli/src/server.js";
+import { getSocketPath, getPidPath } from "../../patches/camoufox-cli/src/cli.js";
 
 const TEST_SESSION = `test-${process.pid}-${Date.now()}`;
 const SOCK_PATH = getSocketPath(TEST_SESSION);

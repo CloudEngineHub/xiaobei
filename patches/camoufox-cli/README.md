@@ -82,8 +82,8 @@ cd patches/camoufox-cli && npm test
 ```
 
 Upstream tests are vendored unchanged. New tests:
-- `tests/cli.test.ts` — `upload` / `identity` arg parsing.
-- `tests/server-queue.test.ts` — fail-first queue + `close` bypass (mocks `execute`).
+- `../../test/camoufox-cli/cli.test.ts` — `upload` / `identity` arg parsing.
+- `../../test/camoufox-cli/server-queue.test.ts` — fail-first queue + `close` bypass (mocks `execute`).
 
 ## Attribution
 

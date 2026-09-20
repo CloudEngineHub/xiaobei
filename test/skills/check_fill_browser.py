@@ -1,4 +1,4 @@
-"""Manual local-browser regression: python3 check_fill_browser.py (no account required)."""
+"""Local-browser regression: python3 test/skills/check_fill_browser.py (no account required)."""
 import importlib.util
 import json
 import subprocess
@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import quote
 
-path = Path(__file__).with_name('publish_douyin_note.py')
+path = Path(__file__).resolve().parents[2] / 'crews/main/skills/expert-douyin/tools/douyin-note-publish/scripts/publish_douyin_note.py'
 spec = importlib.util.spec_from_file_location('note', path)
 note = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(note)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateAwadaRelayBaseUrl } from "./probe.js";
+import { validateAwadaRelayBaseUrl } from "../../awada/src/probe.js";
 
 describe("validateAwadaRelayBaseUrl", () => {
   it("accepts http and https urls", () => {

@@ -4,7 +4,7 @@ import {
   serializeResponse,
   okResponse,
   errorResponse,
-} from "../src/protocol.js";
+} from "../../patches/camoufox-cli/src/protocol.js";
 
 describe("parseCommand", () => {
   it("parses basic command", () => {

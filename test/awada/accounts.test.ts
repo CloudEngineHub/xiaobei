@@ -4,7 +4,7 @@ import {
   listAwadaAccountIds,
   resolveAwadaAccount,
   resolveDefaultAwadaAccountId,
-} from "./accounts.js";
+} from "../../awada/src/accounts.js";
 import type { ClawdbotConfig } from "openclaw/plugin-sdk";
 
 function makeConfig(awada?: Record<string, unknown>): ClawdbotConfig {

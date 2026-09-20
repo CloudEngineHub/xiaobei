@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseXhsNoteFromHtml, fetchXhsNoteFromHtml, XhsSecurityBlockError } from './xhs-html-note.ts'
-import { collectComments } from '../expert-douyin/tools/douyin-comments/scripts/fetch_comments.ts'
+import { parseXhsNoteFromHtml, fetchXhsNoteFromHtml, XhsSecurityBlockError } from '../../crews/main/skills/_shared/xhs-html-note.ts'
+import { collectComments } from '../../crews/main/skills/expert-douyin/tools/douyin-comments/scripts/fetch_comments.ts'
 
 function html(stream: unknown, extra='') {
   return `<script>window.__INITIAL_STATE__=${JSON.stringify({note:{noteDetailMap:{abc:{note:{

@@ -493,7 +493,9 @@ def _bailian_stream_sentences(raw_sentence: dict) -> dict:
             "startTime": float(w.get("begin_time", 0)) / 1000.0,
             "endTime": float(w.get("end_time", 0)) / 1000.0,
         })
-    return {"text": raw_sentence.get("text") or "", "words": words, "phonemes": []}
+    # 部分百炼 sentence-end 事件只返回 words，需为下游句级对齐补全文本。
+    text = raw_sentence.get("text") or "".join(w["word"] for w in words)
+    return {"text": text, "words": words, "phonemes": []}
 
 
 def create_speech_bailian(

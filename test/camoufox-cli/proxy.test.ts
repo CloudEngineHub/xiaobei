@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseProxySettings } from "../src/proxy.js";
+import { parseProxySettings } from "../../patches/camoufox-cli/src/proxy.js";
 
 describe("parseProxySettings", () => {
   it("parses an HTTP proxy without credentials", () => {

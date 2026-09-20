@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 
-SCRIPT_PATH = Path(__file__).with_name("xhs_engagement.py")
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "crews/main/skills/expert-xhs/tools/xhs-engagement/scripts/xhs_engagement.py"
 SPEC = importlib.util.spec_from_file_location("xhs_engagement", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 xhs_engagement = importlib.util.module_from_spec(SPEC)

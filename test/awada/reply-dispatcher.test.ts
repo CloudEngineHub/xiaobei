@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatAwadaReplyRecipient } from "./reply-dispatcher.js";
-import type { OutboundTarget } from "./redis-types.js";
+import { formatAwadaReplyRecipient } from "../../awada/src/reply-dispatcher.js";
+import type { OutboundTarget } from "../../awada/src/redis-types.js";
 
 function makeTarget(overrides: Partial<OutboundTarget> = {}): OutboundTarget {
   return {

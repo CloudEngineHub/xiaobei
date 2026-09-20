@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { RefRegistry } from "../src/refs.js";
+import { RefRegistry } from "../../patches/camoufox-cli/src/refs.js";
 
 describe("RefRegistry.buildFromSnapshot", () => {
   it("assigns refs to basic snapshot", () => {

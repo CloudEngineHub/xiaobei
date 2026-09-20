@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildCommand, getSocketPath, getPidPath, shortenSession, parseArgs } from "../src/cli.js";
-import { loadDefaults } from "../src/config.js";
+import { buildCommand, getSocketPath, getPidPath, shortenSession, parseArgs } from "../../patches/camoufox-cli/src/cli.js";
+import { loadDefaults } from "../../patches/camoufox-cli/src/config.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
