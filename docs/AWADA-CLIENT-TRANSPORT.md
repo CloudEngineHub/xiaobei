@@ -1,205 +1,71 @@
-# awada-extension ↔ relay 网关传输契约
+# Awada 客户端传输与 V2 接入
 
-> 适用对象：**awada-extension（client 侧 bot）** 开发者。
-> 本仓 relay 提供 HTTP/WS 网关，代理 bot 与 Redis Streams 之间的读写。
-> **client 不再直连 Redis**；改走本网关。本文是唯一耦合面，与 `docs/API-CONTRACT.md` 同级权威。
+更新：2026-10-17。客户端实现位于 `awada/`，基准 OpenClaw 2026.10.4；服务端契约来自 Relay 2026-10-16 的 V2 API、能力映射和 OpenAPI。完整配置、命令和媒体示例见 [plugin README](../awada/README.md)。
 
-## 1. 角色与方向（关键，先读）
+## 地址与鉴权
 
-权威约定见 `services/awada-server/src/REDIS_INFRASTRUCTURE.md`：
+默认 `https://relay.openclaw-for-business.com/api/v2/awada`，HTTP/WS 使用 `X-OFB-Key`，key 需带对应 `awada:lane:<完整 laneId>` scope。lane 是服务端账号标识；缺省 lane 由服务端唯一解析 `user`，不选择第一个匹配账号。agent 不需要知道服务端底层实现，所有账号使用同样的 Awada 动作。
 
-| stream | 谁写 | 谁读 |
-|---|---|---|
-| `awada:events:inbound:{lane}` | **server**（platform webhook 入列） | **bot**（你） |
-| `awada:events:outbound:{lane}` | **bot**（你，回执） | **server**（发回 platform） |
+`relayBaseUrl` 接受 origin 或完整 API 根路径；旧 v1 后缀规范化到 v2。v1 的下线日期由服务端健康接口提供；客户端不回退到 v1，不直接连接 Redis，仅持有 Awada 访问凭据。
 
-awada-server（relay 侧 TS）只做两件事：收 platform webhook 写 inbound、读 outbound 发回 platform。**它不消费 inbound。** 消费 inbound、跑 LLM、写 outbound 的是 **bot = awada-extension = 你**。
+## 客户端 API 覆盖
 
-网关是 bot 的传输代理：让你**读 inbound**、**写 outbound**，不暴露 Redis。
-
-## 2. 鉴权
-
-每个请求带 header：
-
-```
-X-Awada-Key: <你的 awadaKey>
-```
-
-- 服务端优先读 `X-Awada-Key`，fallback `X-OFB-Key`（向后兼容）。
-- `awadaKey` 由 relay admin 签发（与签名服务用的 `OFB_KEY` 是两份独立凭证），`scopes` 数组含 `awada:lane:<laneId>` 才能访问该 lane。
-- 无任何 `awada:lane:*` scope → `403 AWADA_NOT_SUBSCRIBED`（未购买 awada 增值服务）。
-- 有 awada scope 但不含请求的 lane → `403 FORBIDDEN_LANE`。
-- 速率限制：每 key `rpm`（签发时定），超限 `429`。
-- key 过期/吊销 → `401`。
-
-## 3. HTTP 端点
-
-Base URL：`https://<relay-domain>/api/v1/awada`（incu 上经 nginx TLS）。
-
-### GET /inbound?lane=&block_ms=&count=&last_id=
-
-**bot 读 inbound** — 长轮询拉取待处理事件。
-
-| 参数 | 说明 |
+| API | plugin 接入 |
 |---|---|
-| `lane` | 可选，lane id；不传时 server 默认 `User` |
-| `block_ms` | 长轮询阻塞毫秒，默认 2500，上限 10000 |
-| `count` | 单次最多拉取条数，默认 10，上限 100 |
-| `last_id` | 上次返回的 `lastId`；首次不传（网关从历史 pending `0` 开始消费） |
+| GET `/health` | `probeAwada`；`awada_api health` |
+| GET `/inbound` | 导出的 `readAwadaInbound`，支持 count、block_ms、last_id |
+| WS `/inbound` | channel 持久入站、重连、ping/pong、显式 ACK |
+| POST `/outbound` | 标准文字、图片、文件、视频和语音；普通回复与 `message send` |
+| GET `/capabilities` | 合入完整契约快照，`awada_api capabilities` 返回统一能力合集，不按账号裁剪 |
+| GET `/capabilities/:operation` | `awada_api schema`，获取统一动作的参数、query、响应 schema；账号未公开该动作时使用完整契约快照 |
+| POST `/operations` | `awada_api operation`，完整透传 params/query/file |
+| GET `/operations/:id` | `awada_api result` 与回复执行结果确认 |
 
-响应 200：
+客户端能力范围涵盖联系人、群、标签、朋友圈、消息、媒体和待办等业务能力。移除登录设备，以及客户端指令管理、存储维护、历史诊断、回调扩展、通信加密和原消息转发。统一范围策略同时用于快照生成、动态目录、schema 查询和提交校验，禁止通过原始动作 ID 绕过；该限制是产品范围，与某账号是否支持无关。其余动作仍由 server 决定执行支持、授权与限制。
 
-```json
-{
-  "success": true,
-  "data": {
-    "events": [
-      { "id": "1234-0", "event": { /* InboundEvent envelope */ } }
-    ],
-    "lastId": "1234-0"
-  },
-  "error": null
-}
-```
+语音转写的申请与查询仅内部可用，公开业务动作 `voice.transcribe` 接收 `params.messageId` 和可选 `timeoutMs`（默认 30 秒，1–60 秒），完成整个任务后返回文本。普通收件权限放行后自动执行，优先使用回调内原始 msgServerId（不能将可能不同的 source_message_id 当成它）；不可用或超时则走宿主公共转写。转写与媒体上下文仍通过原生入站管线进入 agent，不自动向客户单独发送转写文本。
 
-`event` 是 awada 标准 InboundEvent（`schema_version=1`，含 `event_id`/`meta`/`payload`）。网关拉到即 `XACK`，不会重复投递同一条；处理失败请写回 outbound（见下）或本地 DLQ。
+当前动作 ID 已隐藏实现名称，但其余同义业务动作尚未全部合并；原始接口数不是去重后的命令数。同一能力一个公开命令、统一参数的要求继续有效。新动作可由服务端目录合入，已移出产品范围的动作不会重新暴露。
 
-### POST /outbound?lane=
+契约快照由开发者运行 `node scripts/sync-awada-catalog.mjs <服务端完整目录 JSON>` 更新，包含来源文件摘要与契约日期。输入必须是完整契约，不能用某个账号的 capabilities 代替；生成时剔除已移除动作，原生转写步骤仅供内部使用。快照不宣称 server 已支持或已执行成功。
 
-**bot 写 outbound** — 回传 LLM 结果给 server，由 server 发回 platform。
+## 入站与 ACK
 
-请求体：
+WS 帧沿用 `{id,event}`，event 的 `schema_version` 仍为 1。API 的 V2 与 envelope 的 schema 版本含义不同。
 
-```json
-{
-  "payload": [ /* ContentObject[] 或透传 */ ],
-  "meta": {
-    "platform": "worktool",
-    "tenant_id": "...",
-    "channel_id": "...",
-    "user_id_external": "...",
-    "session_id": "...",
-    "source_event_id": "<对应 inbound 的 event_id>",
-    "reply_to_message_id": "..."
-  }
-}
-```
+1. 验证 envelope 和消息路由标识。
+2. 按 account/lane/event_id 写 OpenClaw 原生持久入站队列。
+3. 写入成功才发送 `{type:"ack",id}`；存储失败保留服务端 PEL 并重连。
+4. 只有 `MESSAGE_NEW` 进入聊天；其他事件持久保存后完成消费。
+5. 原生 ingress 生命周期负责去重、adoption、重试和重启恢复。
 
-`meta` 字段：
+传输层按连接顺序串行入库，聊天不阻塞 ACK。普通聊天的 debounce、会话顺序、上下文、权限和回复都接 OpenClaw 的同一套宿主接口。文本合并键包含本地账号、服务端账号标识、聊天及发送者；媒体/控制命令不并入普通文本。两条不同 event_id 的相同文本都保留。
 
-| 字段 | 必填？ | 说明 |
-|---|---|---|
-| `platform` | 回复必填 / 主动外呼可省 | server 据此找 bot 配置发回 platform。回复从 inbound `event.meta.platform` 原样回传；主动外呼省略时 server 按 lane 绑定推导 |
-| `channel_id` | **必填** | 群聊=群标识、私聊=`'0'`，server 据此判群/私聊定接收者。从 inbound `event.meta.channel_id` 原样回传 |
-| `user_id_external` | **必填** | 私聊接收者标识。从 inbound `event.meta.user_id_external` 原样回传 |
-| `tenant_id` | 建议 | 多租户路由用。从 inbound `event.meta.tenant_id` 回传 |
-| `session_id` | 可选 | 链路追踪 |
-| `source_event_id` | 建议 | 对应 inbound 的 `event_id`，回执关联 / 链路追踪 |
-| `reply_to_message_id` | 可选 | 平台原消息 id（如企微 reply_to） |
+群聊默认策略、@ 激活和历史窗口与飞书一致：继承系统 groupPolicy，open 默认无需 @，allowlist 默认要求 @，显式 requireMention 优先。仅因缺少 @ 被跳过的已授权消息进入待补充上下文，不参与命令识别。聊天任务按飞书的五分钟超时规则释放顺序队列。
 
-> **关键**：回复时把 inbound `event.meta` 整个回传再覆盖 `source_event_id` 即可。主动外呼不传 `platform`，server 按 `lane` 的 provision 绑定推导。`channel_id` / `user_id_external` 始终必填。
+可变昵称身份由插件内部按事件身份类型处理。原始昵称/群备注保留在事件中；不从清洗后的 ID 猜回原名称。回复通过服务端映射，映射过期的 `ROUTE_EXPIRED` 不当作已发送。工具输出将服务事件、动作 ID 和技术元数据统一为 Awada 表达，保留业务内容、原始目标 ID 和操作回执。
 
-响应 200：
+## 出站与结果
 
-```json
-{ "success": true, "data": { "streamId": "1234-0", "eventId": "<uuid>" }, "error": null }
-```
+标准内容使用 `payload` 数组和 `meta`；路由来自选定 lane，当前回复保留原 channel/user，附带 `source_event_id`。文字与附件不互相覆盖，不解析专用文本标签。
 
-错误响应（非 2xx）：
+- 使用 `request_id`；Gateway 本地保留请求指纹和回执，相同请求复用同一 eventId。
+- 200/202 是入队确认，返回 `streamId` 和 `eventId`；结果查询使用 `eventId`。
+- `queued/running/submitted` 不代表最终成功；`succeeded` 不代表对方已读。
+- `failed` 保留部分已执行步骤，`unknown` 先查询/对账，不盲目建立新写任务。
+- 服务端幂等和结果窗口为七天；本地未知请求超出该窗口时拒绝自动重投。
+- 大整数 ID 使用字符串；本地保留响应原始整数 token，拒绝已失真的数值输入。
 
-```json
-{ "success": false, "data": null, "error": { "code": "FORBIDDEN_LANE", "message": "..." } }
-```
+本地文件通过宿主媒体权限读取，使用统一附件内容提交；配置 mediaPublicBaseUrl 时可通过 token 保护的媒体 URL 交付。选择由显式媒体配置决定，不探测账号底层类型，也不在本地拒绝某一账号的附件。不得把本地 `file_path` 或裸云端文件名传给服务端充当可读文件。
 
-`code` 见 §2（`AWADA_NOT_SUBSCRIBED` / `FORBIDDEN_LANE` / `BAD_REQUEST` / `REDIS_ERROR`）；鉴权失败 401/429 不走此信封。
+## CustomerDB hook
 
-### GET /health
+原 CustomerDB 的自动建档、画像注入、客户回复时结束 sent_once 跟进，以及 payment_success/club_join 静默命令保留。它是可选业务扩展，不随 channel 启用而无条件激活。必须设置 `plugins.entries.awada.config.customerdb.agentId`，且该段 enabled 不为 false；外部插件还须显式授权 `plugins.entries.awada.hooks.allowConversationAccess=true`，并且 allowPromptInjection 不为 false。完整配置、范围与验收见 [README 的 CustomerDB 节](../awada/README.md#customerdb-hook-与静默业务命令)。
 
-无鉴权。`{ "data": { "service": "awada-gateway", "redis": true } }`。
+awada-channel-setup 为 sales-cs 设置 CustomerDB 时补齐会话访问授权，保留已有权限策略；显式拒绝时返回错误，不越过宿主策略。定时任务与心跳不执行客户回复 hook，主动扫描流程须另行配置。
 
-## 4. WS 端点（推荐用于长连接）
+## 运行边界
 
-### WS /inbound?lane=
+服务端 inbound/outbound 各保留约 1000 条，超过离线窗口可能丢失历史。客户端已接收的事件交由 OpenClaw 持久队列；服务事件和操作结果另保留最多 2000 条、最长七天。异步任务依赖对应回调，客户端不能把 API 接受任务视为最终执行成功。
 
-升级时带 header `X-Awada-Key: <awadaKey>`（与 HTTP 同一鉴权，服务端 fallback `X-OFB-Key`）。升级成功后：
-
-**server → client 帧**（推 inbound 事件）：
-
-```json
-{ "id": "1234-0", "event": { /* InboundEvent */ } }
-```
-
-**client → server 帧**（写 outbound 回执）：
-
-```json
-{
-  "type": "reply",
-  "payload": [ /* ContentObject[] */ ],
-  "meta": {
-    "platform": "worktool",
-    "channel_id": "...",
-    "user_id_external": "...",
-    "tenant_id": "...",
-    "source_event_id": "<对应 inbound 的 event_id>"
-  }
-}
-```
-
-`meta` 字段同 §3 POST /outbound：回复时 `platform` / `channel_id` / `user_id_external` 从 inbound `event.meta` 原样回传（最简做法是整个 `event.meta` 回传再覆盖 `source_event_id`）；主动外呼省略 `platform`，server 按 lane 绑定推导。
-
-server 回 `reply_ok`：
-
-```json
-{ "type": "reply_ok", "streamId": "1234-0", "eventId": "<uuid>" }
-```
-
-- 30s 心跳（ws ping）。
-- **必须 ack**：网关推事件后**不 XACK**，等你的 `{type:"ack",id}` 帧。未 ack 的事件留在 PEL，断线重连后由网关 XAUTOCLAIM 回收重投（min-idle 65s，仅回收锁已过期的 stale 交付）。所以处理完一条就发 ack，否则重连后会重收。
-- 错误帧：`{ "error": { "code": "...", "message": "..." } }`。
-
-## 5. session_lock / 幂等
-
-- **session_lock 在网关侧**（relay Redis），client 不碰。同一 session_key 并发事件由网关串行化（锁 TTL 60s，bot 处理一条的硬上限）。
-- **processed 幂等在网关侧**（`awada:{lane}:processed:{event_id}`，TTL 24h）。WS 模式下 **ack 时**才标记 processed —— 所以 unacked 交付在重连后能被重投，不会丢。
-- **至少一次**语义：极少数情况下（你 ack 了但网关进程恰好崩溃在 ack 处理中）同一条会重投。bot 侧业务应按 event_id 幂等，或容忍重复。
-- client 只需：收到 event → 处理 → POST /outbound 回执 → 发 `{type:"ack",id}`。无需自己做锁/去重。
-
-## 6. 已删除 / 不再使用
-
-- `session_conv`（Coze conversation_id）：历史遗留，已删，client 不要传。
-- 直连 Redis：不再支持，端口不暴露。
-
-## 7. lane 绑定与计费
-
-- 一个 awadaKey ↔ 0 或多个 lane。awada 是**增值服务**（按月租），与 VIP Club 内含的 sign/wxmp/wxwork 无关。
-- 租 lane = relay admin 建一个 lane（绑一个 platform，如一个企业微信机器人账号）+ 给你的 awadaKey 加 `awada:lane:<id>` scope。
-- 一个 lane 绑定**恰好一个 platform**（1:1，不再支持按规则投递多 lane）。
-- lane 可省略——不传时 server 默认使用 `User` lane。
-
-## 8. 最小接入示例（伪代码）
-
-```js
-const ws = new WebSocket("wss://relay/api/v1/awada/inbound?lane=" + LANE, {
-  headers: { "X-Awada-Key": AWADA_KEY },
-});
-ws.on("message", async (raw) => {
-  const frame = JSON.parse(raw);
-  if (frame.event) {
-    const reply = await runLLM(frame.event); // 你的 bot 逻辑
-    ws.send(JSON.stringify({
-      type: "reply",
-      payload: reply,
-      // 路由字段必填：原样回传 inbound 的 meta，再覆盖 source_event_id
-      meta: { ...frame.event.meta, source_event_id: frame.event.event_id },
-    }));
-    ws.send(JSON.stringify({ type: "ack", id: frame.id }));
-  }
-});
-```
-
-## 9. 变更记录
-
-- 2026-07-06：初版。方向修正为 bot 侧代理（GET /inbound 读、POST /outbound 写、WS /inbound）。此前若 client 实现过 POST /inbound / GET /outbound，需翻转。
-- 2026-07-06：D5b — WS 必须 ack。processed 改在 ack 时标记（unacked 重连可重投，不丢消息）。网关 XAUTOCLAIM 周期回收 stale PEL。至少一次语义，bot 侧按 event_id 幂等。
-- 2026-07-06：明确 reply（POST /outbound + WS reply 帧）的 `meta.platform` / `channel_id` / `user_id_external` **必填**——server 直接据此路由回 platform，不按 `source_event_id` 反查 inbound。client 须从 inbound `event.meta` 原样回传。补 HTTP 错误信封形状；§8 示例补 ack 帧。
-- 2026-08-20：配置简化。鉴权 header 改 `X-Awada-Key`（服务端 fallback `X-OFB-Key` 向后兼容）；`lane` 改可选（不传 server 默认 `User`）；`relayBaseUrl` 默认官方域名 `https://relay.openclaw-for-business.com`；客户端不发 `platform`（relay 按 lane 绑定推导，回复仍从 inbound `event.meta.platform` 回传）。客户端最小配置只需 `awadaKey`。`awadaKey` 与签名服务 `OFB_KEY` 是两份独立凭证。
+本轮仅完成源码与隔离回归；部署、`apply-addons.sh`、现役 Gateway/浏览器切换及实号发送应按用户确认的升级顺序执行。

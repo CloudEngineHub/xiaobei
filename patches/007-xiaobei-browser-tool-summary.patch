@@ -1,0 +1,13 @@
+diff --git a/src/agents/system-prompt-tool-list.ts b/src/agents/system-prompt-tool-list.ts
+index b0fb1203a42..0446bab986e 100644
+--- a/src/agents/system-prompt-tool-list.ts
++++ b/src/agents/system-prompt-tool-list.ts
+@@ -29,7 +29,7 @@ export function buildSystemPromptToolLines(params: SystemPromptToolListParams):
+     web_search: "Web search",
+     web_fetch: "Fetch/extract URL",
+     // Channel docking: add login tools here when a channel needs interactive linking.
+-    browser: "Control browser",
++    browser: "Control xiaobei-browser (Camoufox); use persistent session=default for ordinary sites",
+     screen: "Drive operator web UI",
+     theme: "List, select, and create appearance themes",
+     terminal:

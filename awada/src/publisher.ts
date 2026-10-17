@@ -1,4 +1,4 @@
-import type { ClawdbotConfig } from "openclaw/plugin-sdk";
+import type { ClawdbotConfig } from "./runtime-api.js";
 import { resolveAwadaAccount } from "./accounts.js";
 import { buildOutboundTarget, postOutbound } from "./send.js";
 
@@ -42,5 +42,5 @@ export async function publishTextToAwada(params: {
     target,
     payload: [{ type: "text", text }],
   });
-  return result.streamId;
+  return result.eventId;
 }

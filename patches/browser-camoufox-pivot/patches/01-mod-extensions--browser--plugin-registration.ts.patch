@@ -1,0 +1,118 @@
+diff --git a/extensions/browser/plugin-registration.ts b/extensions/browser/plugin-registration.ts
+index 4e97ad01b1d..eecc2dca258 100644
+--- a/extensions/browser/plugin-registration.ts
++++ b/extensions/browser/plugin-registration.ts
+@@ -6,7 +6,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
+ import type { Duplex } from "node:stream";
+ import { createLazyRuntimeSurface } from "openclaw/plugin-sdk/lazy-runtime";
+ import type {
+-  AnyAgentTool,
+   OpenClawPluginApi,
+   OpenClawPluginNodeHostCommand,
+   OpenClawPluginSecurityAuditCollector,
+@@ -26,7 +25,6 @@ import {
+   BROWSER_PROXY_UPLOAD_COMMAND,
+ } from "./src/browser-node-commands.js";
+ import { getOptionalBrowserStateRuntime } from "./src/browser-runtime-state.js";
+-import { createBrowserToolDefinition } from "./src/browser-tool-description.js";
+ import { getGatewayExtensionRelayModule } from "./src/browser/extension-relay.runtime.js";
+ import {
+   initializeBrowserSessionTabStore,
+@@ -37,6 +35,7 @@ import {
+   configureSystemProfileImportStateStore,
+   type SystemProfileImportState,
+ } from "./src/browser/system-profile-import-state.js";
++import { createXiaobeiBrowserTool } from "./src/xiaobei-browser.adapter.js";
+ 
+ const EAGER_BROWSER_CONTROL_SERVICE_ENV = "OPENCLAW_EAGER_BROWSER_CONTROL_SERVER";
+ const logger = createSubsystemLogger("browser");
+@@ -58,80 +57,6 @@ const loadBrowserUploadCleanupRuntimeModule = createLazyRuntimeSurface(
+   },
+ );
+ 
+-function deriveChatTypeFromSessionKey(
+-  sessionKey: string | undefined,
+-): "direct" | "group" | "channel" | undefined {
+-  const tokens = new Set(sessionKey?.toLowerCase().split(":") ?? []);
+-  if (tokens.has("group")) {
+-    return "group";
+-  }
+-  if (tokens.has("channel")) {
+-    return "channel";
+-  }
+-  if (tokens.has("direct") || tokens.has("dm")) {
+-    return "direct";
+-  }
+-  return undefined;
+-}
+-
+-type BrowserToolOptions = NonNullable<
+-  Parameters<typeof import("./src/browser-tool.js").createBrowserTool>[0]
+->;
+-
+-function createLazyBrowserTool(
+-  opts?: BrowserToolOptions,
+-  config?: OpenClawPluginToolContext["runtimeConfig"],
+-): AnyAgentTool {
+-  const { binding, capabilities, metadata } = createBrowserToolDefinition(opts, () => config);
+-  return {
+-    ...metadata,
+-    execute: async (toolCallId, args, signal, onUpdate) => {
+-      const { createBrowserTool } = await loadBrowserRegistrationRuntimeModule();
+-      const tool = createBrowserTool({
+-        ...opts,
+-        ...(binding ? { runToolBinding: binding } : {}),
+-        toolCapabilities: capabilities,
+-      });
+-      return await tool.execute(toolCallId, args, signal, onUpdate);
+-    },
+-  };
+-}
+-
+-function createBrowserToolOptions(ctx: OpenClawPluginToolContext): BrowserToolOptions {
+-  const mediaChannel = ctx.deliveryContext?.channel ?? ctx.messageChannel;
+-  const mediaChatType = deriveChatTypeFromSessionKey(ctx.sessionKey);
+-  return {
+-    ...(ctx.browser?.sandboxBridgeUrl ? { sandboxBridgeUrl: ctx.browser.sandboxBridgeUrl } : {}),
+-    ...(ctx.browser?.allowHostControl !== undefined
+-      ? { allowHostControl: ctx.browser.allowHostControl }
+-      : {}),
+-    ...(ctx.sessionKey ? { agentSessionKey: ctx.sessionKey } : {}),
+-    ...(ctx.agentId ? { agentId: ctx.agentId } : {}),
+-    ...(ctx.agentDir ? { agentDir: ctx.agentDir } : {}),
+-    ...(ctx.workspaceDir ? { workspaceDir: ctx.workspaceDir } : {}),
+-    ...(ctx.activeModel?.provider || ctx.activeModel?.modelId
+-      ? {
+-          activeModel: {
+-            provider: ctx.activeModel.provider,
+-            model: ctx.activeModel.modelId,
+-          },
+-        }
+-      : {}),
+-    ...(ctx.sessionKey || mediaChannel
+-      ? {
+-          mediaScope: {
+-            ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}),
+-            ...(mediaChannel ? { channel: mediaChannel } : {}),
+-            ...(mediaChatType ? { chatType: mediaChatType } : {}),
+-          },
+-        }
+-      : {}),
+-    ...(ctx.toolBindings && Object.hasOwn(ctx.toolBindings, "browser")
+-      ? { runToolBinding: ctx.toolBindings.browser }
+-      : {}),
+-  };
+-}
+-
+ export const browserPluginReload = {
+   restartPrefixes: ["browser"],
+   hotPrefixes: [
+@@ -316,7 +241,7 @@ export function registerBrowserPlugin(api: OpenClawPluginApi) {
+   api.registerTool(
+     (ctx: OpenClawPluginToolContext) => {
+       const config = ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config;
+-      return createLazyBrowserTool(createBrowserToolOptions(ctx), config);
++      return createXiaobeiBrowserTool({ ...ctx, runtimeConfig: config });
+     },
+     { name: "browser" },
+   );

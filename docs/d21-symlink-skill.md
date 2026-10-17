@@ -246,7 +246,7 @@ dev plan §Phase 7 续 写"验收"：
 
 按 dev plan §Phase 7 续"D21 全局技能软链化 + wrapper 覆盖审计"——**软链化早已落地，本轮 wrapper 覆盖交付完成**；C 类分发器与 Docker wrapper 暴露留作未来演进。
 
-关联：`docs/browser-stack-replacement-spec-2026-07.md` §11 · `crews/it-engineer/MEMORY.md` D20
+关联：[浏览器架构与开发方案](./browser-architecture.md)（含历史追溯）· `crews/it-engineer/MEMORY.md` D20
 
 ---
 

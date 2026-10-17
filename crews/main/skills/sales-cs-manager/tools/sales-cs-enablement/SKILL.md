@@ -1,43 +1,37 @@
 ---
 name: sales-cs-enablement
-description: >
-  sales-cs 启用的机械操作工具：awada channel 配置检查 + business_knowledge
-  软链建立。完整启用流程见 sales-cs-manager 包内 Enablement workflow。
-metadata:
-  openclaw:
-    emoji: 🤝
+description: sales-cs 启用的机械操作工具：Awada V2 账号与路由检查，以及 business_knowledge 软链建立。完整流程见 sales-cs-manager 的 Enablement workflow。
 ---
 
-# sales-cs-enablement 工具说明书
-
-启用 sales-cs 过程中的两个机械动作。编排（channel 选项讲解、IT engineer 派工、workspace 文档完善）属于 Enablement workflow，不在本工具内。
-
-## 命令
-
-```bash
-sales-cs-enablement check-channel
-sales-cs-enablement link        # 无参调用等价于 link
-```
+# sales-cs-enablement
 
 ## check-channel
 
-检查 `~/.openclaw/openclaw.json` 的 `channels.awada` 是否已配置（段存在且非空即视为已配置）。
+```bash
+sales-cs-enablement check-channel
+sales-cs-enablement check-channel --account-id <账号> --agent-id sales-cs
+sales-cs-enablement check-channel --account-id <账号> --probe
+```
 
-- 输出：JSON 状态到 stdout（`configured` / `awada` / `path`）
-- 退出码：`0` 已配置；`1` 未配置或解析失败；`2` 配置文件不存在
-- 环境变量 `OPENCLAW_JSON` 可覆盖配置文件路径
+默认只读本地配置；`--probe` 另读 V2 health 和带 `X-OFB-Key` 的 capabilities，不发消息、不改配置。检查插件启用、账号 key、消息权限和 URL；支持顶层与 accounts 多账号，不因 channels.awada 非空就判成功。
+
+输出 JSON：`configured`、`configuredAccountIds`、每账号的策略/错误、`boundAgents`、`boundToRequestedAgent`、`agentRegistered` 和可选 probe 状态。key 只显示存在与否，不输出原值。`configured` 只说明至少一个所选账号满足检查条件；不代表已经绑定 sales-cs、Gateway 已加载插件或实号收发成功。使用接收事件中的原始目标 ID，不把可变昵称当作稳定身份。
+
+- 退出码 `0`：至少一个所选账号配置通过；继续检查账号归属和 binding。
+- `1`：配置不完整、解析错误或所选账号探测失败；按输出派 IT 修复，不当成“从未配置”或覆盖整个配置。
+- `2`：配置文件不存在；先确认实际路径，不立即新建配置。
+- 路径优先级：`--config`、`OPENCLAW_CONFIG_PATH`、`OPENCLAW_JSON`、`OPENCLAW_STATE_DIR/openclaw.json`、`~/.openclaw/openclaw.json`。`${ENV_NAME}` 形式的 key 引用从环境解析；缺变量时不探测。
 
 ## link
 
-把 main agent workspace 的 `business_knowledge.md`（单文件正文）和 `business_knowledge/`（支撑材料文件夹）软链到 sales-cs workspace 同名位置。
+```bash
+sales-cs-enablement link
+```
 
-- 源解析：优先 `~/.openclaw/workspace-main/`；`.md` 不存在时从仓库模板 `crews/main/business_knowledge.md` 复制一份到 main workspace；文件夹不存在时在仓库创建空目录
-- 目标：`~/.openclaw/workspace-sales-cs/` 下的同名条目
-- 目标已存在且是软链 -> 覆盖重建；已存在且是真实文件/目录 -> **报错拒绝覆盖**（退出码 1），防误删数据，需人工确认后处理
-- 退出码：`0` 成功；`1` 目标为非软链或其他错误
-- 环境变量 `MAIN_WORKSPACE` / `SALES_CS_WORKSPACE` / `REPO_MAIN` 可覆盖三个路径
+把 main workspace 的 `business_knowledge.md` 和 `business_knowledge/` 软链到 sales-cs workspace；无参调用也等价于 link。
 
-## 注意事项
+- 来源优先 `~/.openclaw/workspace-main/`；正文缺失时复制仓库模板，资料目录缺失时创建。
+- 目标默认 `~/.openclaw/workspace-sales-cs/`；已是软链则更新，真实文件/目录拒绝覆盖。
+- `MAIN_WORKSPACE`、`SALES_CS_WORKSPACE`、`REPO_MAIN` 可覆盖路径。exit 0 成功，exit 1 需处理冲突。
 
-- 治理边界：业务知识由 main agent 维护，sales-cs 不自行维护（软链只读访问），避免绕过 main agent。
-- wrapper 是子命令分发器：`check-channel` 转发诊断脚本 `check_awada_channel.py`，`link` 转发主入口 `symlink_business_knowledge.py`。agent 一律走 PATH 调用，不要拼脚本路径。
+编排和业务知识归 main，channel 配置与实例运维交 IT 的 `awada-channel-setup` / `work-channel-binding`。使用这里列出的 PATH wrapper，不拼内部脚本路径。

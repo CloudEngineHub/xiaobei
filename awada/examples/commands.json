@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "name": "hello",
+      "description": "Return a local greeting",
+      "reply": {
+        "text": "你好。"
+      }
+    },
+    {
+      "name": "echo",
+      "description": "Demonstrate a local JSON command handler",
+      "exec": {
+        "command": "node",
+        "args": ["handlers/echo.mjs"],
+        "timeoutMs": 5000
+      }
+    }
+  ]
+}

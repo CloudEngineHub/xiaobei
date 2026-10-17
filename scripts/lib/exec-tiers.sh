@@ -11,6 +11,7 @@
 # ALLOWED_COMMANDS 是对外 crew 在 deny 上凿洞的唯一通道；对内 crew 不读它。
 #
 # 被 setup-crew.sh source 使用。
+export XIAOBEI_AGENT_ROSTER_MODULE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-roster.cjs"
 
 # ── 便携 readlink -f ──────────────────────────────────
 # macOS 自带 BSD readlink 不支持 -f（静默失败），GNU readlink 才支持。
@@ -192,15 +193,15 @@ build_exec_allowlist_json() {
 crew_type_to_tools_exec_json() {
   local crew_type="$1" has_allowlist="$2"
   case "$crew_type" in
-    internal) echo '{"host":"gateway","security":"full","ask":"off"}' ;;
+    internal) echo '{"host":"gateway","mode":"full"}' ;;
     external)
       if [ "$has_allowlist" = "true" ]; then
-        echo '{"host":"gateway","security":"allowlist","ask":"off"}'
+        echo '{"host":"gateway","mode":"allowlist"}'
       else
-        echo '{"host":"gateway","security":"deny","ask":"off"}'
+        echo '{"host":"gateway","mode":"deny"}'
       fi
       ;;
-    *) echo '{"host":"gateway","security":"deny","ask":"off"}' ;;
+    *) echo '{"host":"gateway","mode":"deny"}' ;;
   esac
 }
 
@@ -296,7 +297,7 @@ apply_exec_tiers() {
 const fs = require("fs");
 const home = process.env.HOME || "";
 const c = JSON.parse(fs.readFileSync(process.env.CONFIG_PATH, "utf8"));
-for (const a of (c.agents?.list || [])) {
+for (const a of require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).listAgents(c)) {
   if (!a || typeof a.id !== "string" || !a.id.trim()) continue;
   const id = a.id.trim();
   const wsRaw = typeof a.workspace === "string" && a.workspace.trim()
@@ -392,25 +393,25 @@ console.log(JSON.stringify(prev));
   generate_exec_approvals "$exec_approvals_path" "$agent_configs"
   echo "  ✅ exec-approvals.json updated"
 
-  # 写入 agents.list[].tools.exec 到 openclaw.json
+  # 写入 agents.entries.<id>.tools.exec 到 openclaw.json
   TOOLS_EXEC_PATCHES="$tools_exec_patches" node -e '
 const fs = require("fs");
 const patches = JSON.parse(process.env.TOOLS_EXEC_PATCHES);
 const c = JSON.parse(fs.readFileSync("'"$config_path"'", "utf8"));
-const list = c.agents?.list || [];
+const {getAgent, setAgent} = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE);
 for (const [agentId, execConfig] of Object.entries(patches)) {
-  const idx = list.findIndex((a) => a.id === agentId);
-  if (idx >= 0) {
-    list[idx] = {
-      ...list[idx],
+  const agent = getAgent(c, agentId);
+  if (agent) {
+    setAgent(c, agentId, {
+      ...agent,
       tools: {
-        ...(list[idx].tools || {}),
+        ...(agent.tools || {}),
         exec: execConfig,
       },
-    };
+    });
   }
 }
 fs.writeFileSync("'"$config_path"'", JSON.stringify(c, null, 2) + "\n");
 '
-  echo "  ✅ agents.list[].tools.exec updated"
+  echo "  ✅ agents.entries.<id>.tools.exec updated"
 }

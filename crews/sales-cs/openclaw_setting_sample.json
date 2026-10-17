@@ -9,8 +9,7 @@
     "demo-send",
     "exp-invite",
     "nano-pdf",
-    "proactive-send",
-    "session-logs"
+    "proactive-send"
   ],
   "heartbeat": {
     "every": "1h",
@@ -25,8 +24,7 @@
   "tools": {
     "exec": {
       "host": "gateway",
-      "security": "allowlist",
-      "ask": "off"
+      "mode": "allowlist"
     }
   },
   "subagents": {

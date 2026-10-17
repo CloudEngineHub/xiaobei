@@ -1,19 +1,15 @@
-import type {
-  ContentObject,
-  FileObject,
-  ImageObject,
-  OutboundMeta,
-  OutboundTarget,
-} from "./redis-types.js";
+import type { ContentObject, MediaObject, OutboundMeta, OutboundTarget } from "./redis-types.js";
+import { randomUUID } from "node:crypto";
+import { awadaRequest, type OperationReceipt } from "./api.js";
+import { withAwadaSubmissionLedger } from "./ledger.js";
 
 /**
- * Outbound send — POST /api/v1/awada/outbound?lane=<lane> to the relay gateway.
- * See docs/AWADA-CLIENT-TRANSPORT.md §3. The relay writes the event onto the outbound
+ * Outbound send — POST /api/v2/awada/outbound?lane=<lane> to the relay gateway.
+ * See docs/AWADA-CLIENT-TRANSPORT.md. The relay writes the event onto the outbound
  * Redis stream and the awada-server dispatcher delivers it back to the platform.
  *
- * `meta.platform` / `channel_id` / `user_id_external` are REQUIRED for the relay to route
- * the reply back to the platform. We build them from the cached OutboundTarget (which was
- * populated from the inbound event.meta) and override `source_event_id`.
+ * The configured lane owns provider/account routing. Conversation and recipient IDs
+ * come from the standard target; replies also retain their source_event_id.
  */
 export type GatewaySendParams = {
   relayBaseUrl: string;
@@ -23,6 +19,9 @@ export type GatewaySendParams = {
   payload: ContentObject[];
   /** event_id of the inbound event that triggered this reply (for correlation/tracing). */
   sourceEventId?: string;
+  requestId?: string;
+  beforeSend?: () => void | Promise<void>;
+  signal?: AbortSignal;
 };
 
 export function encodeAwadaTo(target: OutboundTarget): string {
@@ -32,7 +31,16 @@ export function encodeAwadaTo(target: OutboundTarget): string {
 export function decodeAwadaTo(to: string): OutboundTarget | null {
   if (!to.startsWith("awada:")) return null;
   try {
-    return JSON.parse(Buffer.from(to.slice(6), "base64").toString("utf8")) as OutboundTarget;
+    const target = JSON.parse(Buffer.from(to.slice(6), "base64").toString("utf8"));
+    if (
+      !target ||
+      typeof target !== "object" ||
+      !["tenant_id", "lane", "user_id_external", "channel_id"].every(
+        (key) => typeof target[key] === "string",
+      )
+    )
+      return null;
+    return target as OutboundTarget;
   } catch {
     return null;
   }
@@ -69,44 +77,31 @@ export function buildOutboundMeta(target: OutboundTarget, sourceEventId?: string
   if (target.tenant_id) meta.tenant_id = target.tenant_id;
   if (target.conversation_id) meta.session_id = target.conversation_id;
   if (sourceEventId) meta.source_event_id = sourceEventId;
+  if (target.action_ask) meta.action_ask = target.action_ask;
   return meta;
 }
 
-function outboundUrl(relayBaseUrl: string, lane: string): string {
-  const base = relayBaseUrl.trim().replace(/\/+$/, "");
-  return `${base}/api/v1/awada/outbound?lane=${encodeURIComponent(lane)}`;
-}
-
-export async function postOutbound(params: GatewaySendParams): Promise<{ streamId: string; eventId: string }> {
+export async function postOutbound(
+  params: GatewaySendParams,
+): Promise<{ streamId: string; eventId: string }> {
   const { relayBaseUrl, awadaKey, lane, target, payload, sourceEventId } = params;
   const meta = buildOutboundMeta(target, sourceEventId);
-  const res = await fetch(outboundUrl(relayBaseUrl, lane), {
-    method: "POST",
-    headers: {
-      "X-Awada-Key": awadaKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ payload, meta }),
+  if (payload.length < 1 || payload.length > 100)
+    throw new Error("Awada payload must contain 1–100 objects");
+  const credentials = { relayBaseUrl, awadaKey, lane };
+  const requestId = params.requestId ?? randomUUID();
+  const body = { payload, meta, request_id: requestId };
+  const receipt = await withAwadaSubmissionLedger(credentials, requestId, body, async () => {
+    await params.beforeSend?.();
+    params.signal?.throwIfAborted();
+    return awadaRequest<OperationReceipt>(credentials, "/outbound", {
+      body,
+      signal: params.signal,
+    });
   });
-  if (!res.ok) {
-    let code: string | undefined;
-    let message: string | undefined;
-    try {
-      const body = (await res.json()) as { error?: { code?: string; message?: string } };
-      code = body?.error?.code;
-      message = body?.error?.message;
-    } catch {
-      // non-json error body
-    }
-    throw new Error(
-      `[awada] outbound POST ${res.status}: ${code ?? message ?? res.statusText ?? "unknown"}`,
-    );
-  }
-  const json = (await res.json()) as { data?: { streamId?: string; eventId?: string } };
-  return {
-    streamId: json.data?.streamId ?? "",
-    eventId: json.data?.eventId ?? "",
-  };
+  if (!receipt.eventId || !receipt.streamId)
+    throw new Error("Awada returned an invalid enqueue receipt");
+  return receipt;
 }
 
 export async function sendTextToAwada(params: {
@@ -116,6 +111,7 @@ export async function sendTextToAwada(params: {
   target: OutboundTarget;
   text: string;
   sourceEventId?: string;
+  requestId?: string;
 }): Promise<string> {
   const { relayBaseUrl, awadaKey, lane, target, text, sourceEventId } = params;
   const result = await postOutbound({
@@ -125,8 +121,9 @@ export async function sendTextToAwada(params: {
     target,
     payload: [{ type: "text", text }],
     sourceEventId,
+    requestId: params.requestId,
   });
-  return result.streamId;
+  return result.eventId;
 }
 
 /**
@@ -139,6 +136,7 @@ export async function sendMediaToAwada(params: {
   target: OutboundTarget;
   media: ContentObject;
   sourceEventId?: string;
+  requestId?: string;
 }): Promise<string> {
   const { relayBaseUrl, awadaKey, lane, target, media, sourceEventId } = params;
   const result = await postOutbound({
@@ -148,51 +146,19 @@ export async function sendMediaToAwada(params: {
     target,
     payload: [media],
     sourceEventId,
+    requestId: params.requestId,
   });
-  return result.streamId;
+  return result.eventId;
 }
 
-const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".svg",
-]);
-
-/**
- * Build a ContentObject from a file_name (and optional file_id), for pre-stored
- * WeChat cloud files. Type is determined by extension: image extensions → ImageObject,
- * everything else → FileObject.
- */
-export function buildMediaContentFromName(params: {
-  file_name: string;
-  file_id?: string;
-}): ImageObject | FileObject {
-  const { file_name, file_id } = params;
-  const ext = file_name.slice(file_name.lastIndexOf(".")).toLowerCase();
-  if (IMAGE_EXTENSIONS.has(ext)) {
-    return {
-      type: "image",
-      file_name,
-      ...(file_id ? { file_id } : {}),
-    };
-  }
-  return {
-    type: "file",
-    file_name,
-    ...(file_id ? { file_id } : {}),
-  };
-}
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"]);
 
 /**
  * Build a ContentObject from a URL.
  * file_name is extracted from the URL path; file_url is set to the URL.
  * Type is determined by extension: image extensions → ImageObject, everything else → FileObject.
  */
-export function buildMediaContentFromUrl(url: string): ImageObject | FileObject {
+export function buildMediaContentFromUrl(url: string): MediaObject {
   const pathname = new URL(url).pathname;
   const raw = pathname.split("/").pop() ?? "";
   const file_name = raw || "file";
@@ -200,5 +166,7 @@ export function buildMediaContentFromUrl(url: string): ImageObject | FileObject 
   if (IMAGE_EXTENSIONS.has(ext)) {
     return { type: "image", file_name, file_url: url };
   }
+  if ([".mp4", ".mov", ".webm", ".m4v"].includes(ext))
+    return { type: "video", file_name, file_url: url };
   return { type: "file", file_name, file_url: url };
 }

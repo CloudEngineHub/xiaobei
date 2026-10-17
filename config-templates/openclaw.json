@@ -18,21 +18,41 @@
             "id": "deepseek-v4.1-flash",
             "name": "deepseek-v4.1-flash",
             "reasoning": false,
-            "input": ["text", "image"],
+            "input": [
+              "text",
+              "image"
+            ],
             "contextWindow": 1000000,
             "maxTokens": 393216,
-            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-            "compat": { "thinkingFormat": "openai" }
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "compat": {
+              "thinkingFormat": "openai"
+            }
           },
           {
             "id": "qwen3.8-flash",
             "name": "qwen3.8-flash",
             "reasoning": true,
-            "input": ["text", "image"],
+            "input": [
+              "text",
+              "image"
+            ],
             "contextWindow": 983616,
             "maxTokens": 131072,
-            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-            "compat": { "thinkingFormat": "openai" }
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "compat": {
+              "thinkingFormat": "openai"
+            }
           }
         ]
       }
@@ -52,9 +72,6 @@
           "bailian/deepseek-v4.1-flash"
         ]
       },
-      "memorySearch": {
-        "provider": "none"
-      },
       "models": {
         "bailian/deepseek-v4.1-flash": {},
         "bailian/qwen3.8-flash": {}
@@ -68,19 +85,26 @@
         "maxConcurrent": 4,
         "announceTimeoutMs": 3600000,
         "maxSpawnDepth": 2
+      },
+      "modelPolicy": {
+        "allow": [
+          "bailian/deepseek-v4.1-flash",
+          "bailian/qwen3.8-flash"
+        ]
+      },
+      "systemAgent": {
+        "agentId": "it-engineer"
       }
     },
-    "list": [
-      {
-        "id": "main",
-        "default": true,
+    "entries": {
+      "main": {
         "name": "小贝",
         "workspace": "~/.openclaw/workspace-main",
         "skills": [
           "smart-search",
           "browser-guide",
           "email-ops",
-          "session-logs",
+          "visualize",
           "tmux"
         ],
         "subagents": {
@@ -92,8 +116,7 @@
         "tools": {
           "exec": {
             "host": "gateway",
-            "security": "full",
-            "ask": "off"
+            "mode": "full"
           }
         },
         "heartbeat": {
@@ -103,42 +126,40 @@
         },
         "reasoningDefault": "off"
       },
-      {
-        "id": "it-engineer",
+      "it-engineer": {
         "name": "IT Engineer",
         "workspace": "~/.openclaw/workspace-it-engineer",
         "skills": [
           "healthcheck",
           "nano-pdf",
           "skill-creator",
-          "session-logs",
+          "visualize",
           "tmux",
-          "weather",
           "summarize",
-          "gifgrep",
           "node-connect",
           "github",
           "gh-issues",
-          "coding-agent"
+          "coding-agent",
+          "configure-channel",
+          "add-model-provider",
+          "diagnose-gateway",
+          "cloud-image-bake"
         ],
         "tools": {
           "exec": {
             "host": "gateway",
-            "security": "full",
-            "ask": "off"
+            "mode": "full"
           }
         },
-        "thinkingDefault": "high",
         "reasoningDefault": "off"
       },
-      {
-        "id": "content-producer",
+      "content-producer": {
         "name": "producer",
         "workspace": "~/.openclaw/workspace-content-producer",
         "skills": [
           "smart-search",
           "browser-guide",
-          "session-logs",
+          "visualize",
           "tmux"
         ],
         "subagents": {
@@ -149,20 +170,21 @@
         "tools": {
           "exec": {
             "host": "gateway",
-            "security": "allowlist",
-            "ask": "off"
+            "mode": "allowlist"
           }
         },
         "reasoningDefault": "off"
       }
-    ]
+    },
+    "ownership": "explicit"
   },
   "bindings": [
     {
       "agentId": "main",
       "comment": "openclaw-weixin -> Main Agent onboarding entry",
       "match": {
-        "channel": "openclaw-weixin"
+        "channel": "openclaw-weixin",
+        "accountId": "*"
       }
     }
   ],
@@ -182,8 +204,7 @@
   "commands": {
     "native": "auto",
     "nativeSkills": "auto",
-    "restart": true,
-    "ownerDisplay": "raw"
+    "restart": true
   },
   "hooks": {
     "internal": {
@@ -215,18 +236,19 @@
       "token": ""
     },
     "tailscale": {
-      "mode": "off",
-      "resetOnExit": false
+      "mode": "off"
     },
     "nodes": {
-      "denyCommands": [
-        "camera.snap",
-        "camera.clip",
-        "screen.record",
-        "calendar.add",
-        "contacts.add",
-        "reminders.add"
-      ]
+      "commands": {
+        "deny": [
+          "camera.snap",
+          "camera.clip",
+          "screen.record",
+          "calendar.add",
+          "contacts.add",
+          "reminders.add"
+        ]
+      }
     }
   },
   "skills": {
@@ -249,12 +271,6 @@
       "coding-agent": {
         "enabled": true
       },
-      "slack": {
-        "enabled": false
-      },
-      "wacli": {
-        "enabled": false
-      },
       "gemini": {
         "enabled": false
       },
@@ -262,9 +278,6 @@
         "enabled": false
       },
       "openai-whisper-api": {
-        "enabled": false
-      },
-      "voice-call": {
         "enabled": false
       },
       "sherpa-onnx-tts": {
@@ -282,23 +295,49 @@
       "clawhub": {
         "enabled": false
       },
+      "slack": {
+        "enabled": false
+      },
+      "wacli": {
+        "enabled": false
+      },
+      "voice-call": {
+        "enabled": false
+      },
       "discord": {
         "enabled": false
       },
       "canvas": {
         "enabled": false
       },
-      "taskflow-inbox-triage": {
+      "block-kit": {
+        "enabled": false
+      },
+      "browser-automation": {
+        "enabled": false
+      },
+      "crabbox-apps": {
+        "enabled": false
+      },
+      "facetime": {
         "enabled": false
       },
       "ordercli": {
+        "enabled": false
+      },
+      "camsnap": {
+        "enabled": false
+      },
+      "control-ui": {
         "enabled": false
       }
     }
   },
   "plugins": {
     "load": {
-      "paths": ["${XIAOBEI_HOME}/awada"]
+      "paths": [
+        "${XIAOBEI_HOME}/awada"
+      ]
     },
     "entries": {
       "awada": {
@@ -317,12 +356,7 @@
         "enabled": false
       },
       "memory-core": {
-        "enabled": true,
-        "config": {
-          "dreaming": {
-            "enabled": false
-          }
-        }
+        "enabled": true
       },
       "openclaw-weixin": {
         "enabled": true
@@ -334,11 +368,29 @@
       "host": "gateway"
     },
     "web": {
+      "search": {
+        "enabled": false
+      },
       "fetch": {
         "ssrfPolicy": {
-          "allowRfc2544BenchmarkRange": true
+          "allowRfc2544BenchmarkRange": true,
+          "allowIpv6UniqueLocalRange": true
         }
       }
     }
+  },
+  "memory": {
+    "search": {
+      "provider": "none"
+    }
+  },
+  "meta": {
+    "migrations": {
+      "modelPolicyAllowlist": true
+    },
+    "lastTouchedVersion": "2026.10.4"
+  },
+  "talk": {
+    "agentId": "main"
   }
 }

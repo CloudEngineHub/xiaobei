@@ -1,5 +1,7 @@
 # 专家包（Expert Pack）+ DNA 架构规划
 
+> 2026-10-17 兼容性说明：下方保留旧版源码调研和结构规划。OpenClaw 2026.10.4 已退役独立 TOOLS.md（备忘迁到 AGENTS.md 的 Tools 节）和 HEARTBEAT.md 自动注入；子 agent 只自动加载 AGENTS.md，Cron 加载 AGENTS/SOUL/IDENTITY/USER，总注入默认预算为 60,000 字符。旧文件布局、2.1/2.2 的白名单和预算不可直接用于新部署；当前规则以 [Workspace Bootstrap 文件机制](workspace-bootstrap-files.md) 为准。专家包按技能按需读取的原则不变。
+
 > 2026-09-23 注：本文件中的 `collage-broll` 独立工具结构已由 `expert-video/workflows/collage-broll.md` 和 `video-producer` 通用视觉工具取代；下方保留当时的架构记录。
 > 2026-10-12 注：main 新增 `expert-osbi` 收纳公开信息提取、跟踪和研究；`expert-bd` 聚焦互动与联络，原始采集走 hunter / smart-search。当前结构与浏览器搜索合并评估见 [OSBI 重构说明](osbi-refactor-and-browser-search.md)。下方旧 BD/市场研究例子按该职责划分理解。
 

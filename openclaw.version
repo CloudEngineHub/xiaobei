@@ -1,4 +1,4 @@
-# OpenClaw 上游版本锁定
+# OpenClaw 上游版本锁定（小贝 5.8.x 跟随 2026.10.x，具体版本由此文件指定）
 # 所有 addon 开发者和 CI 均从此文件读取，保证基于同一版本开发和测试
 #
 # 使用方式（shell）：
@@ -6,5 +6,5 @@
 #   git clone https://github.com/openclaw/openclaw openclaw
 #   git -C openclaw checkout $OPENCLAW_COMMIT
 #
-OPENCLAW_VERSION=2026.7.1-2
-OPENCLAW_COMMIT=0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
+OPENCLAW_VERSION=2026.10.4
+OPENCLAW_COMMIT=383c124cc32ffee3f8e56f549b88da94d269a4af

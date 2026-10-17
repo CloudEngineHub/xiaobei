@@ -1,0 +1,24 @@
+diff --git a/test/scripts/build-all.test.ts b/test/scripts/build-all.test.ts
+index d52cd0e76a1..33c8a15dce1 100644
+--- a/test/scripts/build-all.test.ts
++++ b/test/scripts/build-all.test.ts
+@@ -247,7 +247,7 @@ describe("resolveBuildAllSteps", () => {
+     ["package", "1"],
+     ["ciArtifacts", "0"],
+   ])(
+-    "generates native protocol models before compiling %s with skip-dts=%s",
++    "skips native client models while compiling gateway profile %s with skip-dts=%s",
+     async (profile, skipDts) => {
+       const runner = buildRunner();
+       const result = await runBuildAllSteps(profile, {
+@@ -263,8 +263,8 @@ describe("resolveBuildAllSteps", () => {
+       const compilation = invocations.findIndex(({ args }) =>
+         args.includes("scripts/tsdown-build.mts"),
+       );
+-      expect(generation).toBeGreaterThanOrEqual(0);
+-      expect(compilation).toBeGreaterThan(generation);
++      expect(generation).toBe(-1);
++      expect(compilation).toBeGreaterThanOrEqual(0);
+     },
+   );
+ 

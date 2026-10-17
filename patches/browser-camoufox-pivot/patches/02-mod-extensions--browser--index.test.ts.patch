@@ -1,0 +1,267 @@
+diff --git a/extensions/browser/index.test.ts b/extensions/browser/index.test.ts
+index 43af27bd1b7..9a6b571308c 100644
+--- a/extensions/browser/index.test.ts
++++ b/extensions/browser/index.test.ts
+@@ -13,7 +13,6 @@ import {
+ } from "./plugin-registration.js";
+ import type { OpenClawPluginApi } from "./runtime-api.js";
+ import setupPlugin from "./setup-api.js";
+-import { BrowserToolOutputSchema } from "./src/browser-tool.schema.js";
+ 
+ type BrowserAutoEnableProbe = Parameters<OpenClawPluginApi["registerAutoEnableProbe"]>[0];
+ 
+@@ -224,208 +223,101 @@ describe("browser plugin", () => {
+     expect(fs.readFileSync(skillPath, "utf8")).toContain("name: browser-automation");
+   });
+ 
+-  it("keeps browser tool registration synchronous while loading runtime on execute", async () => {
++  it("registers one synchronous Camoufox tool and enforces sandbox policy", async () => {
+     const registration = createApi();
+-    const { api, registerTool } = registration;
+     const record = createPluginRecord({ id: "browser", contracts: { tools: ["browser"] } });
+     const registry = createPluginRegistry({
+-      runtime: api.runtime,
+-      logger: api.logger,
++      runtime: registration.api.runtime,
++      logger: registration.api.logger,
+       activateGlobalSideEffects: false,
+     });
+-    registerTool.mockImplementation((tool, options) =>
++    registration.registerTool.mockImplementation((tool, options) =>
+       registry.registerTool(record, tool, options),
+     );
+     const tool = createTool(
+-      {
+-        sessionKey: "agent:main:webchat:direct:123",
+-        browser: {
+-          sandboxBridgeUrl: "http://127.0.0.1:9999",
+-          allowHostControl: true,
+-        },
+-      },
++      { browser: { sandboxBridgeUrl: "http://127.0.0.1:9999", allowHostControl: true } },
+       registration,
+     );
+-
+     expect(record.toolNames).toEqual(["browser"]);
+     expect(registry.registry.tools).toEqual([
+       expect.objectContaining({ names: ["browser"], optional: false }),
+     ]);
+     expect(tool.name).toBe("browser");
+     expect(tool.resultContentSource).toBe("network");
+-    expect(tool.description).toContain("action=profiles");
+-    expect(tool.description).not.toContain('profile="user"');
+-    expect(tool.outputSchema).toBe(BrowserToolOutputSchema);
+-    const properties = (
+-      tool.parameters as {
+-        properties: Record<string, { description?: string }>;
+-      }
+-    ).properties;
+-    expect(properties.actions?.description).toContain("batch");
+-    expect(properties.doubleClick?.description).toContain("clickCoords");
+-    expect(properties.labels?.description).toContain("snapshot");
++    expect(tool.description).toContain("xiaobei-browser");
++    await expect(tool.execute("call-1", { action: "status" })).rejects.toThrow(
++      "sandbox/host policy",
++    );
+     expect(runtimeApiMocks.createBrowserTool).not.toHaveBeenCalled();
+-    await tool.execute("call-1", { action: "status" });
+-    expect(runtimeApiMocks.createBrowserTool).toHaveBeenCalledWith({
+-      sandboxBridgeUrl: "http://127.0.0.1:9999",
+-      allowHostControl: true,
+-      agentSessionKey: "agent:main:webchat:direct:123",
+-      mediaScope: {
+-        sessionKey: "agent:main:webchat:direct:123",
+-        chatType: "direct",
+-      },
+-      toolCapabilities: expect.any(Object),
+-    });
+   });
+ 
+-  it("passes runtime context needed for screenshot image understanding", async () => {
++  it("passes the effective host access policy to screenshot execution", async () => {
+     const tool = createTool({
+-      sessionKey: "agent:main:webchat:direct:123",
+       agentId: "main",
+-      agentDir: "/tmp/agent",
+       workspaceDir: "/tmp/workspace",
+       activeModel: { provider: "openai", modelId: "gpt-5.5" },
+-      deliveryContext: { channel: "telegram" },
+-    });
+-
+-    await tool.execute("call-1", { action: "status" });
+-    expect(runtimeApiMocks.createBrowserTool).toHaveBeenCalledWith({
+-      agentSessionKey: "agent:main:webchat:direct:123",
+-      agentId: "main",
+-      agentDir: "/tmp/agent",
+-      workspaceDir: "/tmp/workspace",
+-      activeModel: { provider: "openai", model: "gpt-5.5" },
+-      mediaScope: {
+-        sessionKey: "agent:main:webchat:direct:123",
+-        channel: "telegram",
+-        chatType: "direct",
+-      },
+-      toolCapabilities: expect.any(Object),
++      browser: { allowHostControl: false },
+     });
++    await expect(tool.execute("call-1", { action: "screenshot" })).rejects.toThrow(
++      "sandbox/host policy",
++    );
++    expect(runtimeApiMocks.createBrowserTool).not.toHaveBeenCalled();
+   });
+ 
+-  it("describes and freezes only effective tab-bound actions when evaluation is disabled", async () => {
++  it("honors runtime evaluate config and refuses native tab bindings", async () => {
+     const tool = createTool({
+       runtimeConfig: { browser: { evaluateEnabled: false } },
+       toolBindings: {
+-        browser: {
+-          kind: "tab",
+-          tabId: 7,
+-          target: "host",
+-          profile: "chrome",
+-          targetId: "target-7",
+-        },
+-      },
+-    });
+-    const properties = (tool.parameters as { properties: Record<string, unknown> }).properties;
+-    const action = properties.action as { enum?: string[] };
+-    const kind = properties.kind as { enum?: string[] };
+-    const request = properties.request as {
+-      properties?: Record<string, { enum?: string[] }>;
+-    };
+-
+-    expect(action.enum).toEqual([
+-      "act",
+-      "close",
+-      "console",
+-      "requests",
+-      "errors",
+-      "text",
+-      "emulate",
+-      "dialog",
+-      "download",
+-      "focus",
+-      "navigate",
+-      "pdf",
+-      "screenshot",
+-      "snapshot",
+-      "tabs",
+-      "upload",
+-      "waitfordownload",
+-    ]);
+-    expect(kind.enum).not.toContain("evaluate");
+-    expect(request.properties?.kind?.enum).not.toContain("evaluate");
+-    expect(properties).not.toHaveProperty("fn");
+-    expect(request.properties).not.toHaveProperty("fn");
+-    expect(tool.description).not.toContain("action=profiles");
+-    expect(tool.description).not.toContain("target selects browser location");
+-    expect(tool.description).not.toContain("act:evaluate");
+-
+-    await tool.execute("call-1", { action: "snapshot" });
+-    expect(runtimeApiMocks.createBrowserTool).toHaveBeenCalledWith({
+-      runToolBinding: {
+-        kind: "tab",
+-        tabId: 7,
+-        target: "host",
+-        profile: "chrome",
+-        targetId: "target-7",
++        browser: { kind: "tab", tabId: 7, target: "host", profile: "chrome", targetId: "target-7" },
+       },
+-      toolCapabilities: expect.objectContaining({
+-        tabBound: true,
+-      }),
+     });
++    expect(JSON.stringify(tool.parameters)).not.toContain('"evaluate"');
++    await expect(tool.execute("call-1", { action: "snapshot" })).rejects.toThrow(
++      "Run-bound native browser tabs",
++    );
++    expect(runtimeApiMocks.createBrowserTool).not.toHaveBeenCalled();
+   });
+ 
+-  it("omits unsupported actions for a host-bound existing-session profile", () => {
++  it("exposes only supported Camoufox routes and actions", () => {
+     const tool = createTool({
+       runtimeConfig: {
+-        browser: {
+-          profiles: { user: { driver: "existing-session", attachOnly: true } },
+-        },
+-      },
+-      toolBindings: {
+-        browser: {
+-          kind: "tab",
+-          tabId: 7,
+-          target: "host",
+-          profile: "user",
+-          targetId: "target-7",
+-        },
++        browser: { profiles: { user: { driver: "existing-session", attachOnly: true } } },
+       },
+     });
+     const properties = (tool.parameters as { properties: Record<string, unknown> }).properties;
+-    const actions = (properties.action as { enum?: string[] }).enum;
+-    const actKinds = (properties.kind as { enum?: string[] }).enum;
+-
++    for (const name of ["profile", "target", "node", "dashboard", "frame"])
++      expect(properties).not.toHaveProperty(name);
++    const text = JSON.stringify(tool.parameters);
+     for (const action of [
+-      "pdf",
+-      "download",
+       "waitfordownload",
+-      "requests",
+-      "errors",
+-      "text",
+-      "emulate",
+-    ]) {
+-      expect(actions).not.toContain(action);
+-    }
+-    expect(actions).toEqual(expect.arrayContaining(["snapshot", "screenshot"]));
+-    expect(actKinds).not.toContain("batch");
+-    expect((properties.actions as { description?: string }).description).toBeUndefined();
+-    expect((properties.stopOnError as { description?: string }).description).toBeUndefined();
++      "download",
++      "console",
++      "dialog",
++      "clickCoords",
++      "drag",
++      "batch",
++    ])
++      expect(text).not.toContain('"' + action + '"');
++    expect(text).toContain('"snapshot"');
++    expect(text).toContain('"screenshot"');
+   });
+ 
+-  it("rejects malformed run bindings before creating the lazy browser tool", () => {
+-    expect(() => createTool({ toolBindings: { browser: { kind: "tab" } } })).toThrow(
+-      "invalid browser run binding",
++  it("refuses malformed native run bindings before loading the browser", async () => {
++    const tool = createTool({ toolBindings: { browser: { kind: "tab" } } });
++    await expect(tool.execute("call-1", { action: "snapshot" })).rejects.toThrow(
++      "Run-bound native browser tabs",
+     );
++    expect(runtimeApiMocks.createBrowserTool).not.toHaveBeenCalled();
+   });
+ 
+-  it("derives group chat type for browser media scope", async () => {
++  it("does not expose conversation routing or account IDs in the tool schema", () => {
+     const tool = createTool({
+       sessionKey: "agent:main:telegram:group:chat-123",
+       messageChannel: "telegram",
+     });
+-
+-    await tool.execute("call-1", { action: "status" });
+-    expect(runtimeApiMocks.createBrowserTool).toHaveBeenCalledWith({
+-      agentSessionKey: "agent:main:telegram:group:chat-123",
+-      mediaScope: {
+-        sessionKey: "agent:main:telegram:group:chat-123",
+-        channel: "telegram",
+-        chatType: "group",
+-      },
+-      toolCapabilities: expect.any(Object),
+-    });
++    expect(JSON.stringify(tool.parameters)).not.toContain("chat-123");
++    expect(tool.description).toContain("session=default");
++    expect(runtimeApiMocks.createBrowserTool).not.toHaveBeenCalled();
+   });
+ 
+   it("registers CLI descriptors and lazy-loads the lightweight browser CLI", async () => {

@@ -711,37 +711,12 @@ is_promptable() {
 # camoufox-cli（Firefox 反指纹浏览器）
 # ═══════════════════════════════════════════════════════════════════
 install_camoufox_cli() {
-    if [[ "$SKIP_BROWSER" == "true" ]]; then
-        ui_info "跳过 camoufox-cli 浏览器二进制（--skip-browser）；后续手动：camoufox-cli install"
-        return 0
-    fi
     local node="$WISEFLOW_ROOT/$PORTABLE_NODE"
-    local npm_bin; npm_bin="$(dirname "$node")/npm"
-    local fork_dir="$WISEFLOW_ROOT/camoufox-cli"
-    # portable node 的 npm 全局前缀指向 $WISEFLOW_ROOT，bin 落 $WISEFLOW_ROOT/bin；
-    # 该目录不在默认 PATH，须显式前置，否则下一步 camoufox-cli install �报 command not found。
-    export PATH="$WISEFLOW_ROOT/bin:$(dirname "$node"):$PATH"
-    export npm_config_prefix="$WISEFLOW_ROOT"
-    # fork 的 dist 是 tsc 编译，camoufox-js/playwright-core/pdf-lib 是 external import
-    # （没打进 bundle），运行时靠 fork 目录下的 node_modules 解析。
-    # tarball 为瘦身 ship 的 fork 不带 node_modules，npm install -g <目录> 又是 symlink
-    # 到源目录（非 copy），所以必须先在 fork 目录装运行时依赖，否则 bin 跑起来 ERR_MODULE_NOT_FOUND。
-    if command -v camoufox-cli >/dev/null 2>&1 && [ -d "$fork_dir/node_modules/camoufox-js" ]; then
-        ui_success "camoufox-cli already installed"
-    else
-        [[ -d "$fork_dir" ]] || { ui_warn "camoufox-cli fork 不在 tarball 内：${fork_dir}；跳过"; return 0; }
-        run_required_step "Installing camoufox-cli fork deps" bash -c "cd '$fork_dir' && '$npm_bin' install --omit=dev --registry=https://registry.npmmirror.com"
-        run_required_step "Installing camoufox-cli fork (local)" "$npm_bin" install -g "$fork_dir" --registry=https://registry.npmmirror.com
+    local browser_args=(--root "$WISEFLOW_ROOT")
+    if [[ "$SKIP_BROWSER" == "true" ]]; then
+        browser_args+=(--skip-assets)
     fi
-    # npm install -g 基的 bin 可能缺 +x（symlink 目标权限没带过来），直接调会 Permission denied。
-    # chmod +x 跟随 symlink 改目标权限（macOS/Linux 一致）。
-    local cbin="$WISEFLOW_ROOT/bin/camoufox-cli"
-    [[ -e "$cbin" ]] && chmod +x "$cbin" 2>/dev/null || true
-    ui_info "Ensuring camoufox Firefox binary (idempotent, ~557MB first run)"
-    if ! camoufox-cli install; then
-        ui_warn "camoufox-cli install failed; you can run it manually later: camoufox-cli install"
-    fi
-    ui_success "camoufox-cli ready"
+    run_required_step "Installing xiaobei-browser" "$node" "$WISEFLOW_ROOT/scripts/install-browser.mjs" "${browser_args[@]}"
 }
 
 # 读已装 openclaw-weixin 的版本号；读不到返回非零。
@@ -787,7 +762,7 @@ install_weixin_plugin() {
         ver=$(python3 -c "import json;print(json.load(open('$pin_file'))['openclaw-weixin']['version'])" 2>/dev/null || true)
     fi
     pkg="${pkg:-@tencent-weixin/openclaw-weixin}"
-    ver="${ver:-2.4.8}"
+    ver="${ver:-2.4.10}"
     # 幂等检查：已装版本 == pin 才跳过
     local installed force_flag=""
     installed="$(weixin_installed_version "$claw_cmd" "$pkg" || true)"
@@ -811,7 +786,7 @@ install_weixin_plugin() {
     fi
 }
 
-# 装 awada 本地插件依赖（ws + zod）。
+# 装 awada 本地插件依赖（silk-wasm + typebox + ws + zod）。
 # awada 是 TS 插件经 jiti 运行时加载（openclaw.extensions: ["./index.ts"]），无需 build；
 # tarball ship 的 awada/ 不带 node_modules，这里 npm install --omit=dev 装运行时依赖。
 # config-templates/openclaw.json 已预置 plugins.load.paths=["${XIAOBEI_HOME}/awada"] + entries.awada.enabled=false，
@@ -821,11 +796,11 @@ install_awada_plugin() {
     local npm_bin; npm_bin="$(dirname "$node")/npm"
     local awada_dir="$WISEFLOW_ROOT/awada"
     [[ -d "$awada_dir" ]] || { ui_warn "awada 不在 tarball 内：${awada_dir}；跳过"; return 0; }
-    if [ -d "$awada_dir/node_modules/ws" ] && [ -d "$awada_dir/node_modules/zod" ]; then
+    if [ -d "$awada_dir/node_modules/silk-wasm" ] && [ -d "$awada_dir/node_modules/typebox" ] && [ -d "$awada_dir/node_modules/ws" ] && [ -d "$awada_dir/node_modules/zod" ]; then
         ui_success "awada deps already installed"
         return 0
     fi
-    ui_info "Installing awada plugin deps (ws + zod) via npmmirror"
+    ui_info "Installing awada plugin deps (silk-wasm + typebox + ws + zod) via npmmirror"
     if bash -c "cd '$awada_dir' && '$npm_bin' install --omit=dev --registry=https://registry.npmmirror.com"; then
         ui_success "awada deps installed"
     else

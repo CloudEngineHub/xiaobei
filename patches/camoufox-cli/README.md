@@ -1,12 +1,14 @@
+> 5.8 legacy：此目录仅保留历史参考；正式浏览器在仓根 `browser/`。新版安装入口为 `scripts/install-browser.mjs`，不要用本目录 build.sh 覆盖新版命令。
+
 # camoufox-cli — wiseflow fork
 
-Fork of [`Bin-Huang/camoufox-cli`](https://github.com/Bin-Huang/camoufox-cli) @ **0.6.2**, vendored into the wiseflow repo at `patches/camoufox-cli/`. Not published to npm; built and globally installed from this tree by `build.sh`.
+Vendored fork of [`Bin-Huang/camoufox-cli`](https://github.com/Bin-Huang/camoufox-cli), initially based on **0.6.2**; the current package is **0.7.3-wiseflow.2**. Not published to npm; built and globally installed from this tree by `build.sh`.
 
-This fork is the **线 1** browser backend of the wiseflow browser-stack pivot — see [`docs/browser-stack-replacement-spec-2026-07.md`](../../docs/browser-stack-replacement-spec-2026-07.md) §1 and [`docs/browser-extension-replacement-research.md`](../../docs/browser-extension-replacement-research.md) §12.
+This fork is the **线 1** browser backend of the current stack. The approved 5.8 plan develops it into a WiseFlow-owned browser runtime; implementation has not started. See [browser architecture and development plan](../../docs/browser-architecture.md).
 
 ## Changes vs upstream 0.6.2
 
-Three additions, all per spec §1.1. Everything else is upstream untouched.
+The initial fork added the following three capabilities. This historical list does not cover subsequent fixes; consult the current source for runtime behavior.
 
 ### 1. `upload` command
 

@@ -10,6 +10,8 @@ metadata:
 
 Use this skill when the user/main agent wants to configure a work channel or when Main Agent recommends one.
 
+Workspace conventions: use the `## Tools` section of `AGENTS.md` for local paths, environment variable names and tool aliases; do not create `TOOLS.md`. Preserve existing workspace content. Users manually delete legacy `TOOLS.md` / `HEARTBEAT.md` after upgrading; channel setup does not migrate or clean them up. A subagent automatically receives only `AGENTS.md`; read `OFB_ENV.md` or other task-specific files explicitly when needed and authorized.
+
 Supported channels:
 
 - Feishu
@@ -20,7 +22,7 @@ Supported channels:
 Before collecting account credentials, confirm the selected channel plugin is installed and enabled.
 
 - Feishu: follow `./skills/work-channel-binding/docs/feishu.md` and the current OpenClaw Feishu setup path.
-- WeCom: Main Agent installs the plugin by running:
+- WeCom: installs the plugin by running:
 
 ```bash
 WISEFLOW_CONFIRM_WECOM_INSTALL=confirmed ./skills/work-channel-binding/scripts/install-wecom-channel.sh

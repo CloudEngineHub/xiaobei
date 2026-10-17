@@ -463,53 +463,10 @@ function Expose-SkillWrappers {
 
 # --- 8. camoufox-cli ---
 function Install-CamoufoxCli {
-    if ($script:SkipBrowser) {
-        Write-Host "  [i]  skipping camoufox-cli browser binary (XIAOBEI_SKIP_BROWSER=1); run manually later: camoufox-cli install" -ForegroundColor Yellow
-        return
-    }
-    Write-Stage "Installing camoufox-cli browser"
-    $fork = Join-Path $Root "camoufox-cli"
-    if (-not (Test-Path $fork)) { Write-Warn "camoufox-cli fork not in tarball: $fork; skipping"; return }
-    # Place a camoufox-cli.cmd shim in $Root\bin and prepend it to PATH so the `camoufox-cli install`
-    # below can be found.
-    $env:PATH = "$(Join-Path $Root 'bin');$(Split-Path $NodeExe);$env:PATH"
-    $env:npm_config_registry = "https://registry.npmmirror.com"
-    $camoufoxBin = Join-Path $Root "bin\camoufox-cli.cmd"
-    $cliJs = Join-Path $fork "dist\cli.js"
-    $hasDeps = Test-Path (Join-Path $fork "node_modules\camoufox-js")
-
-    # Runtime deps of the fork: dist is a tsc build, and camoufox-js/playwright-core/pdf-lib are
-    # external imports resolved at runtime via the node_modules under the fork directory. The fork
-    # shipped in the slim tarball does not carry node_modules.
-    if (-not $hasDeps) {
-        Push-Location $fork
-        try {
-            & $NpmCmd install --omit=dev
-            if ($LASTEXITCODE -ne 0) { Write-Warn "camoufox-cli fork deps install failed"; return }
-        } finally { Pop-Location }
-    }
-
-    # Windows does not go through `npm install -g $fork`: when npm installs the fork into
-    # $prefix\node_modules it collides with the fork's own source directory (EEXIST: file already
-    # exists $Root\camoufox-cli) - Windows npm cannot symlink to the source dir the way Linux does.
-    # Instead, mirroring openclaw.cmd, we write a .cmd shim that directly runs
-    # node $fork\dist\cli.js; the fork's node_modules is already in place and Node resolves deps
-    # upward from cli.js. camoufox-cli's JS uses __dirname to locate its own package root, so the
-    # behavior matches a global install.
-    if (-not (Test-Path $cliJs)) { Write-Warn "camoufox-cli entry not found: $cliJs; skipping"; return }
-    $shimLines = @(
-        '@echo off'
-        'setlocal'
-        'set "HERE=%~dp0.."'
-        '"%HERE%\tools\node\node.exe" "%HERE%\camoufox-cli\dist\cli.js" %*'
-    )
-    Set-Content -Path $camoufoxBin -Value $shimLines -Encoding ASCII
-    Write-Ok "camoufox-cli shim written: $camoufoxBin"
-
-    Write-Host "  downloading Firefox binary (first time ~557MB)..."
-    Invoke-Streamed { camoufox-cli install }
-    if ($LASTEXITCODE -ne 0) { Write-Warn "camoufox-cli install failed; you can run manually later: camoufox-cli install" }
-    else { Write-Ok "camoufox-cli ready" }
+    $browserArgs = @((Join-Path $Root "scripts\install-browser.mjs"), "--root", $Root)
+    if ($SkipBrowser) { $browserArgs += "--skip-assets" }
+    & $NodeExe @browserArgs
+    if ($LASTEXITCODE -ne 0) { throw "xiaobei-browser install failed (exit $LASTEXITCODE)" }
 }
 
 # --- 9. openclaw-weixin plugin ---
@@ -563,7 +520,7 @@ function Get-WeixinInstalledVersion([string]$pkg) {
 function Install-WeixinPlugin {
     Write-Stage "Installing WeChat plugin"
     if (-not (Test-Path $ClawCmd)) { Write-Warn "openclaw wrapper not found: $ClawCmd; skipping"; return }
-    $pkg = "@tencent-weixin/openclaw-weixin"; $ver = "2.4.6"
+    $pkg = "@tencent-weixin/openclaw-weixin"; $ver = "2.4.10"
     $pin = Join-Path $Root "openclaw-weixin.version.json"
     if (Test-Path $pin) {
         try {
@@ -594,14 +551,14 @@ function Install-WeixinPlugin {
     else { Write-Warn "plugin install failed; you can run manually later: $ClawCmd plugins install $pkg@$ver --pin$forceHint" }
 }
 
-# --- 10. awada local plugin deps (ws + zod) ---
+# --- 10. awada local plugin deps (silk-wasm + typebox + ws + zod) ---
 function Install-AwadaPlugin {
     Write-Stage "Installing awada plugin deps"
     $awada = Join-Path $Root "awada"
     if (-not (Test-Path $awada)) { Write-Warn "awada not in tarball: $awada; skipping"; return }
     $hasWs   = Test-Path (Join-Path $awada "node_modules\ws")
     $hasZod  = Test-Path (Join-Path $awada "node_modules\zod")
-    if ($hasWs -and $hasZod) { Write-Ok "awada deps already installed"; return }
+    if ((Test-Path (Join-Path $awada "node_modules\silk-wasm")) -and (Test-Path (Join-Path $awada "node_modules\typebox")) -and $hasWs -and $hasZod) { Write-Ok "awada deps already installed"; return }
     $env:npm_config_registry = "https://registry.npmmirror.com"
     Push-Location $awada
     try {

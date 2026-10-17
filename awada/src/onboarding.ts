@@ -33,7 +33,7 @@ const awadaDmPolicy = createTopLevelChannelDmPolicy({
   channel,
   policyKey: "channels.awada.dmPolicy",
   allowFromKey: "channels.awada.allowFrom",
-  getCurrent: (cfg) => (getAwadaCfg(cfg)?.dmPolicy ?? "open") as DmPolicy,
+  getCurrent: (cfg) => (getAwadaCfg(cfg)?.dmPolicy ?? "pairing") as DmPolicy,
   getAllowFrom: (cfg) => getAwadaCfg(cfg)?.allowFrom,
   promptAllowFrom: async ({ cfg, prompter }) => {
     const existing = getAwadaCfg(cfg)?.allowFrom ?? [];
@@ -70,7 +70,11 @@ export const awadaSetupWizard: ChannelSetupWizard = {
       let probeResult = null;
       if (configured && relayBaseUrl) {
         try {
-          probeResult = await probeAwada({ relayBaseUrl });
+          probeResult = await probeAwada({
+            relayBaseUrl,
+            awadaKey: awadaCfg?.awadaKey,
+            lane: awadaCfg?.lane,
+          });
         } catch {
           // ignore probe errors
         }
@@ -83,8 +87,7 @@ export const awadaSetupWizard: ChannelSetupWizard = {
       }
       return ["Awada: configured (relay not verified)"];
     },
-    resolveSelectionHint: ({ cfg }) =>
-      isAwadaConfigured(cfg) ? "configured" : "needs awadaKey",
+    resolveSelectionHint: ({ cfg }) => (isAwadaConfigured(cfg) ? "configured" : "needs awadaKey"),
     resolveQuickstartScore: ({ cfg }) => (isAwadaConfigured(cfg) ? 2 : 0),
   },
   credentials: [],
@@ -98,10 +101,10 @@ export const awadaSetupWizard: ChannelSetupWizard = {
       [
         "Configure awada channel to receive WeChat messages via the relay gateway.",
         "You need:",
-        "  1. A running relay with awada-server gateway (exposes /api/v1/awada)",
+        "  1. A running relay with awada-server gateway (exposes /api/v2/awada)",
         "  2. awadaKey issued by relay admin (carries awada:lane:<lane> scope) — required",
-        "  3. relayBaseUrl (optional, defaults to the official relay domain)",
-        "  4. Lane (optional, server defaults to \"User\" when omitted)",
+        `  3. relayBaseUrl (optional, defaults to ${DEFAULT_RELAY_BASE_URL})`,
+        '  4. Lane (optional, server resolves "user" when omitted; ambiguous matches require a lane)',
       ].join("\n"),
       "Awada setup",
     );
@@ -125,7 +128,7 @@ export const awadaSetupWizard: ChannelSetupWizard = {
 
     const laneInput = String(
       await prompter.text({
-        message: 'Lane (blank = server default "User")',
+        message: 'Lane (blank = server default "user")',
         placeholder: "lane id from relay admin",
         initialValue: currentLane,
       }),
@@ -133,7 +136,9 @@ export const awadaSetupWizard: ChannelSetupWizard = {
 
     const awadaChannel: AwadaConfig = { ...awadaCfg, enabled: true, awadaKey };
     if (relayBaseUrl) awadaChannel.relayBaseUrl = relayBaseUrl;
+    else delete awadaChannel.relayBaseUrl;
     if (laneInput) awadaChannel.lane = laneInput;
+    else delete awadaChannel.lane;
     const next: OpenClawConfig = {
       ...cfg,
       channels: {
@@ -145,7 +150,11 @@ export const awadaSetupWizard: ChannelSetupWizard = {
     // Test connection
     const probeUrl = relayBaseUrl || DEFAULT_RELAY_BASE_URL;
     try {
-      const probe = await probeAwada({ relayBaseUrl: probeUrl });
+      const probe = await probeAwada({
+        relayBaseUrl: probeUrl,
+        awadaKey,
+        lane: laneInput,
+      });
       if (probe.ok) {
         await prompter.note("Relay reachable!", "Awada connection test");
       } else {

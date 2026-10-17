@@ -1,175 +1,105 @@
 # Workspace Bootstrap 文件机制
 
-> 版本基准：openclaw v2026.4.11
+版本基准：OpenClaw **2026.10.4**。文件列表和会话过滤以 `openclaw/src/agents/workspace-bootstrap-policy.ts`、`workspace.ts` 为准；本机实际配置可能限制注入大小或采用不同的 contextInjection 策略。
 
-每个 crew 的 workspace 目录（`~/.openclaw/workspace-<id>/`）下存放着一系列 Markdown 文件，openclaw 在每次 agent 运行时将它们注入系统提示，从而影响 agent 的行为、人格和记忆。本文档说明各文件的作用、加载时机，以及 wiseflow 在标准机制之上做的扩展约定。
+## 文件职责
 
----
+| 文件或章节 | 职责 | 维护方式 |
+|---|---|---|
+| `AGENTS.md` | 工作流程、决策树、操作步骤、派工时必须生效的约束 | crew 模板提供默认值，实例保留用户定制 |
+| `AGENTS.md` 的 `## Tools` 节 | 本机路径、环境变量名称、工具别名和本地约定 | 按实际部署维护，不保存密钥值，不重复 SKILL.md 手册 |
+| `SOUL.md` | 角色、价值观、行为边界 | 不放工具路径和操作步骤 |
+| `IDENTITY.md` | 名字、形象类型、性格基调、emoji、头像 | 不放职责和能力清单 |
+| `USER.md` | 服务对象、称呼、偏好等用户信息 | 按授权维护，避免堆积长篇业务资料 |
+| `BOOTSTRAP.md` | 一次性首次运行引导 | 有采集需求才创建，完成后删除 |
+| `MEMORY.md` | 跨会话保留的背景事实、业务知识、历史决策 | 不写必须每次执行的流程或工具调用规范 |
+| `memory/YYYY-MM-DD.md` | 当日日志和详细记录 | 按任务需要读取，不属于固定自动注入列表 |
+| 各技能的 `SKILL.md` | 该技能的操作手册 | 由 agent 使用技能时按需读取 |
 
-## 一、标准 Bootstrap 文件（openclaw 原生）
+独立 **`TOOLS.md` 已退役**，不在自动加载列表中。模板和安装脚本不得重新生成它。旧版本遗留的 `TOOLS.md` / `HEARTBEAT.md` 由用户升级后手动删除；setup 不负责迁移、归档或清理。
 
-openclaw 共识别 8 个标准文件，**按以下顺序依次注入系统提示**：
+`HEARTBEAT.md` 已退役，运行时不读取，仓内不再提供或部署该文件的模板。心跳频率、活跃时段与通知目标仍由 `agents.defaults.heartbeat` / `agents.entries.<id>.heartbeat` 定义，检查清单存入共享 SQLite 的 monitor scratch；独立周期业务通过原生 Automations 管理。
 
-| # | 文件名 | 作用摘要 | 内容来源 |
-|---|--------|----------|----------|
-| 1 | `AGENTS.md` | 工作区总规则：会话启动流程、记忆管理策略、安全红线、平台格式规范、心跳行为等 | 框架自动生成模板，**用户（或 crew template）定制** |
-| 2 | `SOUL.md` | Agent 核心人格：价值观、行为准则、工作风格、边界定义 | 框架生成模板，**用户（或 crew template）定制** |
-| 3 | `TOOLS.md` | 本地工具配置备忘：摄像头别名、SSH 主机名、TTS 偏好音色等——技能（SKILL.md）定义"怎么用"，TOOLS.md 记录"你的环境具体是什么" | 框架生成空白模板，**用户在运行中维护** |
-| 4 | `IDENTITY.md` | Agent 身份名片：名字、形象（AI/机器人/other）、性格基调、专属 emoji、头像路径 | 框架生成模板，**首次 bootstrap 时由 agent 与用户共同确认** |
-| 5 | `USER.md` | 用户信息：姓名/称呼、时区、偏好、背景笔记 | 框架生成模板，**首次 bootstrap 时由 agent 填写** |
-| 6 | `HEARTBEAT.md` | 心跳轮询任务清单：agent 在 heartbeat 时依照此文件执行周期性检查 | 框架生成空白模板，**agent 运行中自主维护** |
-| 7 | `BOOTSTRAP.md` | 首次运行仪式：引导 agent 确定身份、了解用户、选择接入渠道（**一次性文件**） | 框架自动生成，**agent 首次运行完成后自动删除** |
-| 8 | `MEMORY.md` | 长期记忆：跨会话保留的精华信息（仅在主会话加载，防止隐私泄露到群聊/子 agent） | **用户/agent 自主创建和维护**，初始不存在 |
+main 原心跳模板已移入 `content-calibrator/references/scheduled-review.md`，供用户开启定时取数时参考；main 交 IT 将用户选定的执行内容写入独立 Automation 或其显式引用的 workspace 任务说明。销售客服主动跟进按 `sales-cs-manager` 的 Follow-up Scheduling workflow 配置，不默认启用，也不重建 HEARTBEAT.md。
 
-> `memory.md`（小写）为 `MEMORY.md` 的备用名，两者同时存在时优先加载 `MEMORY.md`。
+## 自动加载范围
 
----
+普通会话的候选顺序为：AGENTS.md、SOUL.md、IDENTITY.md、USER.md、BOOTSTRAP.md、MEMORY.md。不存在的可选文件、隐私过滤、大小限制和 contextInjection 策略会影响最终上下文。
 
-## 二、加载时机与过滤规则
+| 文件 | 私密主会话 | 群聊 / 频道 | 子 agent | Cron |
+|---|---|---|---|---|
+| AGENTS.md | ✓ | ✓ | ✓ | ✓ |
+| SOUL.md | ✓ | ✓ | — | ✓ |
+| IDENTITY.md | ✓ | ✓ | — | ✓ |
+| USER.md | ✓ | ✓ | — | ✓ |
+| BOOTSTRAP.md | 存在时 | 存在时 | — | — |
+| MEMORY.md | ✓ | — | — | — |
+| TOOLS.md / HEARTBEAT.md | — | — | — | — |
 
-### 2.1 主会话（用户直接发起的对话）
+**子 agent 只自动加载 AGENTS.md。** 派工所需的工作流程和约束写在该文件或本次任务说明里；本机环境备忘放在其 Tools 节。需要角色信息、技能手册或部署路径时，在授权范围内显式读取对应文件，不假设 SOUL.md、OFB_ENV.md 或 MEMORY.md 已注入。
 
-加载**全部 8 个文件**（存在时）。
+MEMORY.md 的“主会话”指本 agent 的私密主会话，不限于 agentId=main。不要为补充子 agent 上下文而自动读取其他 crew 的私人记忆。
 
-### 2.2 子 agent 会话（`sessions_spawn` 唤起的 subagent）和 Cron 会话
+## 大小与注入策略
 
-只加载**最小集合**，以减少 token 消耗：
+| 限制 | 默认值 | 配置 |
+|---|---|---|
+| 单文件最大注入字符数 | 20,000 | `agents.entries.<id>.bootstrapMaxChars`，回退到 `agents.defaults.bootstrapMaxChars` |
+| 总注入字符数 | 60,000 | `agents.entries.<id>.bootstrapTotalMaxChars`，回退到 defaults |
+| USER.md 额外上限 | 4,000 | 不能通过提高通用限制突破 |
 
-| 文件 | 是否加载 |
-|------|---------|
-| AGENTS.md | ✓ |
-| SOUL.md | ✓ |
-| TOOLS.md | ✓ |
-| IDENTITY.md | ✓ |
-| USER.md | ✓ |
-| HEARTBEAT.md | ✗（排除） |
-| BOOTSTRAP.md | ✗（排除） |
-| MEMORY.md | ✗（排除，防隐私泄露） |
+合并 Tools 后要检查 AGENTS.md 的总长度；不要把技能全文复制到其中，也不要盲目提高所有 agent 的预算。被截断的内容不能视为已加载。
 
-### 2.3 Heartbeat 会话（周期性心跳轮询）
+`contextInjection` 支持 agent 覆盖 defaults；`always`、`continuation-skip`、`never` 的实际效果以当前配置为准。“文件存在”“属于候选列表”和“本轮确实注入”是不同事实。
 
-在最小集合基础上**额外加载 HEARTBEAT.md**，但仅当该 agent 是配置了心跳的默认 agent 时生效。
+## 首次引导与运行状态
 
-若开启了 `heartbeat.lightContext: true`，则心跳会话只加载 `HEARTBEAT.md`，其余文件全部排除（极致节省 token）。
+BOOTSTRAP.md 只承担一次性用户信息采集。完成后将用户资料写入 USER.md、长期事实写入 MEMORY.md、本机环境备注写入 AGENTS.md 的 Tools 节，再删除 BOOTSTRAP.md。无需采集时不保留空占位文件。
 
-### 2.4 Continuation-skip 优化
+工作区初始化状态在共享 SQLite 中；旧 workspace-state JSON、attestation sidecar 和会话 JSONL 是迁移输入，不应继续当作本版运行状态手工维护。
 
-当 `agents.defaults.contextInjection = "continuation-skip"`（非默认）时，首轮 bootstrap 完成后的后续 turn 跳过文件注入，减少 prompt 缓存失效。默认值 `"always"` 表示每次 turn 都注入。
+- 共享状态：`<stateDir>/state/openclaw.sqlite`。
+- agent 持久化：`<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite`。
+- 旧会话迁移归档：`<stateDir>/agents/<agentId>/session-sqlite-import-archive/`。
 
----
+## setup-crew 的职责
 
-## 三、大小限制
+`scripts/setup-crew.sh` 部署模板和技能、同步声明、生成配置及环境备忘；不执行引擎构建或重启 Gateway。
 
-| 限制项 | 默认值 | 配置键 |
-|--------|--------|--------|
-| 单文件最大磁盘读取 | 2 MB | 硬编码 |
-| 单文件注入最大字符数 | 20,000 字符 | `agents.defaults.bootstrapMaxChars` |
-| 所有文件合计最大字符数 | 150,000 字符 | `agents.defaults.bootstrapTotalMaxChars` |
+- 新模板直接包含 AGENTS.md 的 Tools 节，不携带 TOOLS.md 或 HEARTBEAT.md。
+- 文件编辑、exec、真实换行、会话文件约定及 Docker 运行约束写入 AGENTS.md；已存在的提示不重复追加，保留用户正文。
+- 已部署工作区不整文件覆盖；模板正文的更新不等于实例自定义正文已被替换。`--force` 是覆盖选项，不能用于日常迁移用户资料。
+- setup 不迁移、归档或删除旧 TOOLS.md / HEARTBEAT.md，也不为它们触发 Doctor；旧文件由用户升级后手动删除。
+- 源码部署的 OFB_ENV.md 记录安装路径和 dotenv 位置；IT 从 AGENTS.md 获知该文件后按需读取。
 
-超出单文件限制时内容被截断，并根据 `bootstrapPromptTruncationWarning` 配置决定是否向 agent 发出警告。
+## 系统运维与渠道归属
 
----
+新安装的 config template 将 `agents.defaults.systemAgent.agentId` 指向 it-engineer；IT 的模板与 BUILTIN_SKILLS 声明包含四个 Custodian 运维技能。setup 仅在 owner 未指定时补 IT，不覆盖实例已有明确选择。systemAgent 选择系统推理使用的模型/凭据及 Custodian 技能库归属，不替代聊天 binding、heartbeat.agentId 或 talk.agentId。
 
-## 四、BOOTSTRAP.md 生命周期
+该 pin 的 `tryResolveLegacyCompatibilityAgentId` 还会将显式 systemAgent 作为未匹配消息的兼容兜底；不能仅凭 ownership=explicit 就宣称所有未绑定请求都会拒绝。已有精确 binding 优先，工作渠道启用时必须明确账号归属。
 
-1. **首次部署时**：框架自动创建 `BOOTSTRAP.md`，记录状态到 `.openclaw/workspace-state.json`
-2. **首次对话**：agent 读取 `BOOTSTRAP.md`，与用户完成身份确认（名字、性格、渠道接入等），更新 `IDENTITY.md`、`USER.md`、`SOUL.md`
-3. **仪式完成后**：agent **删除** `BOOTSTRAP.md`，框架将 `workspace-state.json` 中的 `setupCompletedAt` 置为当前时间
-4. **后续运行**：`BOOTSTRAP.md` 不再存在，框架不会重新生成
+微信 onboarding 在模板和 setup 中统一为一条 `openclaw-weixin + accountId="*" → main`，以接收插件登录生成的不同账号。飞书等工作渠道按启用流程写具体 accountId，不预置 `feishu + "*" → main`。已部署实例的 binding 不因 setup 被清理或改写；上游 Doctor 为保留旧 default agent 行为生成的兼容规则需按实例路由另行审阅。
 
----
+## 项目扩展文件
 
-## 五、MEMORY.md 安全约定
+以下属于 xiaobei 安装约定，不是原生自动 bootstrap 文件。
 
-`MEMORY.md` 仅在主会话（用户直接一对一对话）中加载，**不会**注入群聊会话、子 agent 会话或 cron 会话。这是为了防止包含敏感个人信息的长期记忆在开放环境（如 Discord 群组、多人 Telegram 群）中泄露。
+| 文件 | 用途 |
+|---|---|
+| `DECLARED_SKILLS` | 对外 crew 的技能白名单 |
+| `BUILTIN_SKILLS` | 对内 crew 在公共基线之外声明的专属技能 |
+| `DENIED_SKILLS` | 排除不适用的技能 |
+| `ALLOWED_COMMANDS` | 对外 crew 在 deny 基础上通过 `+` 条目声明可执行脚本 |
+| `OFB_ENV.md` | IT 的本机部署路径和环境文件备忘 |
 
-agent 应在 `AGENTS.md` 中明确记录此约定：
+技能列表最终写入 `agents.entries.<id>.skills`。内部 crew 通常使用 exec full，外部 crew 按声明采用 allowlist 或 deny；实际审批数据由原生存储管理，不手改运行数据库来扩大权限。公共技能基线以 `scripts/lib/agent-skills.sh` 为准，不能继续引用已移除的 session-logs。
 
-```markdown
-### 🧠 MEMORY.md - 长期记忆
-- **仅在主会话（与用户直接一对一）加载**
-- **不在群聊、子 agent、外部对话中加载**（安全隔离）
-```
+## Crew 模板检查
 
----
-
-## 六、xiaobei 扩展文件（非 openclaw 原生）
-
-以下文件是 xiaobei 的约定扩展，**openclaw 框架不会自动处理**，由脚本或 agent 按需读取后写入 `openclaw.json`。
-
-### 6.1 DECLARED_SKILLS — 外部 crew 技能白名单
-
-| 属性 | 说明 |
-|------|------|
-| 适用 crew 类型 | 对外 crew（T0，如 sales-cs） |
-| 作用 | 声明该 crew 被允许使用的技能，**只有声明的技能才可使用** |
-| 使用方 | `add-agent.sh`（`hrbp-recruit` 脚本底层）读取，写入该 agent 的 `openclaw.json` `agents.list[].skills` |
-| 格式 | 每行一个技能名，`#` 开头为注释 |
-
-外部 crew 采用**最小权限原则**：不继承全局技能基线，只能使用 `DECLARED_SKILLS` 中明确列出的技能。这防止对外服务的 agent 意外访问内部工具。
-
-### 6.2 BUILTIN_SKILLS — 内部 crew 扩展技能
-
-| 属性 | 说明 |
-|------|------|
-| 适用 crew 类型 | 对内 crew（T1/T2，如 selfmedia-operator、business-developer、designer） |
-| 作用 | 列出该 crew 在公共基线之上额外需要的专属技能 |
-| 使用方 | `setup-crew.sh`（初始安装/升级）或 `recruit-internal-crew.sh`（Main Agent 招募新内部 crew）读取，合并到公共基线后写入 `agents.list[].skills` |
-| 格式 | 每行一个技能名，无需重复列入公共基线中已有的技能 |
-
-**公共基线**（所有内部 crew 都有的技能）由 `config-templates/openclaw.json` 中各 agent 配置定义，通常包括：`nano-pdf`、`skill-creator`、`session-logs`、`tmux`、`weather`、`summarize`、`self-improving` 等。
-
-### 6.3 DENIED_SKILLS — 显式排除技能
-
-| 属性 | 说明 |
-|------|------|
-| 适用 | 所有 crew |
-| 作用 | 从候选技能列表中强制排除某些技能，防止误配置 |
-| 使用方 | `add-agent.sh` 在构建 `agents.list[].skills` 时移除此列表中的技能 |
-| 典型用途 | 排除 `github`/`gh-issues`/`coding-agent`（IT 专用）、商务拓展专属技能（非 BD crew）等 |
-
-### 6.4 ALLOWED_COMMANDS — 精确命令放行
-
-| 属性 | 说明 |
-|------|------|
-| 适用 | 对外 crew（T0） |
-| 作用 | 在 T0（默认拒绝所有 shell 命令）基础上，精确允许特定脚本路径 |
-| 格式 | `+<相对于 workspace 的路径>` |
-| 典型用途 | 放行 `./skills/customer-db/scripts/*.sh`、`./skills/payment_send/scripts/*.sh` 等声明式技能脚本 |
-
----
-
-## 七、各 Crew 文件配置速查
-
-> **2026-07-04 修订（D8 扁平化 + D19 权限放开）**：从 Pro 仓 addons 层级结构改为 client 仓扁平结构。原 `hrbp` / `selfmedia-operator` / `business-developer` / `designer` 全部合入 `main`（AI 搞钱搭子「小贝」）。`main` / `content-producer` / `it-engineer` 升为 T3 full，`sales-cs` 维持 T0。（产品拆分决策已落地，历史规划文档已清理，可从 git 历史恢复。）
-
-### 内置 Crew（对内，T3 full — D19 已落）
-
-| Crew | 角色 | 特殊文件 | 备注 |
-|------|------|---------|------|
-| `main` | DEFAULT — AI 搞钱搭子「小贝」（OPC / 中小微企业老板） | 标准 8 个文件 | 整合原 selfmedia-operator + business-developer + IR 三模式；绑 openclaw-weixin |
-| `content-producer` | 内容制作（视频 / 图像） | 标准 8 个文件 | 整合原 video-producer + designer |
-| `it-engineer` | sub-agent，无 channel | 标准 8 个文件 + D19/D20/部署运维知识（注入到 MEMORY 顶部） | Phase 8.1 记忆注入已完成（2026-07-04） |
-| `_template` | crew 创建模板 | 标准 8 个文件 | D8 扁平化时搬入 |
-
-### 外部 Crew（对外，T0 — D19 维持）
-
-| Crew | 角色 | 特殊文件 | 备注 |
-|------|------|---------|------|
-| `sales-cs` | 销售客服 | 标准 8 个文件 + `DECLARED_SKILLS` + `ALLOWED_COMMANDS` | 默认 seed 不在 openclaw.json；绑 awada（启用时由 IT 改 enabled+软链 `business_knowledge/`） |
-
----
-
-## 八、Crew 自查清单
-
-在实例化或调试 crew 时，可以按以下清单检查：
-
-- [ ] `AGENTS.md` 是否有明确的 Session Startup 流程（读取 SOUL.md、USER.md、MEMORY.md 等）？
-- [ ] `SOUL.md` 是否设置了正确的 `crew-type`（`internal` 或 `external`）？
-- [ ] `IDENTITY.md` 是否已填写（或留有填写指引）？
-- [ ] `HEARTBEAT.md` 是否只包含必要的周期性任务（保持小而精，避免 token 浪费）？
-- [ ] `BOOTSTRAP.md` 是否是一次性文件，首次运行后是否删除？
-- [ ] 对外 crew：`DECLARED_SKILLS` 是否存在且内容完整？
-- [ ] 对内 crew：`BUILTIN_SKILLS` 是否列出了所有专属技能（不包含公共基线已有的技能）？
-- [ ] `DENIED_SKILLS` 是否排除了不适合此 crew 的全局技能？
-- [ ] 对外 crew：`ALLOWED_COMMANDS` 是否只放行了声明式技能所需的脚本？
+- AGENTS.md 是否能独立表达子 agent 完成任务所需的工作流程与边界？
+- 本机路径和工具别名是否收在其 Tools 节，工具操作是否仍指向具体 SKILL.md？
+- 模板和生成器是否不再创建 TOOLS.md / HEARTBEAT.md，setup 是否不再承担旧文件迁移或清理？
+- SOUL.md 的 crew-type、技能声明及执行命令声明是否与 crew 实际职责一致？
+- MEMORY.md 是否只保留长期背景事实，私人记忆是否未被自动带入子 agent / Cron？
+- BOOTSTRAP.md 是否确有一次性采集需求，完成后是否移除？
+- 周期任务是否已在 Cron 中核验，合并后的 AGENTS.md 是否在实际注入预算内？

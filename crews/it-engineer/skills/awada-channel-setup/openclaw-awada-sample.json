@@ -2,25 +2,10 @@
   "channels": {
     "awada": {
       "enabled": true,
-      "awadaKey": "<AWADA_KEY>"
-    }
-  },
-  "plugins": {
-    "load": {
-      "paths": [
-        "{WISEFLOW_PROJECT_ROOT}/awada"
-      ]
-    },
-    "entries": {
-      "awada": {
-        "enabled": true,
-        "config": {
-          "customerdb": {
-            "agentId": "sales-cs",
-            "workspaceDir": "{HOME}/.openclaw/workspace-sales-cs"
-          }
-        }
-      }
+      "relayBaseUrl": "https://relay.openclaw-for-business.com/api/v2/awada",
+      "dmPolicy": "open",
+      "allowFrom": ["*"],
+      "groupPolicy": "disabled"
     }
   }
 }

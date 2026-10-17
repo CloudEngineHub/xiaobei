@@ -1,8 +1,8 @@
 /**
  * Gateway client — WS inbound channel + ack.
  *
- * Per docs/AWADA-CLIENT-TRANSPORT.md §4: bot opens WS /api/v1/awada/inbound?lane=<lane>
- * with X-Awada-Key header. Relay pushes `{id, event}` frames. Bot processes the event then
+ * Per docs/AWADA-CLIENT-TRANSPORT.md §4: bot opens WS /api/v2/awada/inbound?lane=<lane>
+ * with X-OFB-Key header. Relay pushes `{id, event}` frames. Bot processes the event then
  * sends `{type:"ack",id}`. Unacked events stay in the PEL and are reclaimed by the gateway
  * (XAUTOCLAIM, min-idle 65s) after reconnect — at-least-once semantics.
  *
@@ -12,15 +12,17 @@
  */
 import WebSocket from "ws";
 import type { InboundEvent } from "./redis-types.js";
+import { awadaApiUrl, parseAwadaJson } from "./api.js";
+import { awadaTechnicalText } from "./presentation.js";
 
 const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 const HEARTBEAT_TIMEOUT_MS = 90_000; // server pings every 30s; allow 3 missed.
 
 /** Convert http(s) base URL to ws(s) and append the inbound path + lane. */
 export function buildInboundWsUrl(relayBaseUrl: string, lane: string): string {
-  const base = relayBaseUrl.trim().replace(/\/+$/, "");
-  const wsBase = base.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://");
-  return `${wsBase}/api/v1/awada/inbound?lane=${encodeURIComponent(lane)}`;
+  const url = awadaApiUrl(relayBaseUrl, "/inbound", lane);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
 }
 
 export type GatewayClientOpts = {
@@ -39,7 +41,19 @@ export type GatewayClientOpts = {
  * Resolves when abortSignal fires (or a fatal misconfiguration throws).
  */
 export async function runGatewayClient(opts: GatewayClientOpts): Promise<void> {
-  const { relayBaseUrl, awadaKey, lane, onEvent, abortSignal, log = console.log, error = console.error } = opts;
+  const {
+    relayBaseUrl,
+    awadaKey,
+    lane,
+    onEvent,
+    abortSignal,
+    log = console.log,
+    error: reportError = console.error,
+  } = opts;
+  const error = (...args: unknown[]) =>
+    reportError(
+      ...args.map((value) => (typeof value === "string" ? awadaTechnicalText(value) : value)),
+    );
   if (!relayBaseUrl) throw new Error("[awada] relayBaseUrl not configured");
   if (!awadaKey) throw new Error("[awada] awadaKey not configured");
 
@@ -64,7 +78,7 @@ export async function runGatewayClient(opts: GatewayClientOpts): Promise<void> {
     if (stopped || abortSignal?.aborted) break;
     // Reset backoff if the previous session lived long enough to be considered healthy.
     if (Date.now() - sessionStart >= 60_000) backoffIdx = 0;
-    const delay = RECONNECT_BACKOFF_MS[Math.min(backoffIdx, RECONNECT_BACKOFF_MS.length - 1)];
+    const delay = RECONNECT_BACKOFF_MS[Math.min(backoffIdx, RECONNECT_BACKOFF_MS.length - 1)]!;
     backoffIdx++;
     log(`[awada] gateway WS reconnecting in ${delay}ms (lane=${lane})`);
     await sleep(delay, abortSignal);
@@ -76,11 +90,13 @@ export async function runGatewayClient(opts: GatewayClientOpts): Promise<void> {
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (abortSignal?.aborted) return resolve();
-    const t = setTimeout(resolve, ms);
-    abortSignal?.addEventListener("abort", () => {
+    const finish = () => {
       clearTimeout(t);
+      abortSignal?.removeEventListener("abort", finish);
       resolve();
-    }, { once: true });
+    };
+    const t = setTimeout(finish, ms);
+    abortSignal?.addEventListener("abort", finish, { once: true });
   });
 }
 
@@ -99,7 +115,17 @@ function runOnce(
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let closed = false;
-    const ws = new WebSocket(url, { headers: { "X-Awada-Key": awadaKey } });
+    const ws = new WebSocket(url, {
+      headers: { "X-OFB-Key": awadaKey },
+      handshakeTimeout: 30_000,
+      maxPayload: 32 * 1024 * 1024,
+    });
+    let admissionTail = Promise.resolve();
+    const onAbort = () => {
+      try {
+        ws.close(1000, "abort");
+      } catch {}
+    };
 
     let lastPong = Date.now();
     const watchdog = setInterval(() => {
@@ -124,6 +150,7 @@ function runOnce(
       if (closed) return;
       closed = true;
       clearInterval(watchdog);
+      abortSignal?.removeEventListener("abort", onAbort);
       try {
         ws.removeAllListeners();
       } catch {
@@ -138,13 +165,17 @@ function runOnce(
     ws.on("message", (raw: Buffer) => {
       let frame: unknown;
       try {
-        frame = JSON.parse(String(raw));
+        frame = parseAwadaJson(String(raw));
       } catch {
         error(`[awada] gateway WS bad frame (non-json)`);
         return;
       }
       if (!frame || typeof frame !== "object") return;
-      const f = frame as { id?: string; event?: InboundEvent; error?: { code?: string; message?: string } };
+      const f = frame as {
+        id?: string;
+        event?: InboundEvent;
+        error?: { code?: string; message?: string };
+      };
       if (f.error) {
         error(`[awada] gateway WS error frame: ${f.error.code ?? ""} ${f.error.message ?? ""}`);
         return;
@@ -152,20 +183,18 @@ function runOnce(
       if (!f.id || !f.event) return;
       const id = f.id;
       const event = f.event;
-      // Process then ack. On processing error we still ack to avoid poison-message hot loops;
-      // bot-side idempotency covers the rare crash-mid-processing redelivery.
-      void Promise.resolve()
+      // onEvent durably admits before ACK. A failed admission must remain in the server PEL.
+      const admission = admissionTail
         .then(() => onEvent(id, event))
-        .catch((err) => {
-          error(`[awada] onEvent failed for ${id}: ${String(err)}`);
-        })
-        .finally(() => {
-          try {
+        .then(() => {
+          if (!closed && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ack", id }));
-          } catch (err) {
-            error(`[awada] ack send failed for ${id}: ${String(err)}`);
           }
         });
+      admissionTail = admission.catch((err) => {
+        error(`[awada] durable admission failed for ${id}: ${String(err)}`);
+        ws.close(1011, "durable admission failed");
+      });
     });
 
     ws.on("error", (err: Error) => {
@@ -178,12 +207,6 @@ function runOnce(
       resolve();
     });
 
-    abortSignal?.addEventListener("abort", () => {
-      try {
-        ws.close(1000, "abort");
-      } catch {
-        // ignore
-      }
-    }, { once: true });
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
   });
 }

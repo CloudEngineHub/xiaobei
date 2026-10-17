@@ -280,15 +280,14 @@ Crew 遇到自己不能解决的问题：
 
 ## 🔧 全新的浏览器栈
 
-v5.6.0 重构了 OpenClaw 原版浏览器自动化方案，v5.6.3 沿用双线栈并按 OpenClaw v2026.7.1 重新对齐 patch。历史背景与正在规划的 5.8 自有 CLI 方案见 [浏览器架构文档](docs/browser-architecture.md)；下表描述现有实现，5.8 重构尚未实施：
+5.8 开发版采用自有 `xiaobei-browser` 运行时和主仓 TypeScript SDK，保留 `camoufox-cli` 兼容入口；当前开发与后续 snapshot / OSBI 计划统一见 [浏览器开发指南](docs/browser-architecture.md)。源码升级不代表已切换本机服务。
 
 | 项 | 说明 |
 |----|------|
-| `patches/camoufox-cli/` | **forked camoufox-cli**（vendor 自上游 `camoufox-cli@0.6.2`）+ 三个新功能：`upload` 命令（Playwright `setInputFiles`，发布类技能依赖）/ daemon fail-first 队列（同 session 并发直接 fail，不排队不等待）/ `identity export`（导出 UA + 指纹摘要，对应 `cookies export`）。`build.sh` 全局安装替换 `$PATH` 上的上游版 |
-| `patches/browser-camoufox-pivot/` | **001 monolith 拆成 35 个单文件 patch**（`patches/` 子目录，按文件名 sort 顺序应用，降低上游漂移失效面）+ adapter + 测试 ship 在 `files/`。删 sandbox 整条路 + 删 host `local-managed` 分支 + 新增 `target=camoufox` 旁路（默认） |
-| `patches/overrides.sh` | **去掉 patchright-core 注入**（playwright-core 保留给 remote-cdp 用）；保留 web_search disable |
-| `002-disable-web-search-env-var` | **留**：openclaw 内置 web search 大部分需要申请 api key 甚至海外网络，小贝自带完全免费、零部署的 Smart Search 解决方案 | `OPENCLAW_DISABLE_WEB_SEARCH=1` |
-| `007-prefer-camoufox-cli` | **留**（改名）：在 browser 工具描述中提示优先用 camoufox-cli 做浏览器自动化，原 browser 工具仅作兜底 | 无 |
+| `browser/` | 共享 client、认证 IPC、session/lease、tab/ref、Python bridge；主仓 `camoufox 0.5.8` + Playwright 1.62.1 |
+| `browser/assets.lock.json` | 配套 Camoufox 156.0.1-beta.36、指纹模型、GeoIP 和 UBO 的固定版本与校验值；显式安装，启动不下载 |
+| `patches/browser-camoufox-pivot/` | OpenClaw 2026.10.4 的薄工具适配，复用共享 client；schema 只暴露已实现能力 |
+| `patches/` | 保留 web search 禁用、系统工具摘要及 Gateway 构建补丁；本轮不全面裁剪上游依赖 |
 
 **浏览器与平台技能覆盖登录、填报、发布、互动、采集等工作流**，按平台使用浏览器自动化或 HTTP API：
 

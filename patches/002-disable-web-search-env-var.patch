@@ -1,14 +1,11 @@
 diff --git a/src/web-search/runtime.ts b/src/web-search/runtime.ts
-index 31040fb3df..ec915c0bf5 100644
+index 39428627193..71bdb8e1422 100644
 --- a/src/web-search/runtime.ts
 +++ b/src/web-search/runtime.ts
-@@ -43,6 +43,9 @@ export function resolveWebSearchEnabled(params: {
-   search?: WebSearchConfig;
-   sandboxed?: boolean;
- }): boolean {
-+  if (process.env.OPENCLAW_DISABLE_WEB_SEARCH === "1") {
-+    return false;
-+  }
-   if (typeof params.search?.enabled === "boolean") {
-     return params.search.enabled;
+@@ -273,5 +273,5 @@ function resolveWebSearchCandidates(
+ ): PluginWebSearchProviderEntry[] {
+   const { config, search, runtimeWebSearch } = context;
+-  if (search?.enabled === false) {
++  if (process.env.OPENCLAW_DISABLE_WEB_SEARCH === "1" || search?.enabled === false) {
+     return [];
    }

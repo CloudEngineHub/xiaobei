@@ -1,14 +1,11 @@
 import type { PluginRuntime } from "openclaw/plugin-sdk/core";
+import { createPluginRuntimeStore } from "openclaw/plugin-sdk/runtime-store";
 
-let runtime: PluginRuntime | null = null;
-
-export function setAwadaRuntime(next: PluginRuntime) {
-  runtime = next;
-}
-
-export function getAwadaRuntime(): PluginRuntime {
-  if (!runtime) {
-    throw new Error("Awada runtime not initialized");
-  }
-  return runtime;
-}
+export const {
+  setRuntime: setAwadaRuntime,
+  getRuntime: getAwadaRuntime,
+  tryGetRuntime: tryGetAwadaRuntime,
+} = createPluginRuntimeStore<PluginRuntime>({
+  pluginId: "awada",
+  errorMessage: "Awada runtime not initialized",
+});

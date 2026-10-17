@@ -87,73 +87,9 @@ if [ -f "$PROJECT_ROOT/patches/overrides.sh" ]; then
   NEEDS_INSTALL=true
 fi
 
-# ─── 补丁应用 helper（两遍：先纯 --3way，失败回退容错 flags） ──────────
-# 纯 --3way 对 freshly-generated 补丁最稳，且能正确处理 deleted-file 条目
-# （--ignore-whitespace --whitespace=fix 会静默跳过删除）。
-# 仅当纯 --3way 失败（如上游 whitespace 漂移）才回退到容错 flags。
-apply_patch() {
-  local patch="$1"
-  echo "  → $(basename "$patch")"
-  if git apply --3way "$patch" 2>/dev/null; then
-    return 0
-  fi
-  git apply --3way --ignore-whitespace --whitespace=fix "$patch" 2>/dev/null || {
-    echo "  ❌ Failed to apply $(basename "$patch")"
-    echo "     Hint: 上游代码可能已变更，需重新生成此补丁"
-    exit 1
-  }
-}
-
-# ─── 应用基础补丁（patches/*.patch，按序号顺序） ─────────────────
-PATCHES_DIR="$PROJECT_ROOT/patches"
-if ls "$PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
-  # 先数总数，循环里打 [n/N] 进度，避免长时间静默让用户以为死机
-  PATCH_TOTAL=$(ls "$PATCHES_DIR"/*.patch 2>/dev/null | wc -l | tr -d ' ')
-  echo "🩹 Applying base patches (${PATCH_TOTAL} files)..."
-  cd "$OPENCLAW_DIR"
-  PATCH_IDX=0
-  for patch in $(ls "$PATCHES_DIR"/*.patch | sort); do
-    PATCH_IDX=$((PATCH_IDX + 1))
-    printf "  [%d/%d] %s\n" "$PATCH_IDX" "$PATCH_TOTAL" "$(basename "$patch")"
-    apply_patch "$patch"
-  done
-  cd "$PROJECT_ROOT"
-  NEEDS_INSTALL=true
-fi
-
-# ─── 应用浏览器转向 per-file 补丁（patches/browser-camoufox-pivot/patches/）──
-# 原 001 monolith（35 文件）按「一个 patch 只改一个上游文件」拆成 35 个单文件
-# patch，降低上游漂移时的失效面：一个文件漂只挂一个 patch，其余照常应用。
-# 按文件名 sort 顺序应用（各 patch 改不同文件，彼此独立，顺序不影正确性）。
-PIVOT_PATCH_DIR="$PROJECT_ROOT/patches/browser-camoufox-pivot/patches"
-if ls "$PIVOT_PATCH_DIR"/*.patch 1>/dev/null 2>&1; then
-  PIVOT_TOTAL=$(ls "$PIVOT_PATCH_DIR"/*.patch 2>/dev/null | wc -l | tr -d ' ')
-  echo "🩹 Applying browser-camoufox-pivot per-file patches (${PIVOT_TOTAL} files)..."
-  cd "$OPENCLAW_DIR"
-  PIVOT_IDX=0
-  for patch in $(ls "$PIVOT_PATCH_DIR"/*.patch | sort); do
-    PIVOT_IDX=$((PIVOT_IDX + 1))
-    printf "  [%d/%d] %s\n" "$PIVOT_IDX" "$PIVOT_TOTAL" "$(basename "$patch")"
-    apply_patch "$patch"
-  done
-  cd "$PROJECT_ROOT"
-  NEEDS_INSTALL=true
-fi
-
-# ─── 拷入浏览器转向新文件（patches/browser-camoufox-pivot/files/）──
-# per-file patch 只改现有文件；新增的 adapter + 测试以整文件形式 ship 在
-# patches/ 下，这里 cp 进 openclaw（git clean 已先跑，所以目标一定是干净上游
-# 状态）。spec §12.3 线 1 后端。
-PIVOT_FILES_DIR="$PROJECT_ROOT/patches/browser-camoufox-pivot/files"
-if [ -d "$PIVOT_FILES_DIR" ]; then
-  echo "🌐 Copying browser-camoufox-pivot new files into openclaw..."
-  for f in "$PIVOT_FILES_DIR"/*.ts; do
-    [ -f "$f" ] || continue
-    cp "$f" "$OPENCLAW_DIR/extensions/browser/src/"
-    echo "  → extensions/browser/src/$(basename "$f")"
-  done
-  NEEDS_INSTALL=true
-fi
+# Source-only patch entry also supports local upgrade validation.
+bash "$PROJECT_ROOT/patches/apply.sh"
+NEEDS_INSTALL=true
 
 # ─── 同步 skills 禁用配置（从 config-templates 到运行配置）──────
 if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" ]; then
@@ -286,8 +222,8 @@ if [ -d "$AWADA_EXT" ] && [ -f "$AWADA_EXT/openclaw.plugin.json" ]; then
   fi
 fi
 
-# ─── 安装 awada 插件依赖（ws + zod）─────────────────────────────
-# awada 走 relay 网关 HTTP/WS 传输，运行时依赖 ws + zod（见 awada/package.json）。
+# ─── 安装 awada 插件依赖（silk-wasm + typebox + ws + zod）─────────────────────────────
+# awada 走 relay 网关 HTTP/WS 传输，运行时依赖 silk-wasm + typebox + ws + zod（见 awada/package.json）。
 # awada 自己的 node_modules 解析这些依赖，不走 ~/.openclaw/node_modules，
 # 故必须装在 awada/ 局部。内容哈希守卫避免重复 install。
 AWADA_PKG_HASH_FILE="$OPENCLAW_HOME/.awada-pkg-hash"
@@ -295,7 +231,7 @@ if [ -d "$AWADA_EXT" ] && [ -f "$AWADA_EXT/package.json" ]; then
   awada_hash="$(_md5 < "$AWADA_EXT/package.json")"
   awada_stored="$(cat "$AWADA_PKG_HASH_FILE" 2>/dev/null || echo '')"
   if [ "$awada_hash" != "$awada_stored" ] || [ ! -d "$AWADA_EXT/node_modules" ]; then
-    echo "📦 Installing awada plugin dependencies (ws + zod)..."
+    echo "📦 Installing awada plugin dependencies (silk-wasm + typebox + ws + zod)..."
     # 裸机/本地走 npmmirror 国内镜像；镜像构建时 ENV NPM_REGISTRY 写死 npmjs（海外构建机不跨境）
     npm_reg="${NPM_REGISTRY:-https://registry.npmmirror.com}"
     (cd "$AWADA_EXT" && npm install --omit=dev --no-audit --no-fund --loglevel=warn --registry="$npm_reg") \
@@ -460,29 +396,8 @@ fi
 if [ "$NEEDS_INSTALL" = "true" ]; then
   echo "📦 Syncing dependencies..."
   cd "$OPENCLAW_DIR"
-  # pnpm 在算包 hash digest 时（TypedArrayPrototypeJoin → crypto::Hash::OneShotDigest）对大包
-  # 一次性 join 整个文件当 TypedArray digest，单 isolate OOM。曾试过 fetch 预拉绕开 digest，
-  # 但 pnpm fetch 无脑下所有 optionalDependencies + 平台包（@github/copilot 104MB /
-  # @openai/codex 91MB / @zed-industries/codex-acp 65MB），这些 wiseflow 根本不用，fetch 自己就炸。
-  # 真根治走 patches 008/009/010/013 把 copilot/codex/acpx/codex-supervisor 四个 extension 的
-  # dependencies 段置空 + patches 011/012 删 pnpm-workspace.yaml 的 patchedDependencies + mra-exclude 段——
-  # pnpm 解析依赖树时这四个 extension 还是 workspace package 但依赖空，transitive 大包一个都不拉，
-  # 根本不触发 digest 段。
-  # 不能加 --no-optional：跟 pnpm-lock.yaml 的 optionalDependencies 平台包声明冲突炸
-  # ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY（@lydell/node-pty-darwin-arm64 那条）。平台包自己
-  # 按 arch 选一个下，体积小不触发 OOM，留着不动。
-  # 必须先删 pnpm-lock.yaml：lockfile 里冻结着 patches 改前四个 extension 的完整 dependencies 段，
-  # pnpm 跑时会按 lockfile 下 copilot/codex/zed 大包到 store（即使 link 段被 patches 截了），仍触发 OOM。
-  # 删了让 pnpm 重新解析依赖树，按当前（已被 patches 改空的）dependencies 段生成新 lockfile。
-  # --strict-peer-dependencies=false 容忍 peer 漂移。阿里云镜像 + timeout 10min + 5 重试 + 并发 8 + NODE_OPTIONS 抬 heap 8GB（双保险）
-  if [ -f "pnpm-lock.yaml" ]; then
-    echo "  → removing stale pnpm-lock.yaml (forces re-resolve, skips frozen copilot/codex/zed entries)"
-    rm -f pnpm-lock.yaml
-  fi
-  NODE_OPTIONS="--max-old-space-size=8192" \
-    pnpm install --no-frozen-lockfile --strict-peer-dependencies=false \
-      --registry=https://registry.npmmirror.com \
-      --fetch-retries=5 --fetch-timeout=600000 --network-concurrency=8
+  # Preserve the upstream dependency graph and lockfile.
+  NODE_OPTIONS="--max-old-space-size=8192" pnpm install --frozen-lockfile
   cd "$PROJECT_ROOT"
 fi
 
@@ -494,7 +409,7 @@ printf '%s\n' "$GLOBAL_SHARED_SKILLS_RAW" \
 GLOBAL_SHARED_COUNT="$(wc -l < "$GLOBAL_SHARED_SKILLS_FILE" | tr -d ' ')"
 echo "🧾 Global shared skills catalog updated ($GLOBAL_SHARED_COUNT)"
 
-# ─── 重新同步 agents.list[].skills（纳入最新全局 skills）──────────
+# ─── 重新同步 agents.entries.<id>.skills（纳入最新全局 skills）──────────
 if [ "$SKIP_CREW" = "true" ]; then
   echo "⏭️  Skipping setup-crew.sh (--skip-crew)"
 elif [ -f "$CONFIG_PATH" ] && [ -x "$PROJECT_ROOT/scripts/setup-crew.sh" ]; then
@@ -516,16 +431,16 @@ elif [ "$NEEDS_INSTALL" = "true" ]; then
   echo "✅ Build complete"
 fi
 
-# ─── camoufox-cli 浏览器二进制（反指纹 Firefox，browser-guide 主推） ──────
-# camoufox-cli install 自带幂等：已装版本 === 当前版本时打印 "already up to date" 并返回
-# （camoufox-cli/dist/install.js:118）。首次下载 ~557MB；仅当 camoufox-cli npm 包升级
-# 导致版本漂移时才重下。用户电脑已有则无害跳过。
-if command -v camoufox-cli >/dev/null 2>&1; then
-  echo "🌐 Ensuring camoufox browser binary (idempotent)..."
-  camoufox-cli install || echo "  ⚠️  camoufox-cli install failed (可后续手动 camoufox-cli install)"
-else
-  echo "  ⚠️  camoufox-cli not on PATH; skip browser binary. 全局装: npm i -g camoufox-cli"
-fi
+# ─── Build the product browser; installation/cutover belongs to the installer ───
+npm ci --ignore-scripts --prefix "$PROJECT_ROOT/browser"
+npm run build --prefix "$PROJECT_ROOT/browser"
+
+# Migrate with the newly built host, validate, then stamp meta only after success.
+node "$PROJECT_ROOT/scripts/migrate-openclaw-config.mjs" --config "$CONFIG_PATH" --write
+
+# Explicit offline schema/state repair. The upstream update guard blocks runtime/service repair.
+OPENCLAW_UPDATE_IN_PROGRESS=1 OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
+  node "$OPENCLAW_DIR/dist/index.js" doctor --fix --non-interactive --no-workspace-suggestions
 
 # ─── 重启 gateway service（如果正在运行） ─────────────────────────
 if [ "$NO_RESTART" = "true" ]; then

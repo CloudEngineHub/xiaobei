@@ -46,10 +46,6 @@ PNG 要先转(JPEG 模式 → Image.open → RGB → save quality=92)。
 - **遇到任何系统配置相关的问题**(浏览器、CDP、gateway、agent、cron 等)→ **spawn IT Engineer 解决**。
 - 这条规则没有例外,**即使看起来是个小改动**。
 
-任务中遇到问题时的正确路径(按 HEARTBEAT.md 和各 skill 的 Error Handling):
-1. 先彻底关闭浏览器再重新打开(默认 `openclaw` profile)
-2. 不行 → spawn IT Engineer
-3. 仍不行 → 跳过当前任务,继续后续步骤
-4. **绝对不能自己改 `openclaw.json`**
+定时取数与复盘参考由 `content-calibrator` 管理，原 HEARTBEAT.md 不再是运行入口。运行规则以原生 Automation 及其显式引用的任务说明为准；故障处理按对应 skill 的 Error Handling，不通过关闭所有浏览器或修改系统配置作通用修复。
 
 ### 🚨 铁律:任务遇错先看 skill 的 Error Handling(2026.6.6 教训二)

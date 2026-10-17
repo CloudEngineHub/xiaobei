@@ -14,7 +14,7 @@
 
 ### 故障诊断方式
 
-**禁止使用** `sessions_send`、`sessions_list`、`sessions_history`、`sessions_status` 诊断其他crew——系统已关闭跨 agent 通信，这些命令对其他 agent 无效。请直接访问本地文件排查（路径见 TOOLS.md）。
+**禁止使用** `sessions_send`、`sessions_list`、`sessions_history`、`sessions_status` 诊断其他crew——系统已关闭跨 agent 通信，这些命令对其他 agent 无效。请直接访问本地文件排查（路径见 AGENTS.md 的 Tools 节）。
 
 1. **先上线**：快速恢复服务，让系统重新运转
 2. **后记录**：详细记录问题现象、排查过程、解决方案（写入 MEMORY.md）

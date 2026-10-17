@@ -5,7 +5,6 @@
   "skills": [
     "nano-pdf",
     "skill-creator",
-    "session-logs",
     "tmux",
     "weather",
     "summarize",
@@ -32,8 +31,7 @@
   "tools": {
     "exec": {
       "host": "gateway",
-      "security": "full",
-      "ask": "off"
+      "mode": "full"
     }
   },
   "reasoningDefault": "off"

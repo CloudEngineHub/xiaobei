@@ -16,11 +16,11 @@
 # ════════════════════════════════════════════════════════════════════
 # Stage 1: build（装齐 immutable 应用层 + 显示栈软件）
 # ════════════════════════════════════════════════════════════════════
-# docker buildx multi-arch：基础镜像 node:24-bookworm 自身是多架构的，
+# docker buildx multi-arch：基础镜像 node:24.16.0-bookworm 自身是多架构的，
 # buildx --platform linux/amd64,linux/arm64 会自动拉对应架构的 node 镜像。
-# camoufox-js 用 os.arch() 探测 CPU，arm64 上自动拉 camoufox-linux-arm64 release，
+# 统一浏览器资产锁按 process.arch 选择对应 Camoufox release，
 # 无需在此声明 TARGETARCH 分支。
-FROM node:24-bookworm AS xiaobei-build
+FROM node:24.16.0-bookworm AS xiaobei-build
 
 # NPM registry 走 ARG 参数——国内构建机走 npmmirror（省代理流量，与裸机 install.sh 同源），
 # 海外构建机（GitHub Actions arm64 runner）走 npmjs（不跨境，最快）。
@@ -67,17 +67,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # pnpm via npm install -g（不走 corepack 网络——corepack prepare 拉 pnpm 包跨境抖动）
 # npm install -g 走 npm registry（npm_config_registry env 已设），拉 pnpm 装到 /usr/local/bin
-RUN npm install -g pnpm@10.30.2
+RUN npm install -g pnpm@12.5.1
 
 WORKDIR /opt/xiaobei
 
 # 仓根整体 COPY（.dockerignore 排除 node_modules/dist/.git，但保留 openclaw/.git）
 # docker-bootstrap.sh 在仓根 docker/ 下，apply-addons.sh / setup-crew.sh 在 scripts/ 下，
-# camoufox-cli fork 在 patches/camoufox-cli/ 下，全部随仓根打进镜像。
+# xiaobei-browser runtime 在 browser/ 下，全部随仓根打进镜像。
 COPY . /opt/xiaobei
 
 # 校验源码树 + 跑 bootstrap 完成"装好后"状态
-# bootstrap 复用裸机安装的 apply-addons.sh / setup-crew.sh / camoufox-cli/build.sh，
+# bootstrap 复用裸机安装的 apply-addons.sh / setup-crew.sh / scripts/install-browser.mjs，
 # 但不跑 daemon install / 不交互收密钥 / 不拉远程仓库（源码已 COPY 进来）
 #
 # 诊断设计（穿透 ACR buildkit 吞同 RUN stdout/stderr 的陷阱）：
@@ -106,7 +106,7 @@ RUN grep -q "BOOTSTRAP_CHAIN_EXIT=0" /opt/xiaobei/.bootstrap-log
 # ════════════════════════════════════════════════════════════════════
 # Stage 2: runtime（瘦运行镜像，从 build 拷 immutable 层）
 # ════════════════════════════════════════════════════════════════════
-FROM node:24-bookworm
+FROM node:24.16.0-bookworm
 
 # runtime 镜像里 pnpm openclaw gateway 启动时不拉包，NPM_CONFIG_REGISTRY 仅给
 # 首启用户手动 npm install -g 补包用。默认走 npmmirror（与裸机 install.sh 同源），
@@ -147,7 +147,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 从 build 阶段拷贝 immutable 应用层
-# /opt/xiaobei       仓根（引擎源码+dist / patches / scripts / crews / skills / awada / camoufox-cli fork）
+# /opt/xiaobei       仓根（引擎源码+dist / patches / scripts / crews / skills / awada / browser runtime）
 # /root/.openclaw    预装态（openclaw.json template / 全局 skills / crew workspaces / weixin 插件）
 # /root/.camoufox-cli  Firefox 二进制 + camoufox-cli 全局包
 # /usr/local         Node + pnpm（node:24 带，corepack pnpm 在 build 装的）
@@ -162,7 +162,7 @@ RUN cp -a /usr/local/bin.d-build/* /usr/local/bin/ 2>/dev/null || true && rm -rf
 
 # pnpm 在 runtime 也需要（openclaw gateway 用 pnpm openclaw gateway 启动）
 # 装和 build stage 同版本 pnpm（不走 corepack 网络，绕跨境抖动）
-RUN npm install -g pnpm@10.30.2
+RUN npm install -g pnpm@12.5.1
 
 # 入口脚本（源文件在 docker/ 下，COPY 源路径相对 build context 仓根）
 COPY docker/docker-entrypoint.sh /usr/local/bin/xiaobei-entrypoint

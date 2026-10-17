@@ -7,6 +7,8 @@ Claude Code 被授权在本仓库中执行任何 git 命令（包括 push、bran
 - main 的 `expert-osbi` 负责公开信息提取、跟踪、分析与市场研究，`expert-bd` 保留 Lead Hunting，负责潜客探索筛选、互动和联络；邮件联络使用公共 `email-ops`。原始资料获取按平台调用 `douyin-hunter` / `xhs-hunter` / `tiktok-hunter` / `kuaishou-hunter` / `x-hunter` / `weibo-hunter` / `wx-mp-hunter` 或公共 `smart-search`；公开直播读取与监听使用 `douyin-hunter live` / `xhs-hunter live` / `tiktok-hunter live` / `kuaishou-hunter live`，直播写操作归 BD；通用 RSS/Atom 解析和情报记录工具归 OSBI。技能操作指导必须写出具体技能名，不用“使用一级 hunter”等泛称代替。
 - `smart-search` 与 `browser-guide` 暂不合并：前者专用于 Camoufox 浏览器搜索，普通站点统一共享持久化 `default` session/profile，自媒体专用 profile 沿用对应技能约定；后者提供通用页面操作指导。七项平台采集技能目前仅 main 配置；当前 crew 可用且接口匹配时优先该技能，未配置时按已有浏览器规则或公开索引执行，不借用其他 crew 的命令或更改 allowlist。
 
+- Awada 对用户和所有 crew（含 IT engineer）只暴露统一账号、动作和产品范围内的业务能力合集；登录设备、客户端指令/维护、历史诊断、回调扩展、通信加密和原消息转发不属于客户端接口；原生转写自动完成，手动仅提供一个转写命令；同一业务能力只保留一个公开命令和统一参数，不能仅删除前缀后保留同义动作。底层实现仅留在插件内部适配。工具说明、配置指导和技术元数据不得要求识别或选择底层平台；客户端不按账号裁剪能力或预判动作支持，兼容与执行限制由 Awada server 处理。
+
 ## Docker 部署规范
 
 - 用户态镜像、Compose service 和持久卷统一使用 **xiaobei** 命名；不得新增 `wiseflow-*` 镜像或卷名。
@@ -17,12 +19,12 @@ Claude Code 被授权在本仓库中执行任何 git 命令（包括 push、bran
 
 创建或修改 crew template（`crews/` 下的任何 crew）时，必须遵循 `docs/workspace-bootstrap-files.md` 中定义的文件职责划分：
 
-- **AGENTS.md**：工作流程、决策树、操作步骤
+- **AGENTS.md**：工作流程、决策树、操作步骤；本机环境备忘统一放在其中的 `## Tools` 节
 - **SOUL.md**：角色定义、价值观、行为边界
 - **IDENTITY.md**：名字、形象类型、性格基调、emoji、头像——仅此四项，不写工作职责或能力清单
-- **TOOLS.md**：本机环境备忘（脚本路径、环境变量、工具别名）——不写工作流程，不重复 SKILL.md 内容
+- **Tools 节**：脚本路径、环境变量名称、工具别名等本机备忘；不保存密钥值，不重复 SKILL.md 操作手册。OpenClaw 2026.10.4 已退役独立 `TOOLS.md`，模板和安装脚本不得重新生成；旧文件由用户升级后手动删除，setup 不迁移或清理
 - **MEMORY.md**：跨会话需保留的背景知识（产品手册、用户偏好、历史记录）——不写工具使用规范
-- **HEARTBEAT.md**：周期性巡检任务清单，保持短小
+- **HEARTBEAT.md**：已退役，不再提供模板或部署；旧文件由用户升级后手动删除，实际周期任务由原生 Automation / 心跳 scratch 管理
 - **BOOTSTRAP.md**：一次性首次运行引导，完成后删除
 - **USER.md**：服务对象信息
 
@@ -40,7 +42,7 @@ Claude Code 被授权在本仓库中执行任何 git 命令（包括 push、bran
 openclaw 实际识别的 frontmatter 字段（参见 `openclaw/src/agents/skills/frontmatter.ts`）：
 
 - 顶层：`name`、`description`（**必需**）、`user-invocable`（默认 true）、`disable-model-invocation`（默认 false）
-- `metadata.openclaw.*`：`emoji`、`homepage`、`skillKey`、`primaryEnv`、`os`、`requires`、`install`、`always`
+- `metadata.openclaw.*`（可选）：`emoji`、`homepage`、`skillKey`、`primaryEnv`、`os`、`requires`、`install`、`always`
 
 其他字段（如 claude code 的 `argument-hint`、`allowed-tools`、`license`）会被静默忽略。
 
@@ -50,10 +52,6 @@ openclaw 实际识别的 frontmatter 字段（参见 `openclaw/src/agents/skills
 ---
 name: browser-guide
 description: Best practices for using the managed browser ...
-metadata:
-  openclaw:
-    emoji: 🌐
-    always: true
 ---
 ```
 
@@ -95,6 +93,6 @@ SKILL.md 是写给**执行时的智能体**看的操作手册，不是开发日�
 |-------|--------------|----------------|
 | `crews/main/skills/wx-mp-hunter` | `cheerio` | ✅ |
 | `crews/main/skills/rss-reader` | `rss-parser` | ✅ |
-| `crews/main/skills/ui-demo` | `camoufox-js`、`playwright-core` | ✅ |
+| `crews/main/skills/ui-demo` | 复用 `browser/` 的受控 driver，无独立 npm 依赖 | 不需要 |
 
 其余 skill 的脚本只用 Node 内置模块或相对 import，不需要 `package.json`。

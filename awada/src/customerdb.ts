@@ -2,30 +2,22 @@
  * CustomerDB feature — injects customer context into LLM prompts and handles
  * silent sales commands (payment_success, club_join) without invoking an LLM.
  *
- * Originally a standalone plugin (customerdb-hook); merged into awada-extension
- * so that a single plugin entry in openclaw.json covers both channel and CRM.
- *
- * Activated when `pluginConfig.customerdb.agentId` is set in openclaw.json:
- *
- *   "plugins": [{
- *     "path": "awada",
- *     "config": {
- *       "customerdb": {
- *         "agentId": "sales-cs",
- *         "workspaceDir": "/home/.../.openclaw/workspace-sales-cs"
- *       }
- *     }
- *   }]
+ * Configured under plugins.entries.awada.config.customerdb. The external plugin
+ * also needs plugins.entries.awada.hooks.allowConversationAccess=true; prompt
+ * injection must not be denied. See awada/README.md for the complete setup.
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { resolveDefaultAwadaAccountId } from "./accounts.js";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
 export interface CustomerDbConfig {
+  /** Scope this customer database to one channel account. */
+  accountId?: string;
   /** Agent ID to attach context to. Default: "sales-cs" */
   agentId?: string;
   /** Workspace directory containing db/customer.db. Default: ~/.openclaw/workspace-sales-cs */
@@ -87,8 +79,7 @@ CREATE TABLE IF NOT EXISTS follow_up (
  *
  * Rules (applied in order):
  *   1. trim leading/trailing whitespace
- *   2. lowercase  (openclaw already lowercases peerId when building sessionKey,
- *                  so this makes the command path consistent with the hook path)
+ *   2. lowercase (preserves existing database keys on both hook and command paths)
  *   3. strip ASCII control characters U+0000–U+001F and U+007F
  *      (\t \n \r \0 etc. — \t breaks tab-separated sqlite3 output parsing;
  *       \n/\r break line-based output; \0 is a null-byte hazard in SQLite C layer)
@@ -102,17 +93,28 @@ function normalizePeer(raw: string): string {
 
 function resolvePeerFromSessionKey(sessionKey?: string): string | null {
   if (!sessionKey) return null;
-  const preferred = sessionKey.match(/^agent:[^:]+:awada:direct:(.+)$/);
-  if (preferred?.[1]) return normalizePeer(preferred[1]);
-  const tolerant = sessionKey.match(/^agent:.*:awada:direct:(.+)$/);
-  if (tolerant?.[1]) return normalizePeer(tolerant[1]);
+  // Both per-channel-peer and per-account-channel-peer host session keys.
+  const direct = sessionKey.match(/^agent:[^:]+:awada:(?:[^:]+:)?direct:(.+)$/)?.[1];
+  if (!direct) return null;
+  if (!direct.startsWith("[")) return normalizePeer(direct); // Legacy plain peer ID.
+  try {
+    const ref: unknown = JSON.parse(direct);
+    // awadaConversationKey: [lane, service account, conversation kind, recipient].
+    if (
+      Array.isArray(ref) &&
+      ref.length === 4 &&
+      ref.every((part) => typeof part === "string") &&
+      typeof ref[3] === "string" &&
+      ref[2] === "direct"
+    )
+      return normalizePeer(ref[3]);
+  } catch {
+    // Do not create customer rows from an unrecognized structured session key.
+  }
   return null;
 }
 
-function resolvePeerForCommand(ctx: {
-  channel: string;
-  senderId?: string;
-}): string | null {
+function resolvePeerForCommand(ctx: { channel: string; senderId?: string }): string | null {
   if (ctx.channel !== "awada") return null;
   if (!ctx.senderId) return null;
   return normalizePeer(ctx.senderId);
@@ -236,7 +238,7 @@ function completeSentOnceFollowUps(dbFile: string, peer: string): void {
 const STATIC_RULES = [
   "CustomerDB 规则（每轮适用）：",
   "- [CustomerDB].peer 是当前客户在数据库中的主键，用于所有 SQL 查询和写库操作。",
-  "- Sender 块中的 id（即 user_id_external）是 awada 原始用户标识，用于需要与 awada 交互的技能（如 exp_invite）。",
+  "- Sender 块中的 id（即 user_id_external）是 Awada 服务提供的路由标识；对外发送时原样使用，不用 peer 替代或自行改写。",
   "- 仅在信息更明确时更新 business_status/purpose/prompt_source。",
   "- 字段为空时不要臆测。",
 ].join("\n");
@@ -263,7 +265,7 @@ function buildFollowUpContext(followUp: SentFollowUp): string {
   ].join("\n");
 }
 
-// ── Public registration function ─────────────��────────────────────────────────
+// ── Public registration function ──────────────────────────────────────────────
 
 /**
  * Register CustomerDB hooks and commands into the given plugin API.
@@ -271,7 +273,9 @@ function buildFollowUpContext(followUp: SentFollowUp): string {
  */
 export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig): void {
   const agentId = cfg.agentId ?? "sales-cs";
-  const workspaceDir = cfg.workspaceDir ?? `${process.env.HOME ?? "/root"}/.openclaw/workspace-sales-cs`;
+  const accountId = cfg.accountId ?? resolveDefaultAwadaAccountId(api.config);
+  const workspaceDir =
+    cfg.workspaceDir ?? `${process.env.HOME ?? "/root"}/.openclaw/workspace-sales-cs`;
   const dbFile = join(workspaceDir, "db", "customer.db");
   const schemaFile = join(workspaceDir, "db", "schema.sql");
 
@@ -287,10 +291,16 @@ export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig
 
   api.registerCommand({
     name: "payment_success",
+    channels: ["awada"],
     description: "Mark customer as subscription-success (silent)",
     acceptsArgs: false,
     requireAuth: false,
     handler: async (ctx) => {
+      if (
+        (ctx.accountId && ctx.accountId !== accountId) ||
+        (ctx.agentId && ctx.agentId !== agentId)
+      )
+        return {};
       try {
         const peer = resolvePeerForCommand({ channel: ctx.channel, senderId: ctx.senderId });
         if (!peer) {
@@ -313,10 +323,16 @@ export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig
 
   api.registerCommand({
     name: "club_join",
+    channels: ["awada"],
     description: "Mark customer as club member and stamp join date (silent)",
     acceptsArgs: false,
     requireAuth: false,
     handler: async (ctx) => {
+      if (
+        (ctx.accountId && ctx.accountId !== accountId) ||
+        (ctx.agentId && ctx.agentId !== agentId)
+      )
+        return {};
       try {
         const peer = resolvePeerForCommand({ channel: ctx.channel, senderId: ctx.senderId });
         if (!peer) {
@@ -329,9 +345,7 @@ export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig
         updateForClubJoin(dbFile, peer);
         return { text: "NO_REPLY" };
       } catch (err) {
-        api.logger.warn?.(
-          `club_join failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        api.logger.warn?.(`club_join failed: ${err instanceof Error ? err.message : String(err)}`);
         return { text: "NO_REPLY" };
       }
     },
@@ -339,8 +353,14 @@ export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig
 
   api.on("before_prompt_build", (_event, ctx) => {
     try {
+      if (ctx.trigger && ctx.trigger !== "user") return;
       if (ctx.agentId !== agentId) return;
-      const peer = resolvePeerFromSessionKey(ctx.sessionKey);
+      if (ctx.accountId && ctx.accountId !== accountId) return;
+      if (ctx.channel && ctx.channel !== "awada") return;
+      if (ctx.sessionKey?.includes(":group:")) return;
+      const peer = ctx.senderId
+        ? normalizePeer(ctx.senderId)
+        : resolvePeerFromSessionKey(ctx.sessionKey);
       if (!peer) return;
 
       preparePeer(peer);

@@ -8,7 +8,6 @@
 //   ui-demo --steps <demo-steps.mjs> --output <demo.webm>
 //           [--headed] [--viewport 1280x720]
 //           [--base-url http://localhost:3000]
-//           [--cookies cookies.json]
 //
 // demo-steps 文件契约（ESM，默认导出一个 async 函数）：
 //   export default async function run(demo) {
@@ -26,7 +25,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 function die(msg, code = 1) {
   console.error(JSON.stringify({ ok: false, error: msg }));
@@ -41,7 +40,6 @@ function parseArgs(argv) {
     width: 1280,
     height: 720,
     baseURL: process.env.BASE_URL || "",
-    cookies: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -57,13 +55,12 @@ function parseArgs(argv) {
         break;
       }
       case "--base-url": opts.baseURL = argv[++i]; break;
-      case "--cookies": opts.cookies = argv[++i]; break;
+      case "--cookies": die("录制使用独立新身份，不能导入演习或旧 profile 的 Cookie；请在本次录制上下文重新登录", 3); break;
       default: die(`未知参数: ${a}（用法见脚本头部注释）`);
     }
   }
   if (!opts.steps || !opts.output) die("--steps 与 --output 都是必填");
   if (!fs.existsSync(opts.steps)) die(`steps 文件不存在: ${opts.steps}`);
-  if (opts.cookies && !fs.existsSync(opts.cookies)) die(`cookies 文件不存在: ${opts.cookies}`);
   return opts;
 }
 
@@ -169,17 +166,11 @@ function makeHelpers(page, baseURL) {
 // ── 主流程 ──────────────────────────────────────────────────────────────
 const opts = parseArgs(process.argv.slice(2));
 
-let Camoufox;
+let launchBrowser;
 try {
-  ({ Camoufox } = await import("camoufox-js"));
-  await import("playwright-core");
+  ({ launchBrowser } = await import(new URL("../../../../../browser/dist/driver/sdk.js", import.meta.url).href));
 } catch (e) {
-  if (["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(e.code)) {
-    const skillDir = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
-    const quotedDir = "'" + skillDir.replaceAll("'", "'\\''") + "'";
-    die(`ui-demo Node 依赖缺失（camoufox-js / playwright-core）。请重跑统一安装流程；单独修复可运行: npm install --prefix ${quotedDir} --omit=dev --no-audit --no-fund（${e.message}）`, 3);
-  }
-  die(`ui-demo Node 依赖加载失败: ${e.message}`, 3);
+  die(`小贝浏览器运行库加载失败，请完成统一安装/构建流程（${e.message}）`, 3);
 }
 
 const outputAbs = path.resolve(opts.output);
@@ -197,7 +188,7 @@ try {
 
 let browser;
 try {
-  browser = await Camoufox({
+  browser = await launchBrowser({
     headless: !opts.headed,
     window: [opts.width, opts.height],
   });
@@ -223,12 +214,6 @@ const context = await browser.newContext({
   viewport: { width: recW, height: recH },
   recordVideo: { dir: tmpVideoDir, size: { width: recW, height: recH } },
 });
-
-if (opts.cookies) {
-  const raw = JSON.parse(fs.readFileSync(opts.cookies, "utf-8"));
-  const cookies = Array.isArray(raw) ? raw : raw.cookies;
-  if (Array.isArray(cookies) && cookies.length > 0) await context.addCookies(cookies);
-}
 
 const page = await context.newPage();
 // 每次整页导航后自动重注入覆盖层（导航会销毁 DOM）
