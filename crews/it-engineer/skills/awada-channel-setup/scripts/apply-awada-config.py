@@ -72,7 +72,7 @@ def arguments():
     parser.add_argument("--group-policy", choices=("open", "allowlist", "disabled"))
     parser.add_argument("--media-public-base-url")
     parser.add_argument("--commands-file")
-    parser.add_argument("--without-customerdb", action="store_true", help="leave the existing CustomerDB scope unchanged")
+    parser.add_argument("--without-customerdb", action="store_true", help="skip default hook setup only when the user explicitly opts out; preserve existing CustomerDB configuration")
     parser.add_argument("--dry-run", action="store_true", help="print a redacted plan without writing or restarting anything")
     return parser.parse_args()
 
@@ -145,16 +145,22 @@ def build(cfg: dict, args):
             raise ValueError("Commands file requires version:1 and commands:[]")
         plugin_config["commandsFile"] = str(commands_path) if args.commands_file.startswith("~") else args.commands_file
     workspace = args.workspace.expanduser().resolve() if args.workspace else state / f"workspace-{args.agent_id}"
-    if args.agent_id == "sales-cs" and not args.without_customerdb:
+    setup_customerdb = False
+    customerdb_setup = "skipped_by_request" if args.without_customerdb else "enabled"
+    if not args.without_customerdb:
         customerdb = plugin_config.get("customerdb", {})
         if customerdb.get("agentId", args.agent_id) != args.agent_id or customerdb.get("accountId", account_id) != account_id:
-            raise ValueError("CustomerDB already belongs to another agent/account; use --without-customerdb to preserve it")
-        hook_policy = entry.setdefault("hooks", {})
-        for permission in ("allowConversationAccess", "allowPromptInjection"):
-            if hook_policy.get(permission) is False:
-                raise ValueError(f"CustomerDB requires hooks.{permission}; review the explicit deny or use --without-customerdb")
-        hook_policy.setdefault("allowConversationAccess", True)
-        plugin_config["customerdb"] = {**customerdb, "enabled": True, "agentId": args.agent_id, "accountId": account_id, "workspaceDir": str(workspace)}
+            raise ValueError("CustomerDB already belongs to another agent/account; resolve the scope conflict before enabling this account's hook")
+        if customerdb.get("enabled") is False:
+            customerdb_setup = "existing_disabled"
+        else:
+            hook_policy = entry.setdefault("hooks", {})
+            for permission in ("allowConversationAccess", "allowPromptInjection"):
+                if hook_policy.get(permission) is False:
+                    raise ValueError(f"CustomerDB requires hooks.{permission}; review the explicit deny before enabling the hook")
+            hook_policy.setdefault("allowConversationAccess", True)
+            plugin_config["customerdb"] = {**customerdb, "enabled": True, "agentId": args.agent_id, "accountId": account_id, "workspaceDir": str(workspace)}
+            setup_customerdb = True
     agent_config = result.setdefault("agents", {})
     if "list" in agent_config:
         raise ValueError("Legacy agents.list must be migrated with apply-addons or OpenClaw Doctor before channel setup")
@@ -171,7 +177,7 @@ def build(cfg: dict, args):
     elif args.workspace is not None:
         existing["workspace"] = str(workspace)
     elif existing.get("workspace"):
-        if args.agent_id == "sales-cs" and not args.without_customerdb:
+        if setup_customerdb:
             plugin_config["customerdb"]["workspaceDir"] = existing["workspace"]
     bindings = result.setdefault("bindings", [])
     for binding in bindings:
@@ -188,6 +194,9 @@ def build(cfg: dict, args):
                "dmPolicy": effective.get("dmPolicy"), "allowFrom": effective.get("allowFrom", []),
                "groupPolicy": effective.get("groupPolicy"), "mediaPublicBaseUrl": effective.get("mediaPublicBaseUrl"),
                "commandsFile": plugin_config.get("commandsFile"), "pluginPath": plugin_path,
+               "customerdbSetup": customerdb_setup,
+               "customerdbHooks": {name: value for name, value in entry.get("hooks", {}).items()
+                                   if name in ("allowConversationAccess", "allowPromptInjection")},
                "customerdb": {name: value for name, value in plugin_config.get("customerdb", {}).items()
                               if name in ("enabled", "accountId", "agentId", "workspaceDir")}, "restartsGateway": False}
     return result, summary

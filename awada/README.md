@@ -99,7 +99,7 @@ WS 在 OpenClaw 持久入站队列可靠接收后 ACK；入库失败不 ACK。`M
 
 ## CustomerDB hook 与静默业务命令
 
-CustomerDB 是可选功能。启用 Awada channel 或给 crew 配上 customer-db 技能，不会单独开启这个 hook；需在 `plugins.entries.awada` 合入下面配置（账号、agent 和绝对路径按实例调整，保留已有其他字段）：
+IT engineer 配置 Awada channel 时，默认同时配置并核验 CustomerDB hook，仅用户明确要求不启用或已有明确停用设置时跳过。插件运行时仍按显式配置注册，单独配置 channel 或加载 customer-db 技能不会自动生成 hook 配置；需在 `plugins.entries.awada` 合入下面配置（账号、agent 和绝对路径按实例调整，保留已有其他字段）：
 
 ```json
 {
@@ -121,8 +121,8 @@ CustomerDB 是可选功能。启用 Awada channel 或给 crew 配上 customer-db
 - `customerdb.agentId` 必须明确填写，`enabled` 缺省为允许；没有 agentId 或显式 enabled=false 不注册 CustomerDB hook 和两个业务命令。
 - OpenClaw 2026.10.4 对外部插件要求显式 `hooks.allowConversationAccess=true`；未授权会阻止 `before_prompt_build` 注册。`hooks.allowPromptInjection` 缺省允许，若显式为 false 也会阻止该 hook。这些 hooks 字段与 config 同级，不放入 config.customerdb。
 - `accountId` 是 channels.awada 的本地账号名，不是 lane。省略时使用插件加载时解析的默认 Awada 账号；多账号须明确填写，并将该账号绑定到指定 agent。`workspaceDir` 指向该 crew 的真实工作区；省略时回退到 `$HOME/.openclaw/workspace-sales-cs`。
-- 先部署 crew，保证其 `db/` 目录存在且可写、Gateway 环境可执行 sqlite3。插件会按现有 schema 或内置 DDL 建表、补缺表，并保留已有数据；不会自动建立工作区/db 目录。
-- 配置后完整重启 Gateway 即加载注册，不需要再执行独立的 hook 安装命令。使用 awada-channel-setup 启用 sales-cs 时默认写入 CustomerDB 配置和必要的会话访问授权；已有显式权限拒绝会报错，不自动覆盖。`--without-customerdb` 保留原配置，不为本账号设置 CustomerDB。
+- 先部署 crew，保证真实 workspace 存在且可写、Gateway 环境可执行 sqlite3。插件会在该工作区创建缺少的 db 子目录，使用插件内置 DDL 幂等建立 CustomerDB 的两张表，并保留已有数据；不会自动建立不存在的 crew 工作区，也不执行其他 crew 的 db/schema.sql。
+- 配置后完整重启 Gateway 即加载注册，不需要再执行独立的 hook 安装命令。使用 awada-channel-setup 启用 Awada 时，默认针对所选 crew/账号写入 CustomerDB 配置和必要的会话访问授权；已有显式权限拒绝会报错，不自动覆盖。仅用户明确不启用时使用 `--without-customerdb`，它保留原配置并跳过本次 hook 配置；不等于关闭原来已运行的 hook。已有同一归属的 enabled=false 保留并在预览标记 existing_disabled。当前仅支持一组 CustomerDB 归属，冲突时拒绝覆盖，不能为绕过冲突擅自跳过 hook。
 
 启用后保留以下行为：
 
@@ -136,7 +136,6 @@ CustomerDB 是可选功能。启用 Awada channel 或给 crew 配上 customer-db
 严格说是一个 `before_prompt_build` hook 加两个原生 slash 命令。命令随 CustomerDB 注册，不需要放入 commands.json，也不要用自定义命令占用这两个名字。两条命令仅修改业务状态，不代表插件独立校验了支付订单或真实入群事实。它们保留原有 requireAuth=false 设置，仍受渠道入站策略和账号/agent 归属限制。
 
 客户上下文 hook 跳过其他账号/agent、其他渠道、群聊，以及 cron/heartbeat 触发；失败写 Gateway 日志。它不负责创建定时调度、发送跟进、新建跟进前取消旧 pending、48 小时清理或发送次数封顶，这些仍属于 customer-db/proactive-send 的业务流程。启用验收应分别核对 hook 注册、私聊注入和业务命令，不能仅凭 channel 已连接就判定 CustomerDB 生效。
-
 
 ## 迁移与验证
 

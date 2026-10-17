@@ -25,14 +25,14 @@ Awada 须明确 OpenClaw accountId、服务端账号标识（lane）、Awada key
 
 按用户所选 channel 派工：
 
-- **Awada**：使用 `awada-channel-setup`，先脱敏预览，再应用指定账号/agent。该脚本已统一处理局部插件路径、账号、crew sample 注册、精确 account binding 和可选 CustomerDB；不要再手工合入一次 sample，不改已有 tools/heartbeat/subagents。
+- **Awada**：使用 `awada-channel-setup`，先脱敏预览，再应用指定账号/agent。该脚本已统一处理局部插件路径、账号、crew sample 注册、精确 account binding 和默认启用的 CustomerDB hook；不要再手工合入一次 sample，不改已有 tools/heartbeat/subagents。
 - **飞书/企微**：使用 `work-channel-binding` 的配置流程；Awada 专属 CustomerDB hook 不因此对其他 channel 生效。
 - **其他 channel**：按该 channel 的实际插件和注册流程处理，不称 Awada 为内置插件，不擅自换成 Awada。
 
 Awada 派工时一并说明：
 
 - 保留其他账号、crew 和插件路径；binding 写 `match.channel` + `match.accountId`，agent 顶层不写 channel。
-- CustomerDB 需限定本账号、sales-cs 和实际 workspace；已有其他归属时先解决冲突，不能改绑或混库。
+- 启用 Awada 时默认一并配置 CustomerDB hook，限定本账号、sales-cs 和实际 workspace，并授予 hooks.allowConversationAccess=true；仅用户明确要求不启用或已有明确停用设置时跳过。已有其他归属或权限拒绝时报告冲突，不能改绑、混库或擅自省略 hook。核验 hook 注册与客户上下文注入，不仅核验 channel 连接。
 - 需要通过链接交付本地附件时，配置可访问的 mediaPublicBaseUrl，并只转发现有 Gateway 的 token 媒体路由。公网素材 URL 可直接使用；附件的执行支持由 server 返回。
 - 有本地 slash 需求时保留用户现有 commands.json，使用静态标准回复或固定 exec handler；新增/删除名字后按正常流程重载。
 - 在用户已授权的维护窗口使配置生效；若只要求源码准备，不改运行态、不重启。返回配置摘要、绑定、运行状态和未完成验收项，勿返回 key。

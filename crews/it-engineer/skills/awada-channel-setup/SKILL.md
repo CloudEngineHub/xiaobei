@@ -1,11 +1,11 @@
 ---
 name: awada-channel-setup
-description: 配置 Awada 账号、crew 路由和可选 CustomerDB，检查消息权限、本地 slash、标准媒体与统一动作接口。用于用户或 main 明确选定 Awada 后的启用和修复。
+description: 配置 Awada 账号、crew 路由及默认启用的 CustomerDB hook，检查消息权限、本地 slash、标准媒体与统一动作接口。用于用户或 main 明确选定 Awada 后的启用和修复。
 ---
 
 # Awada Relay V2 配置
 
-用户或 main 选定 Awada 后使用本技能；channel 选择仍由用户决定。Awada 是本项目局部插件，默认连接 `https://relay.openclaw-for-business.com/api/v2/awada`。所有账号使用相同动作和参数格式；不询问服务端底层实现，不按账号筛掉能力，也不在本地预判某个业务动作是否支持。执行支持和限制由 Awada server 返回。
+用户或 main 选定 Awada 后使用本技能；channel 选择仍由用户决定。启用 Awada channel 时，配置并验证 CustomerDB hook 是标准动作，不再单独询问是否启用；仅用户明确要求不启用或已有明确停用设置时跳过。Awada 是本项目局部插件，默认连接 `https://relay.openclaw-for-business.com/api/v2/awada`。所有账号使用相同动作和参数格式；不询问服务端底层实现，不按账号筛掉能力，也不在本地预判某个业务动作是否支持。执行支持和限制由 Awada server 返回。
 
 ## 配置前
 
@@ -28,10 +28,23 @@ awada-channel-setup --project-root <项目根> --account-id <账号> --agent-id 
 - 合入所选账号和插件加载路径，保留其他账号、插件路径和配置。
 - crew 不存在时读取 `crews/<agentId>/openclaw_setting_sample.json`，以 sample.id 为 `agents.entries` 的键注册，entry 内不写 id；保留 sample 的 tools/heartbeat/subagents，执行权限使用 tools.exec.mode。已存在的 crew 保留个性化设置。`--agent-sample`、`--workspace` 可指定实例位置。仍有旧 agents.list 的配置须先通过本版本 Doctor 或 apply 迁移。
 - 写入精确 `bindings[].match: {channel:"awada",accountId:"<账号>"}`，不在 agent 顶层写 channel。账号已绑另一 crew 时拒绝抢占。
-- sales-cs 默认启用限定到该 agent/account/workspace 的 CustomerDB，并补齐 `plugins.entries.awada.hooks.allowConversationAccess=true`，这是 2026.10.4 外部插件注册客户上下文 hook 的必要授权。`allowPromptInjection` 默认允许；已有任一 hook 权限显式为 false 时脚本拒绝应用，先核对用户策略，不绕过或静默改成 true。已有其他 CustomerDB 归属时拒绝覆盖；`--without-customerdb` 保留现有 hook 和权限，不为本账号配置它。其他 crew 不自动启用此业务 hook。
+- 默认启用限定到本次所选 agent/account/workspace 的 CustomerDB hook，适用于所有通过本流程启用 Awada 的 crew；字段、权限和验收按下节执行。只有用户明确要求不启用时才传 `--without-customerdb`；已有同一归属的 `customerdb.enabled=false` 也作为明确停用保留。不得为绕过配置错误或归属冲突而擅自跳过 hook。
 - 原子写回前保存权限为 0600 的备份；重复应用不重复添加 binding 或插件路径。`--dry-run` 不写配置、备份或工作区，不重启服务。
 
 新客服账号默认 `dmPolicy: open`、`allowFrom: ["*"]`、`groupPolicy: disabled`，用于公开私聊接待。已有显式策略保持原值。调整权限时显式传 `--dm-policy`、重复 `--allow-from` 或 `--group-policy`；选 pairing 时按 OpenClaw 配对流程授权客户，不能声称已公开接待。open 必须含 `"*"`，allowlist 不能为空。群聊的允许名单和 @ 策略按实际需求配置；插件的 open 群默认无需 @，allowlist 群默认要求 @，显式 requireMention 优先。
+
+## CustomerDB hook 标准配置与验收
+
+脚本默认完成以下配置，不要求用户另选开关：
+
+- `plugins.entries.awada.config.customerdb`：`enabled=true`、所选 `agentId`、本地 `accountId` 及该 crew 真实 workspace 的绝对路径；不能把 lane 填入 accountId，也不能仍指向其他 crew 的工作区。
+- `plugins.entries.awada.hooks.allowConversationAccess=true`：2026.10.4 外部插件注册客户上下文 hook 的必要授权。`allowPromptInjection` 默认允许；已有显式 false 时报告权限冲突，保留该策略，不绕过宿主限制，也不擅自用 --without-customerdb 逃过检查。
+- 当前插件只有一组 CustomerDB 归属。已有其他 agent/account 占用时报告冲突并保留原归属，不抢占、不共用客户库、不静默省略新账号的 hook。
+- 先确认目标 crew 已部署、真实 workspace 存在且可写，并检查 Gateway 环境可执行 sqlite3。插件加载时在该 workspace 内创建缺少的 db 子目录和表；已有数据库与用户资料保留。缺少 workspace 或依赖时先按既有部署流程补齐，不能把已写配置报告为 hook 已生效。
+
+脱敏预览必须检查 customerdb、customerdbHooks 和 customerdbSetup。正常结果应为 enabled，且会话访问授权为 true。用户明确不启用时才允许 skipped_by_request；已有明确停用设置返回 existing_disabled，交付时说明仍停用，不擅自重新启用。--without-customerdb 只跳过本次配置并保留现有段落，不能据此声称已停用原来运行的 hook；明确要求停用已有同一归属的 hook 时，设置该段 enabled=false，保留客户数据及其他账号配置。
+
+在已授权的重载/重启后，核对 Gateway 没有 hook blocked / DB init failed 错误，并确认 before_prompt_build 已注册；获准验证私聊时确认 `[CustomerDB]` 注入和建档。客户回复仅结束 sent_once，pending 保留；cron/heartbeat 不执行客户回复处理。`/payment_success`、`/club_join` 随 hook 功能注册，不在 commands.json 重复配置。返回 channel 状态和 hook 配置/注册/业务验证结果；仅 channel 已连接不算完整验收。
 
 ## 媒体与本地命令
 

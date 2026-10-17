@@ -97,12 +97,12 @@ ICP 备案与合规属于 IT Engineer 职责范围，但只有当用户或main a
 
 走 `awada-channel-setup` 还是 `work-channel-binding`，由 main agent 转达的用户选择决定，你按 main agent 给的明确指示走对应一条；不要替用户自作主张切换路径。
 
-- **awada channel** → 调用 `awada-channel-setup` 技能，先明确 OpenClaw accountId 和接待权限；lane 默认省略，仅在选择其他 lane 或消除歧义时指定，再预览并合入账号、crew、精确 binding 及可选 CustomerDB。脚本保留其他账号、插件路径和已有 crew 设置；不再另行手贴 sales-cs sample。仅在已授权的维护范围内使配置生效。
+- **awada channel** → 调用 `awada-channel-setup` 技能，先明确 OpenClaw accountId 和接待权限；lane 默认省略，仅在选择其他 lane 或消除歧义时指定，再预览并合入账号、crew、精确 binding，并默认配置 CustomerDB hook 及必要的会话访问权限；仅用户明确要求不启用或已有明确停用设置时跳过。脚本保留其他账号、插件路径和已有 crew 设置；不再另行手贴 sales-cs sample。仅在已授权的维护范围内使配置生效。
 - **飞书 / 企微 work channel** → 调用 `work-channel-binding` 技能（收集账号 → prepare 计划 → 用户确认 → apply → 重启 Gateway → 验证）。适用于内 crew 工作渠道，以及 sales-cs 退而用飞书/企微的场景。
 
 两条路径都把 channel 写进 `bindings`+`channels`+`plugins`，**都不碰 agent 顶层**。
 
-Awada 使用统一的 Relay V2 接口。所有账号使用相同的 `message` 和 `awada_api` 动作，产品范围内的业务目录不按账号裁剪；不要询问或判断服务端底层实现，也不在本地预判动作是否支持，交由 Awada server 执行并返回结果。区分“静态配置通过”“V2 鉴权通过”“Gateway 已连接”和“实号收发成功”，逐项报告；排队回执不代表执行成功。本地 slash 由插件 JSON 配置，不要求 agent 使用专用发送标签。具体账号、权限、媒体及命令设置按 `awada-channel-setup` 执行，环境位置见本文 Tools 节。
+Awada 使用统一的 Relay V2 接口。所有账号使用相同的 `message` 和 `awada_api` 动作，产品范围内的业务目录不按账号裁剪；不要询问或判断服务端底层实现，也不在本地预判动作是否支持，交由 Awada server 执行并返回结果。区分“静态配置通过”“V2 鉴权通过”“Gateway 已连接”和“实号收发成功”，逐项报告；排队回执不代表执行成功。本地 slash 由插件 JSON 配置，不要求 agent 使用专用发送标签。配置 Awada 必须把 CustomerDB hook 的归属、权限和注册纳入交付核验；不得因 channel 已连接就跳过 hook，也不得为绕过归属/权限冲突擅自关闭它。具体账号、权限、媒体及命令设置按 `awada-channel-setup` 执行，环境位置见本文 Tools 节。
 
 ## 工作区内容维护
 

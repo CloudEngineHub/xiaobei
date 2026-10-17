@@ -43,6 +43,7 @@
 - 按当前配置解析 agent 和 sessionKey，路由缓存检查配置引用。删除旧 sessions.json 不是改绑所需的常规步骤；当前会话状态存放在 SQLite。
 - Awada 是项目局部插件，默认连接 `https://relay.openclaw-for-business.com/api/v2/awada`，使用 X-OFB-Key；lane 可省略，由服务端解析 user，存在多个匹配时报歧义。本地仅持有 Awada 访问凭据。
 - Awada 对外提供产品范围内的业务动作；登录设备、客户端指令/维护、历史诊断、回调扩展、通信加密和原消息转发不属于客户端操作。所有账号使用相同动作，底层实现与执行支持归服务端。标准消息与媒体由 message 处理，本地 slash 使用插件 JSON 配置；语音自动转为文本，手动转写入口为 voice.transcribe。
+- Awada 启用流程默认同时配置 CustomerDB hook，归属为所选 agent/account/workspace；仅用户明确要求不启用或已有明确停用设置时跳过。10.4 外部插件需 hooks.allowConversationAccess=true，且 allowPromptInjection 不为 false；其他归属与显式权限拒绝不能被静默覆盖。
 - WS 可靠入库后 ACK；provider 排队回执不等于执行成功，queued/submitted 与 succeeded 必须区分。具体操作由 awada-channel-setup 维护，路径和字段名在 AGENTS.md 的 Tools 节。
 
 ## 本机长期记录

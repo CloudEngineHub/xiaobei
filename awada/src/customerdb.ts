@@ -8,7 +8,7 @@
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { readFileSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { resolveDefaultAwadaAccountId } from "./accounts.js";
@@ -139,21 +139,10 @@ function sqlQuote(input: string): string {
 
 // ── DB initialization ─────────────────────────────────────────────────────────
 
-function ensureDatabaseReady(params: { dbFile: string; schemaFile: string }) {
-  const { dbFile, schemaFile } = params;
-
-  const tableName = sqliteExec(dbFile, [
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='cs_record';",
-  ]);
-  if (tableName !== "cs_record") {
-    try {
-      const schemaSql = readFileSync(schemaFile, "utf8");
-      sqliteExec(dbFile, [], { input: schemaSql });
-    } catch {
-      sqliteExec(dbFile, [], { input: CS_RECORD_DDL });
-    }
-  }
-
+function ensureDatabaseReady(dbFile: string) {
+  // Own only the CustomerDB tables. A different crew's db/schema.sql may belong
+  // to another component and must not be executed against customer.db.
+  sqliteExec(dbFile, [], { input: CS_RECORD_DDL });
   // Idempotent: always ensure follow_up table
   sqliteExec(dbFile, [], { input: FOLLOW_UP_DDL });
 
@@ -277,10 +266,12 @@ export function registerCustomerDb(api: OpenClawPluginApi, cfg: CustomerDbConfig
   const workspaceDir =
     cfg.workspaceDir ?? `${process.env.HOME ?? "/root"}/.openclaw/workspace-sales-cs`;
   const dbFile = join(workspaceDir, "db", "customer.db");
-  const schemaFile = join(workspaceDir, "db", "schema.sql");
 
   try {
-    ensureDatabaseReady({ dbFile, schemaFile });
+    if (!statSync(workspaceDir).isDirectory())
+      throw new Error("CustomerDB workspace must be a directory");
+    mkdirSync(join(workspaceDir, "db"), { recursive: true, mode: 0o700 });
+    ensureDatabaseReady(dbFile);
   } catch (err) {
     api.logger.warn?.(
       `customerdb: DB init failed: ${err instanceof Error ? err.message : String(err)}`,

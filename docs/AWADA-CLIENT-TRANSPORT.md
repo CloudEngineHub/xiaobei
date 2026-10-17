@@ -60,9 +60,9 @@ WS 帧沿用 `{id,event}`，event 的 `schema_version` 仍为 1。API 的 V2 与
 
 ## CustomerDB hook
 
-原 CustomerDB 的自动建档、画像注入、客户回复时结束 sent_once 跟进，以及 payment_success/club_join 静默命令保留。它是可选业务扩展，不随 channel 启用而无条件激活。必须设置 `plugins.entries.awada.config.customerdb.agentId`，且该段 enabled 不为 false；外部插件还须显式授权 `plugins.entries.awada.hooks.allowConversationAccess=true`，并且 allowPromptInjection 不为 false。完整配置、范围与验收见 [README 的 CustomerDB 节](../awada/README.md#customerdb-hook-与静默业务命令)。
+原 CustomerDB 的自动建档、画像注入、客户回复时结束 sent_once 跟进，以及 payment_success/club_join 静默命令保留。IT 配置 Awada 时默认同时配置并验证此 hook，仅用户明确不启用或已有明确停用设置时跳过；运行时仍需要显式配置，单独启用 channel 不会自动生成该段。必须设置 `plugins.entries.awada.config.customerdb.agentId`，且该段 enabled 不为 false；外部插件还须显式授权 `plugins.entries.awada.hooks.allowConversationAccess=true`，并且 allowPromptInjection 不为 false。完整配置、范围与验收见 [README 的 CustomerDB 节](../awada/README.md#customerdb-hook-与静默业务命令)。
 
-awada-channel-setup 为 sales-cs 设置 CustomerDB 时补齐会话访问授权，保留已有权限策略；显式拒绝时返回错误，不越过宿主策略。定时任务与心跳不执行客户回复 hook，主动扫描流程须另行配置。
+awada-channel-setup 默认按所选 crew/account/workspace 设置 CustomerDB 并补齐会话访问授权，保留已有权限策略；显式拒绝时返回错误，不越过宿主策略。定时任务与心跳不执行客户回复 hook，主动扫描流程须另行配置。
 
 ## 运行边界
 
