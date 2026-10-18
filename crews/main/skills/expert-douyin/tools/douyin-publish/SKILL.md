@@ -5,7 +5,7 @@ description: 使用 Camoufox 持久化创作者会话登录并发布抖音视频
 
 # 抖音发布
 
-发布使用 Camoufox 持久化 session `douyin`，登录态保存在 profile。本人作品取数由 douyin-engagement 通过 HTTP 完成，仅在进程内临时读取同一 profile 的 cookie/UA。不要调用 login-manager，不手工导出或导入 cookie，不使用 hunter 的 API 会话代替发布会话。
+发布使用 Camoufox 持久化 session `douyin`，登录态保存在 profile。本人作品取数由 douyin-engagement 通过 HTTP 完成，仅在进程内临时读取同一 profile 的 cookie/UA。不手工导出或导入 cookie，不使用 hunter 的 API 会话代替发布会话。
 
 ## 登录与检查
 

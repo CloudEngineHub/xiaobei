@@ -75,7 +75,7 @@ export class RuntimeServer {
           if (socket.destroyed) return;
           try { socket.end(encode(response, MAX_RESPONSE_BYTES)); }
           catch (e) { socket.end(encode(failure(request.requestId, this.record.generation, e), MAX_RESPONSE_BYTES)); }
-          if (request.action === "stop" && response.ok) setImmediate(() => { void this.close(); });
+          if (["stop", "owner.stop"].includes(request.action) && response.ok) setImmediate(() => { void this.close(); });
         }).catch(error => { this.onError(error); socket.destroy(); });
       } catch (e) { received = true; socket.end(encode(failure("?", this.record.generation, e), MAX_RESPONSE_BYTES)); }
     });
@@ -92,6 +92,12 @@ export class RuntimeServer {
         throw new RuntimeError("UNAUTHORIZED", "Invalid local authorization");
       if (request.deadlineMs <= Date.now()) throw new RuntimeError("TIMEOUT", "Request expired before execution");
       if (request.action === "hello" || request.action === "status") return reply(id, this.record.generation, this.status());
+      if (request.action === "owner.stop") {
+        if (!this.record.ownerGeneration || request.params.ownerGeneration !== this.record.ownerGeneration)
+          throw new RuntimeError("UNAUTHORIZED", "Session is not owned by this broker generation");
+        this.phase = "stopping";
+        return reply(id, this.record.generation, { stopping: true });
+      }
       const digest = createHash("sha256").update(JSON.stringify([request.action, request.params, request.leaseToken])).digest("hex");
       const previous = this.results.get(id);
       if (previous) {

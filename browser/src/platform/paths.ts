@@ -1,12 +1,21 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RuntimeError } from "../protocol/index.js";
 
 export const hash = (value: string): string => createHash("sha256").update(value).digest("hex").slice(0, 24);
-export const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+export let packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+/** Plugin generations execute captured copies. Anchor IPC and daemon launch to
+ * the host-reported installation root so ordinary CLIs find the same service. */
+export function setInstallationRoot(root: string): void {
+  const real = realpathSync(root);
+  if (JSON.parse(readFileSync(join(real, "package.json"), "utf8")).name !== "@wiseflow/browser" ||
+      !existsSync(join(real, "dist", "daemon.js")))
+    throw new RuntimeError("INVALID_STATE", "Expected the installed product browser package");
+  packageRoot = real;
+}
 export function stateHome(): string {
   return resolve(process.env.XIAOBEI_BROWSER_HOME || join(homedir(), ".camoufox-cli"));
 }

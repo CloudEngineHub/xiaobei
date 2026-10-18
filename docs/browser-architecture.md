@@ -1,8 +1,8 @@
 # 小贝浏览器开发指南
 
-更新：2026-10-17。本文合并浏览器架构、5.8 升级交接和 WiseFlow 4 / OSBI 信息提取方案，作为后续浏览器开发的唯一设计入口。`browser/README.md` 只保留构建/调用方法；具体平台的登录、搜索和 profile 恢复仍按各技能及专项操作说明执行。
+更新：2026-10-18。本文合并浏览器架构、5.8 升级交接和 WiseFlow 4 / OSBI 信息提取方案，作为后续浏览器开发的唯一设计入口。`browser/README.md` 只保留构建/调用方法；具体平台的登录、搜索和 profile 恢复仍按各技能及专项操作说明执行。
 
-**当前范围：5.8 是破坏性升级，采用主仓 TypeScript SDK；允许重建全部浏览器 profile、各平台重新登录，不把旧身份无损迁移作为发布前置条件。** 用户执行 apply 后，2026-10-17 已授权并完成本机切换：新全局 CLI、生效资产、新 v2 default profile、Gateway 健康检查及真实官网 snapshot。旧 profiles 完整归档；跨平台、平台重新登录和 Awada 实号验收仍需另行完成，具体见 [升级执行记录](./5.8-upgrade-execution-plan.md)。真实 snapshot 留样供审阅，文本/链接投影、OSBI 提取和 SaaS 属于后续阶段。
+**当前范围：5.8 是破坏性升级，采用主仓 TypeScript SDK；升级后必须重建全部浏览器 profile、各平台重新登录** 
 
 ## 1. 已确定的技术选择
 
@@ -29,7 +29,9 @@
 flowchart TD
     A[CLI / Node 调用方] --> C[共享 BrowserClient]
     P[Python bridge] --> A
-    O[OpenClaw browser adapter] --> C
+    O[独立 xiaobei_browser 工具] --> C
+    C --> K[Gateway 插件 broker 启动服务]
+    K --> D
     C --> I[认证 IPC / 启动准入]
     I --> D[每 session 的 daemon]
     D --> L[命令串行 / lease / tab / ref]
@@ -53,12 +55,13 @@ flowchart TD
 | `browser/bridge/xiaobei_browser.py` | 显式 Node 可执行文件 + JS + JSON stdin，UTF-8、无 shell；不是 Python Camoufox SDK |
 | `browser/scripts/install-assets.mjs`、`asset-paths.mjs` | 固定资产安装、路径与哈希校验；不在 daemon 中执行安装 |
 | `scripts/install-browser.mjs` | 源码 / tarball / Docker 共用构建安装，生成两个入口 |
-| `patches/browser-camoufox-pivot/` | OpenClaw 薄 adapter、注册 patch、必要上游测试材料 |
+| `browser/plugin/`、`openclaw.plugin.json` | 独立 xiaobei-browser 插件与 xiaobei_browser 工具；保留宿主权限和媒体/上传检查 |
+| `browser/src/broker/` | 插件生命周期服务、本机认证入口、工具与 CLI 的统一启动所有权 |
 | `test/browser/` | 仓根 ignored 测试、夹具、样例和评测；不强制加入 Git，不塞进正式脚本/skill |
 
 `browser/` 是产品运行时，独立依赖树由统一安装器管理。SDK 负责身份生成/映射/启动配置，浏览器内核负责页面实际呈现，Playwright 负责操作；会话、任务所有权、稳定 tab、动作 ref 和结果语义属于我们。公共 `client` / `protocol` 是业务调用边界，直接启动浏览器的本地录制等任务使用受控 driver，不能复制一套 SDK/资产选择逻辑。
 
-`patches/camoufox-cli/` 暂留历史实现；本机全局命令已切至新包。其他部署仍须核对真实入口和 PID，不能仅凭源码版本判断部署状态，也不能直接删除历史实现。
+`patches/camoufox-cli/` 暂留历史实现。
 
 ## 3. 资产、身份和升级边界
 
@@ -66,7 +69,7 @@ flowchart TD
 
 默认资产位于 `~/.camoufox-cli/assets/156.0.1-beta.36/`，与原 SDK cache 及用户 profiles 分开。`CAMOUFOX_INSTALL_DIR` 如设置，作为版本化资产的父目录；`XIAOBEI_BROWSER_ASSETS` 可指定完整资产目录；隔离状态使用 `XIAOBEI_BROWSER_HOME`。所有运行面必须使用同一份锁和路径解析。
 
-安装器校验浏览器 ZIP、UBO、fpgen 模型和 GeoIP；下载失败或摘要不符不得输出 ready。旧二进制不会因安装新版而被覆盖；重复安装不触碰 profiles/config。部署选择新版本后显式安装，不让运行时调用 SDK 的 fetch/latest 或在线 GeoIP 自动刷新。数据库是固定快照，后续按需要更新资产锁和复测，不默默改变运行身份。
+安装器校验浏览器 ZIP、UBO、fpgen 模型和 GeoIP；下载失败或摘要不符不得输出 ready。旧二进制不会因安装新版而被覆盖；重复资产安装不触碰 profiles/浏览器配置；插件注册配置由统一迁移脚本处理。部署选择新版本后显式安装，不让运行时调用 SDK 的 fetch/latest 或在线 GeoIP 自动刷新。数据库是固定快照，后续按需要更新资产锁和复测，不默默改变运行身份。
 
 SDK 启动显式传 `executable_path` 和 UBO 路径，关闭默认扩展下载；fpgen 模型必须预装并解压，缺失则失败。代理地理信息从固定本地 GeoIP 读取，公共 IP 查询仍需通过指定代理联网。SDK 的 Linux fontconfig/原生目录缓存可能再生成；它们不是平台登录态，不代替持久 profile。
 
@@ -76,7 +79,7 @@ SDK 启动显式传 `executable_path` 和 UBO 路径，关闭默认扩展下载�
 
 `camoufox-cli.json` 文件名保留，内部版本为 **2**，记录 `sdk`、host OS、生成的 fpgen 指纹、locale 和必要派生配置；主仓基于固定输入稳定生成其余身份字段。按 host OS 生成，暂不支持跨 OS 迁移同一身份。不再沿用旧 canvas/font spacing 配置项。
 
-旧 v1 / 缺失 / 损坏身份不得自动换指纹后继续使用原登录态。明确返回 `PROFILE_RESET_REQUIRED`；停止该 session 后归档完整旧 profile，使用空 profile 重新登录。用户已接受 5.8 时统一重建，不需投入复杂的旧指纹转换/无损登录迁移。是否支持保留旧登录态可以作为后续实验，不能阻塞当前升级。
+旧 v1 / 缺失 / 损坏身份不得自动换指纹后继续使用原登录态。明确返回 `PROFILE_RESET_REQUIRED`；停止该 session 后归档完整旧 profile，使用空 profile 重新登录。
 
 真正切换时：盘点任务和人工等待 → 停止准入并结束已确认可关闭的 session → 归档旧 profiles/配置 → 创建新 profile → 按平台重新登录 → 校验预期账号。此流程应脚本化，保留归档位置与结果；本轮开发不自动对运行态执行。不要删原生锁或按 PID/文件年龄批量杀浏览器。
 
@@ -85,6 +88,8 @@ SDK 启动显式传 `executable_path` 和 UBO 路径，关闭默认扩展下载�
 回退先停止新 daemon，再恢复旧程序及其完整旧 profile；不能让旧 Firefox 直接打开新内核写过的 profile。
 
 ## 4. 通信、生命周期与任务约束
+
+插件使用宿主提供的安装根目录定位共享 runtime，避免 OpenClaw generation 捕获目录产生另一套登记和 IPC。浏览器启动由 Gateway 插件服务中的 broker 持有，CLI 和工具共享本机私有认证入口；从 OpenClaw exec 发起的 CLI 不直接派生长期 daemon，避免被命令进程树回收。无 broker 时返回 `BROKER_REQUIRED`；普通独立 CLI 在没有 Gateway 时仍可本地启动。已发布的活跃 broker 不可达时不自动回退。插件停止时只关闭本代自己启动的会话，保留 profile 与外来会话。
 
 - Linux/macOS 用 Unix socket，Windows 用 named pipe；不开放默认 TCP 控制端口。endpoint 含用户、安装、session、generation 的固定长度 hash，中文名字不直接进入 socket 路径。
 - JSON Lines v1 含 requestId、generation、session、本机随机授权、deadline、可选 leaseToken；私有注册文件只对 owner 开放。限制 UTF-8 请求 1 MiB、响应 8 MiB；错误保留结构化 code 和 retryable。
@@ -105,9 +110,9 @@ snapshot 目前使用公共 `locator.ariaSnapshot()` 默认模式并添加自有
 
 tab 使用稳定 tabId，同时保留 index；`switch --tab ID`、`close-tab --tab ID` 与旧序号语法并存，历史按 tab 隔离。稳定 tabId 不代表多任务无锁安全，仍须持有 lease。
 
-OpenClaw 2026.10.4 的接入材料已改为共享 client：保留 `browser` 工具名，工具 schema 限于支持能力，转换 targetId/ref 和媒体输出，执行 host、sandbox、文件和 evaluate 约束。单独的 `dangerouslyAllowPrivateNetwork: true` 与运行时现有网络能力相符；包含任何其他显式 SSRF 字段的策略和原生 run-bound/sandbox tabs 在不能正确执行约束时拒绝，不删除或忽略用户限制。上游 browser CLI、Gateway、dashboard/Control UI plumbing 暂保留；不自动 fallback 到 Chrome/CDP，也不机械恢复旧 35 个裁剪 patch。
+OpenClaw 2026.10.4 通过独立 `xiaobei-browser` 插件接入共享 client，工具名为 `xiaobei_browser`，原生 browser 插件禁用；不再使用工具注册或系统摘要补丁。工具 schema 限于支持能力，转换 targetId/ref 和媒体输出，执行 host、sandbox、文件和 evaluate 约束。公共 `browser-guide` 作为唯一通用操作手册，`smart-search` 继续负责站点搜索规则。单独的 `dangerouslyAllowPrivateNetwork: true` 与运行时现有网络能力相符；包含任何其他显式 SSRF 字段的策略和原生 run-bound/sandbox tabs 在不能正确执行约束时拒绝，不删除或忽略用户限制。上游 browser CLI、Gateway、dashboard/Control UI plumbing 暂保留；不自动 fallback 到 Chrome/CDP，也不机械恢复旧 35 个裁剪 patch。
 
-完整引擎构建、实际 Gateway 调用和 awada 回归仍是上线验收项。运行中 Gateway 的 dist 保护不能通过停服/绕过来完成开发检查，部署窗口由用户安排。
+独立插件已通过隔离 Gateway 的真实工具调用及有头窗口跨命令验证，并在本机官方热重载生效；真实平台账号扫码/export、跨平台和完整分发仍按各自验收。当前引擎 dist 未为本次迁移重建，已禁用的原生 browser 构建残留不参与运行，后续正常 apply/build 会移除。运行中 Gateway 的 dist 保护不能通过停服/绕过来完成开发检查。
 
 ## 6. 调用方和分发待办
 

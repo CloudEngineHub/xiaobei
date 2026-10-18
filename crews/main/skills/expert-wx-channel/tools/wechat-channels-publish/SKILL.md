@@ -5,6 +5,8 @@ description: 通过 camoufox-cli 持久化 session wechat-channel 发布视频�
 
 # wechat-channels-publish — 工具说明
 
+使用xiaobei受管浏览器 runtime；脚本继续通过 camoufox-cli 兼容入口，交互操作按 browser-guide 使用 xiaobei_browser 并遵循本文的平台专属 session。不要改用原生 browser 或其他后端。
+
 > 本文是 `expert-wx-channel` 专家包内的工具说明书，不独立出现在技能列表中。由相关 Workflow 指引调用。
 
 通过 **camoufox-cli** 持久化 session `wechat-channel`（有且只有一个，fail-first 队列：同 session 已有命令在跑时新命令直接 fail）在微信视频号创作者中心发布视频。视频号创作者中心使用 **wujie 微前端**，所有表单元素在 `<wujie-app>::shadow-root` 内。
@@ -15,9 +17,6 @@ description: 通过 camoufox-cli 持久化 session wechat-channel 发布视频�
 **输出**：视频号已发布作品。本工具**不抓取作品公开链接**——管理后台分享面板路线实践中不可靠（审核 / 转码中常不可用），链接由用户后补，调用方入库时升级（见文末「入库衔接约束」）。
 
 > **短标题只在发布页存在**：作品管理页与 `wx-channel-engagement` 抓取都拿不到短标题，所以入库与匹配一律只用视频描述（见文末「入库衔接约束」）。
-
-> **主力后端 = `target=camoufox`**。下方命令 / 示例只针对 `target=camoufox`。
-> **`target=host` / `target=node`**：只按本说明书的「流程 + 提示事项」走——全部无头 / 频率限制 / 错误处理约定是**后端无关**的，照本说明书执行。不要照搬 `camoufox-cli ...` 命令，用你当前后端自带的浏览器工具语义调用即可。
 
 ---
 

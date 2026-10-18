@@ -1,6 +1,6 @@
 ---
 name: smart-search
-description: 通过 Camoufox 浏览器搜索和阅读网页：选择站点、构造搜索 URL、使用默认或平台专用的持久化 session 并提取真实结果。如果已有 douyin-hunter、xhs-hunter、tiktok-hunter、kuaishou-hunter、x-hunter、weibo-hunter 或 wx-mp-hunter 技能，对应平台的内容搜索应该优先调用上面这些技能。
+description: 通过xiaobei受管浏览器搜索和阅读网页：选择站点、构造搜索 URL、使用默认或平台专用的持久化 session 并提取真实结果。如果已有 douyin-hunter、xhs-hunter、tiktok-hunter、kuaishou-hunter、x-hunter、weibo-hunter 或 wx-mp-hunter 技能，对应平台的内容搜索应该优先调用上面这些技能。
 metadata:
   openclaw:
     emoji: 🔍
@@ -9,9 +9,9 @@ metadata:
         - camoufox-cli
 ---
 
-# Camoufox 浏览器搜索
+# xiaobei_browser 浏览器搜索
 
-用于需要实际打开网页、登录站内搜索、使用页面筛选条件或读取渲染结果的任务。执行入口为 `camoufox-cli`；浏览器登录、验证码、懒加载与付费墙的操作细节读取公共 `browser-guide`。两项技能独立保留：本技能负责搜索方法与站点规则，browser-guide 负责通用页面操作。
+用于需要实际打开网页、登录站内搜索、使用页面筛选条件或读取渲染结果的任务。交互操作优先调用 `xiaobei_browser`；浏览器登录、验证码、懒加载与付费墙的操作细节读取公共 `browser-guide`。站点文档中的 `camoufox-cli` 示例供已有脚本使用；工具调用按相同 URL、session 和页面语义执行，不改用原生 browser。两项技能独立保留：本技能负责搜索方法与站点规则，browser-guide 负责通用页面操作。
 
 原始搜索结果只作为线索；需要全文、准确日期或具体数字时打开对应原文核实。本技能不发布、不发评论或私信，不把搜索卡片当作原文或完整统计。
 

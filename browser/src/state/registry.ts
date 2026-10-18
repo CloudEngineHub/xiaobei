@@ -22,6 +22,7 @@ export interface Registration {
   pid: number;
   createdAt: string;
   options: LaunchOptions;
+  ownerGeneration?: string;
 }
 export function isAlive(pid: number): boolean {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
@@ -39,6 +40,7 @@ export function readRecord(session: string, home = stateHome()): Registration | 
     if (value.protocolVersion !== PROTOCOL_VERSION || value.session !== session ||
         typeof value.generation !== "string" || typeof value.authorization !== "string" ||
         value.authorization.length !== 64 || !Number.isSafeInteger(value.pid) || !value.options ||
+        (value.ownerGeneration !== undefined && typeof value.ownerGeneration !== "string") ||
         value.endpoint !== endpointFor(session, value.generation, home))
       throw new RuntimeError("INVALID_STATE", "Runtime record does not match this installation");
     return value;

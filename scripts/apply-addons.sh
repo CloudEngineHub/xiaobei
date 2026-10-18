@@ -145,6 +145,16 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
       }
     }
 
+    // 补齐原生搜索开关，替代旧环境变量补丁；保留用户显式设置。
+    const searchEnabled = template.tools?.web?.search?.enabled;
+    if (typeof searchEnabled === 'boolean' && running.tools?.web?.search?.enabled === undefined) {
+      running.tools ??= {};
+      running.tools.web ??= {};
+      running.tools.web.search ??= {};
+      running.tools.web.search.enabled = searchEnabled;
+      changed = true;
+    }
+
     // 同步 session.dmScope 默认值（外部 crew 需要 per-channel-peer 隔离）
     if (template.session?.dmScope) {
       if (!running.session) running.session = {};
@@ -446,6 +456,9 @@ fi
 # ─── Build the product browser; installation/cutover belongs to the installer ───
 npm ci --ignore-scripts --prefix "$PROJECT_ROOT/browser"
 npm run build --prefix "$PROJECT_ROOT/browser"
+
+# The custom plugin owns the tool and cross-command browser lifecycle.
+node "$PROJECT_ROOT/scripts/configure-browser-plugin.mjs" --root "$PROJECT_ROOT" --config "$CONFIG_PATH" --write
 
 # 纯构建/打包环境没有运行配置，不初始化用户状态。
 if [ -f "$CONFIG_PATH" ]; then

@@ -78,7 +78,11 @@ jobs:
           CI: 'true'
 
       - name: Verify browser distribution
-        run: test -f browser/dist/client/index.js
+        run: |
+          test -f browser/dist/client/index.js
+          test -f browser/dist/broker/server.js
+          test -f browser/plugin/index.ts
+          test -f browser/openclaw.plugin.json
 
       - name: Fetch standalone pnpm (npm package, self-contained)
         run: |

@@ -33,7 +33,7 @@
 ## 浏览器
 
 - 项目浏览器使用主仓 TypeScript SDK camoufox 0.5.8、Playwright 1.62.1 和配套内核 156.0.1-beta.36，独立于 OpenClaw 自身的 Playwright 依赖。
-- browser 工具、xiaobei-browser、camoufox-cli 兼容入口共用 `browser/` 运行时。普通站点使用持久化 default；平台专用会话由对应技能规定，不按 agent 或站点另建通用 profile。
+- xiaobei-browser 是独立插件，xiaobei_browser 工具与 xiaobei-browser / camoufox-cli 兼容入口共用 `browser/` 运行时和生命周期服务；原生 browser 插件已替换。普通站点持久化 default，平台另有专属会话。
 - 身份版本为 v2；旧 v1、损坏身份或缺身份的已有登录 profile 需要整体归档后重新登录，不复制指纹模板或导回旧 cookies。版本化资产与旧 SDK cache 分开。
 - snapshot 的 ref 与捕获时 DOM 绑定；页面变化可能产生 STALE_REF，超时可能表示结果未知。操作规则统一在浏览器技能和 AGENTS.md，不以关闭所有会话作为通用修复。
 

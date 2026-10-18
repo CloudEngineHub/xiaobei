@@ -335,7 +335,8 @@
   "plugins": {
     "load": {
       "paths": [
-        "${XIAOBEI_HOME}/awada"
+        "${XIAOBEI_HOME}/awada",
+        "${XIAOBEI_HOME}/browser"
       ]
     },
     "entries": {
@@ -346,6 +347,9 @@
         "enabled": false
       },
       "browser": {
+        "enabled": false
+      },
+      "xiaobei-browser": {
         "enabled": true
       },
       "phone-control": {

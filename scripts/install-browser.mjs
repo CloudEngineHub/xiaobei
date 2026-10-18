@@ -2,6 +2,7 @@
 // Shared source/tarball/Docker installer; invocation is an explicit deployment step.
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -83,4 +84,10 @@ for (const [name, entry] of [
 if (global)
   run([npm, "install", "--global", "--ignore-scripts", "--no-audit", "--no-fund", browser]);
 if (assets) run([join(browser, "scripts", "install-assets.mjs")]);
+const configuration = process.env.OPENCLAW_CONFIG_PATH ?? process.env.OPENCLAW_JSON ??
+  join(process.env.OPENCLAW_STATE_DIR ?? join(homedir(), ".openclaw"), "openclaw.json");
+// Source/Docker bootstraps migrate later in apply-addons, after the host is built.
+if (existsSync(configuration) && existsSync(join(root, "scripts", "configure-browser-plugin.mjs")) &&
+    existsSync(join(root, "openclaw", "dist", "index.js")))
+  run([join(root, "scripts", "configure-browser-plugin.mjs"), "--root", root, "--config", configuration, "--write"]);
 console.log("xiaobei-browser and the camoufox-cli compatibility entry are ready");

@@ -156,7 +156,7 @@ Gateway 内置的 Automations 调度器执行任务；共享 SQLite 保存任务
 
 - Docker 程序目录：/opt/openclaw；状态目录：/root/.openclaw。
 - 源码部署路径及 dotenv 位置：本 workspace 的 OFB_ENV.md。
-- 浏览器：原生 browser 工具、xiaobei-browser，以及兼容入口 camoufox-cli，共用项目 browser/ 运行时。
+- 浏览器：xiaobei-browser 插件提供 xiaobei_browser 工具及生命周期服务；xiaobei-browser / camoufox-cli 兼容入口共用项目 browser/ 运行时，原生 browser 插件禁用。操作读取 browser-guide。
 - 定时任务 / 配置 / 会话：原生 automations、gateway、sessions_*；终端使用已安装的 openclaw。Automations 的 cron 为兼容别名，scratch 子命令管理检查清单。
 - 公开站点搜索：已配置的 smart-search；云资源、SEO 和平台操作分别读取已启用的 tccli、alicloud-find-skills、seo 等技能。
 

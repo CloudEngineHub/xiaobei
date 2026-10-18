@@ -10,6 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isAlive, newRecord, readRecord, records, removeRecord, withLock, writeRecord, type LaunchOptions, type Registration } from "../state/registry.js";
 import { loadDefaults } from "../state/config.js";
 import { validateProfile } from "../state/identity-schema.js";
+import { startThroughBroker } from "../broker/client.js";
 
 /** Shared launch defaults for CLI and Gateway adapters. */
 export function resolveLaunchOptions(session: string, overrides: Partial<LaunchOptions> = {}, home = stateHome()): LaunchOptions {
@@ -46,9 +47,25 @@ export class BrowserClient {
     }
   }
   async start(options: LaunchOptions): Promise<Params> {
+    const managed = await startThroughBroker(this.home, this.session, options);
+    if (managed !== null) return managed;
+    if (process.env.OPENCLAW_SHELL === "exec" || process.env.OPENCLAW_SERVICE_MARKER?.trim()) {
+      // Existing sessions are safe to reuse; a missing service must never silently
+      // create another daemon inside the short-lived exec process tree.
+      const current = readRecord(this.session, this.home);
+      const expected = { ...options, persistent: options.persistent === null ? null : canonicalProfile(options.persistent) };
+      const status = await this.status();
+      if (status.running && isDeepStrictEqual(current?.options, expected)) return status;
+      throw new RuntimeError("BROKER_REQUIRED", "Enable the xiaobei-browser plugin and its runtime service before opening a browser from OpenClaw");
+    }
+    return this.startLocally(options);
+  }
+  /** Internal service launcher. CLI and agent callers must use start(). */
+  async startLocally(options: LaunchOptions, ownerGeneration?: string, deadlineMs = Infinity): Promise<Params> {
     options = { ...options, persistent: options.persistent === null ? null : canonicalProfile(options.persistent) };
     privateDirectory(registryDir(this.home));
     return withLock(join(registryDir(this.home), "admission.lock"), async () => {
+      if (Date.now() >= deadlineMs) throw new RuntimeError("TIMEOUT", "Browser start expired before admission");
       const previous = readRecord(this.session, this.home);
       const status = await this.status();
       if (status.running) {
@@ -66,6 +83,7 @@ export class BrowserClient {
         throw new RuntimeError("PROFILE_IN_USE", "Another session owns this profile");
       if (options.persistent) validateProfile(options.persistent);
       const record = newRecord(this.session, options, this.home);
+      if (ownerGeneration) record.ownerGeneration = ownerGeneration;
       writeRecord(record, this.home);
       const log = openSync(join(registryDir(this.home), `${record.generation}.log`), "wx", 0o600);
       try {
@@ -116,6 +134,17 @@ export class BrowserClient {
     const record = readRecord(this.session, this.home);
     if (!record) return { protocolVersion: PROTOCOL_VERSION, requestId: requestId(), ok: true, data: { closed: true }, meta: { generation: "local" } };
     const response = await this.request("stop", {}, options);
+    return this.waitStopped(record, response);
+  }
+  /** Service shutdown only: an authenticated owner may retire its own leased session. */
+  async stopOwned(ownerGeneration: string): Promise<Response> {
+    const record = readRecord(this.session, this.home);
+    if (!record || record.ownerGeneration !== ownerGeneration)
+      throw new RuntimeError("STALE_GENERATION", "Session is not owned by this broker generation");
+    const response = await this.send(record, "owner.stop", { ownerGeneration });
+    return this.waitStopped(record, response);
+  }
+  private async waitStopped(record: Registration, response: Response): Promise<Response> {
     if (!response.ok) return response;
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {

@@ -853,7 +853,7 @@ place_config_template() {
     else
         ui_info "openclaw.json 已存在且健康 (有 models + agents.defaults), 保留"
     fi
-    # 把 plugins.load.paths 里的 ${XIAOBEI_HOME} env ref 直接解析成绝对路径写回 config。
+    # 补齐原生搜索默认开关，并将 plugins.load.paths 中的 ${XIAOBEI_HOME} 解析成绝对路径。
     # 原因：openclaw 在 CLI 上下文（daemon install / doctor / status / 用户裸跑 openclaw）校验
     # config 时用的是当前 shell env，未必有 XIAOBEI_HOME → ${XIAOBEI_HOME}/awada 不展开 →
     # "plugin path not found" 误报。awada 位置在 install 时已知（$WISEFLOW_ROOT/awada），
@@ -866,19 +866,35 @@ place_config_template() {
         const c=JSON.parse(fs.readFileSync(p,"utf8"));
         const paths=(c.plugins?.load?.paths) || [];
         let changed=false;
+        // Existing installations may only have the retired environment switch.
+        // Fill the native default from the template without overriding user choices.
+        const template=JSON.parse(fs.readFileSync(process.argv[3],"utf8"));
+        const searchEnabled=template.tools?.web?.search?.enabled;
+        if (typeof searchEnabled==="boolean" && c.tools?.web?.search?.enabled===undefined) {
+            c.tools ??= {};
+            c.tools.web ??= {};
+            c.tools.web.search ??= {};
+            c.tools.web.search.enabled=searchEnabled;
+            changed=true;
+        }
+        let pathsChanged=false;
         const fixed=paths.map(s => {
             if (typeof s==="string" && s.indexOf("${XIAOBEI_HOME}")!==-1) {
-                changed=true;
+                pathsChanged=true;
                 return s.split("${XIAOBEI_HOME}").join(root);
             }
             return s;
         });
-        if (changed) {
+        if (pathsChanged) {
             c.plugins.load.paths=fixed;
+            changed=true;
+        }
+        if (changed) {
             fs.writeFileSync(p, JSON.stringify(c,null,2)+"\n");
         }
-    ' "$config_path" "$WISEFLOW_ROOT" 2>/dev/null; then
-        ui_warn "plugins.load.paths 路径解析失败 (非致命, config 仍可用, 但 awada 可能加载不到)"
+    ' "$config_path" "$WISEFLOW_ROOT" "$tmpl" 2>/dev/null; then
+        ui_error "配置默认值或插件路径同步失败"
+        return 1
     fi
 }
 

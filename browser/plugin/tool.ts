@@ -1,12 +1,10 @@
 /** Gateway tool adapter. The browser package owns IPC, launch and Playwright. */
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
 import { wrapExternalContent } from "openclaw/plugin-sdk/security-runtime";
 import { Type } from "typebox";
-import { resolveExistingUploadPaths } from "./browser/paths.js";
-import { neutralizeMediaDirectives } from "./browser/vision.js";
+import { resolveExistingUploadPaths } from "./upload-paths.js";
 
 type Data = Record<string, unknown>;
 type Reply = { ok: boolean; data?: Data; error?: { code: string; message: string } };
@@ -24,17 +22,12 @@ type Runtime = {
 
 // Resolve from the shipped product layout, never from PATH, npm globals or cwd.
 export async function loadXiaobeiBrowser(): Promise<Runtime> {
-  const roots = [process.env.XIAOBEI_HOME];
-  for (let dir = path.dirname(fileURLToPath(import.meta.url)); ; dir = path.dirname(dir)) {
-    roots.push(dir);
-    if (path.dirname(dir) === dir) break;
-  }
-  for (const root of roots) {
-    if (!root) continue;
-    const entry = path.join(root, "browser", "dist", "client", "index.js");
-    if (existsSync(entry)) return (await import(pathToFileURL(entry).href)) as Runtime;
-  }
-  throw new Error("xiaobei-browser is missing; build/install the product browser package first");
+  return await import("../dist/client/index.js") as unknown as Runtime;
+}
+
+// Derived from OpenClaw browser/vision (MIT); retain the media-output trust boundary.
+function neutralizeMediaDirectives(text: string): string {
+  return text.replace(/(^|\n)([^\S\n]*)(MEDIA:)/gi, "$1$2[neutralized] $3");
 }
 
 const ACTIONS = [
@@ -63,6 +56,7 @@ const KINDS = [
   "select",
   "fill",
   "wait",
+  "scroll",
   "evaluate",
   "close",
 ] as const;
@@ -71,10 +65,13 @@ const fields = {
   kind: optionalText(),
   ref: optionalText(),
   text: optionalText(),
+  replace: Type.Optional(Type.Boolean({ description: "type replaces text by default; false appends using keyboard events." })),
   key: optionalText(),
   values: Type.Optional(Type.Array(Type.String())),
   fields: Type.Optional(Type.Array(Type.Object({ ref: Type.String(), value: Type.String() }))),
   timeMs: Type.Optional(Type.Integer({ minimum: 0, maximum: 30000 })),
+  direction: Type.Optional(Type.Union(["up", "down"].map(v => Type.Literal(v)))),
+  amount: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000 })),
   fn: optionalText(),
 };
 
@@ -97,6 +94,7 @@ function schema(evaluateEnabled: boolean) {
       targetUrl: optionalText(),
       selector: optionalText(),
       interactive: Type.Optional(Type.Boolean()),
+      headed: Type.Optional(Type.Boolean({ description: "Launch a visible window for manual login or verification; never silently replaces an existing session." })),
       fullPage: Type.Optional(Type.Boolean()),
       path: optionalText(),
       paths: Type.Optional(Type.Array(Type.String())),
@@ -165,13 +163,13 @@ export function createXiaobeiBrowserTool(
   load = loadXiaobeiBrowser,
 ): AnyAgentTool {
   const getConfig = () => ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config;
-  const evaluateEnabled = getConfig()?.browser?.evaluateEnabled !== false;
+  const evaluateEnabled = getConfig()?.browser?.evaluateEnabled !== false && !ctx.fsPolicy?.workspaceOnly;
   return {
-    name: "browser",
-    label: "Browser",
+    name: "xiaobei_browser",
+    label: "Xiaobei Browser",
     resultContentSource: "network",
     description:
-      "Control xiaobei-browser (Camoufox). Ordinary sites share persistent session=default; platform skills specify their own session. Snapshot refs and targetId are temporary: keep the tab from the snapshot. open/navigate operates on the current tab. type replaces a field; fill accepts ref/value fields. pdf saves a raster screenshot PDF. Unsupported Chrome/node/dashboard actions are unavailable. For a multi-step task acquire a lease, pass leaseToken to every call, renew while working, use wait for human login, and release afterwards. A timeout means outcome unknown: inspect state and never replay a submit automatically.",
+      "Control xiaobei-browser (Camoufox). Read browser-guide for login, verification and page workflows. Ordinary sites share persistent session=default; platform skills specify their own session. Snapshot refs and targetId are temporary: keep the tab from the snapshot. open/navigate operates on the current tab. type replaces text unless replace=false requests keyboard append; fill accepts ref/value fields. pdf saves a raster screenshot PDF. For multi-step work acquire a lease, pass leaseToken to every call, renew while working, use wait for human login, and release afterwards. A timeout means outcome unknown: inspect state and never replay a submit automatically.",
     parameters: schema(evaluateEnabled),
     execute: async (_id, args, signal) => {
       signal?.throwIfAborted();
@@ -179,7 +177,7 @@ export function createXiaobeiBrowserTool(
       if (config?.browser?.enabled === false) throw new Error("Browser is disabled");
       if (ctx.sandboxed || ctx.browser?.sandboxBridgeUrl || ctx.browser?.allowHostControl === false)
         throw new Error("Local browser access is blocked by sandbox/host policy");
-      if (ctx.toolBindings?.browser)
+      if (ctx.toolBindings?.browser || ctx.toolBindings?.xiaobei_browser)
         throw new Error("Run-bound native browser tabs are unsupported by xiaobei-browser");
       const p = record(args);
       for (const key of [
@@ -244,7 +242,8 @@ export function createXiaobeiBrowserTool(
         client.start(
           resolveLaunchOptions(
             session,
-            config?.browser?.headless === undefined ? {} : { headless: config.browser.headless },
+            typeof p.headed === "boolean" ? { headless: !p.headed } :
+              config?.browser?.headless === undefined ? {} : { headless: config.browser.headless },
           ),
         );
       if (action === "start") return result(await start());
@@ -259,7 +258,7 @@ export function createXiaobeiBrowserTool(
         const url = new URL(required(p, "targetUrl"));
         if (!["https:", "http:"].includes(url.protocol) || url.username || url.password)
           throw new Error("Navigation requires HTTP(S) without embedded credentials");
-        if (!(await client.status()).running) await start();
+        if (!(await client.status()).running || p.headed !== undefined) await start();
       }
       // Keep tab selection and the following operation in one ownership window.
       const ownLease = !options.leaseToken;
@@ -356,8 +355,16 @@ export function createXiaobeiBrowserTool(
           return result(await send("wait", { ms: request.timeMs }));
         }
         if (kind === "press") return result(await send("press", { key: required(request, "key") }));
+        if (kind === "scroll") {
+          const direction = required(request, "direction");
+          const amount = request.amount ?? 500;
+          if (!["up", "down"].includes(direction) ||
+              !Number.isSafeInteger(amount) || Number(amount) < 1 || Number(amount) > 10000)
+            throw new Error("scroll requires a direction and amount=1..10000");
+          return result(await send("scroll", { direction, amount }));
+        }
         const ref = required(request, "ref");
-        if (kind === "type") return result(await send("fill", { ref, text: request.text ?? "" }));
+        if (kind === "type") return result(await send(request.replace === false ? "type" : "fill", { ref, text: request.text ?? "" }));
         if (kind === "select") {
           if (
             !Array.isArray(request.values) ||

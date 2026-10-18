@@ -278,59 +278,60 @@ Crew 遇到自己不能解决的问题：
 
 *详询"掌柜的"👆*
 
-## 🔧 全新的浏览器栈
+## 🦊 全新的浏览器栈
 
-5.8 开发版采用自有 `xiaobei-browser` 运行时和主仓 TypeScript SDK，保留 `camoufox-cli` 兼容入口；当前开发与后续 snapshot / OSBI 计划统一见 [浏览器开发指南](docs/browser-architecture.md)。源码升级不代表已切换本机服务。
+5.8.0 版本中我们基于[camoufox](https://github.com/daijro/camoufox) 构建了原生的小贝浏览器（`xiaobei-browser`），以独立插件形式接入 OpenClaw。
 
-| 项 | 说明 |
-|----|------|
-| `browser/` | 共享 client、认证 IPC、session/lease、tab/ref、Python bridge；主仓 `camoufox 0.5.8` + Playwright 1.62.1 |
-| `browser/assets.lock.json` | 配套 Camoufox 156.0.1-beta.36、指纹模型、GeoIP 和 UBO 的固定版本与校验值；显式安装，启动不下载 |
-| `patches/browser-camoufox-pivot/` | OpenClaw 2026.10.4 的薄工具适配，复用共享 client；schema 只暴露已实现能力 |
-| `patches/` | 保留 web search 禁用、系统工具摘要及 Gateway 构建补丁；本轮不全面裁剪上游依赖 |
+- **融入官方插件生态**：遵循 OpenClaw 官方插件管理体系，支持配置、启停与热重载，浏览器接入无需修改引擎源码。
+- **强化反侦测能力**：相较openclaw自带的 Chrome/Chromium 自动化方案，提供内核级指纹保护与持久身份管理，更适合自媒体站点的自动化操作。
+- **与技能体系协同**：为自媒体发布、内容获取、数据获取等技能提供统一的浏览器能力，并为后续 OSBI 信息提取与研究扩展提供基础。
 
-**浏览器与平台技能覆盖登录、填报、发布、互动、采集等工作流**，按平台使用浏览器自动化或 HTTP API：
-
-| 技能 | 职责 |
-|------|------|
-| `browser-guide` | 浏览器操作最佳实践总纲——登录墙 / CAPTCHA / lazy-load / paywall / 有头无头场景规则 / eval 用法 |
-| `smart-search` | 智能搜索——绕开 openclaw 内置 web search 的 api key 依赖，零部署免费方案 |
-| `ui-demo` | 浏览器操作演习与录屏，为教程、产品演示及视频 B-roll 提供素材 |
-
-浏览器技能使用 camoufox-cli 与持久化 session，按场景切换有头/无头模式。
+架构、使用约定与后续规划见 [浏览器开发指南](docs/browser-architecture.md)。
 
 ## 目录结构
 
 ```
 wiseflow/
-├── openclaw/              # 上游仓库（git clone，禁止直接修改）
-├── crews/                 # Crew 模板（D8 扁平化，权限由 crew-type + ALLOWED_COMMANDS 决定）
-│   ├── _template/         # 空白脚手架（创建新模板的起点）
-│   ├── main/              # [default] 小贝——新媒体运营 / 创业伴侣，绑 openclaw-weixin
-│   ├── it-engineer/       # [built-in] IT 工程师——幕后运维 + 排障 sub-agent
-│   ├── content-producer/  # 内容制作者——视频/视觉生产线
-│   └── sales-cs/          # 销售型客服——绑 awada，默认禁用，按需招募
-├── skills/                # 公共技能（≥2 crew 共用，smart-search / browser-guide 等）
-├── patches/               # wiseflow 基础补丁
-│   ├── *.patch            # git 补丁（按序号顺序应用到 openclaw/）
-│   └── overrides.sh       # pnpm 依赖覆盖（如替换 playwright → patchright）
-├── config-templates/      # 配置模板（开箱即用的最佳实践）
-│   ├── openclaw.json      # 默认配置模板（阿里云百炼主力 + fts-only 记忆 + dream 关）
-│   └── openclaw-awk.json  # 火山引擎方舟 Coding Plan 备选模板（主力 GLM-5.2）
-├── scripts/               # 工具脚本（详见 scripts/README.md）
-│   ├── lib/               # 脚本共享工具（agent-skills.sh 等）
-│   ├── install.sh         # 一键安装 + 升级（预构建 tarball 路线，macOS + Linux，GitHub 线路；重跑即升级，保留 ~/.openclaw）
-│   ├── install-atomgit.sh # 一键安装 + 升级（macOS + Linux，atomgit 国内线路；全程不经 GitHub）
-│   ├── install.ps1        # 一键安装 + 升级（Windows，tarball 路线，GitHub 线路；需 Git Bash/WSL）
-│   ├── install-atomgit.ps1 # 一键安装 + 升级（Windows，atomgit 国内线路；需 Git Bash/WSL，全程不经 GitHub）
-│   ├── update.sh          # 已 git clone 开发用户的升级路线（fetch + rebuild，不重装依赖）
-│   ├── dev.sh             # 开发模式启动（前台运行 gateway）
-│   ├── setup-crew.sh      # 多 crew 系统安装（同步 markdown + 注入规范，幂等）
-│   └── setup-wsl2.sh      # WSL2 环境配置
-└── docs/                  # 项目文档
+├── openclaw/                     # OpenClaw 上游引擎（独立 clone）
+├── openclaw.version              # 上游版本与 commit 锁定
+├── browser/                      # 基于 Camoufox 的小贝浏览器
+│   ├── plugin/                   # xiaobei_browser 工具与插件服务注册
+│   ├── src/                      # 工具与 CLI 共用的浏览器运行时
+│   ├── bridge/                   # Python 调用桥接
+│   ├── openclaw.plugin.json      # 独立插件清单
+│   └── assets.lock.json          # 浏览器、指纹模型等资产的版本与校验值
+├── awada/                        # Awada 通信插件
+├── crews/                        # Crew 模板与各自专属技能
+│   ├── _template/                # 新 crew 的空白模板
+│   ├── main/                     # 小贝：新媒体运营 / 创业伴侣
+│   ├── it-engineer/              # IT 工程师：运维与排障
+│   ├── content-producer/         # 内容制作者：视频与视觉生产
+│   └── sales-cs/                 # 销售型客服：按需招募
+├── skills/                       # 公共技能，如 browser-guide、smart-search
+├── patches/                      # 当前仅保留 Gateway 构建相关源码补丁
+│   ├── 009-gateway-build.patch
+│   ├── 010-gateway-build-test.patch
+│   └── apply.sh                  # 按锁定版本应用源码补丁
+├── config-templates/             # OpenClaw 配置模板
+│   └── openclaw.json             # 默认模型、插件、技能与工具配置
+├── config/                       # 环境变量与服务环境模板
+├── scripts/                      # 安装、升级与运维脚本，详见 scripts/README.md
+│   ├── lib/                      # 脚本共享工具
+│   ├── install.sh                # macOS / Linux 预构建安装与升级
+│   ├── install-atomgit.sh         # 国内下载线路
+│   ├── install.ps1               # Windows 安装入口（需 Git Bash / WSL）
+│   ├── install-atomgit.ps1        # Windows 国内下载线路
+│   ├── update.sh                 # 源码安装的升级入口
+│   ├── apply-addons.sh           # 补丁、配置、技能、依赖与构建
+│   ├── install-browser.mjs       # 浏览器安装与资产准备
+│   ├── configure-browser-plugin.mjs # 浏览器插件配置迁移
+│   └── setup-crew.sh             # Crew 工作区初始化与同步
+├── bin/                          # OpenClaw 启动入口
+├── docker/                       # 镜像、Compose 与容器入口
+└── docs/                         # 使用与开发文档
 ```
 
-运行时数据在 `~/.openclaw/`（openclaw.json、daemon.env、workspaces、sessions、camoufox profile 全在此）；程序在 `~/xiaobei/`（install.sh 解压的预构建 tarball：`openclaw/` 引擎 + `crews/` + `skills/` + `scripts/` + `tools/` portable Node/pnpm + `camoufox-cli/` fork + `bin/openclaw` wrapper）。两者职责分开：升级只换 `~/xiaobei/`，`~/.openclaw/` 用户数据不动。可用 `XIAOBEI_HOME` / `OPENCLAW_HOME` env 覆盖位置。
+预构建安装的程序默认位于 `~/xiaobei/`，安装包另附 `tools/` 中的 portable Node/pnpm。OpenClaw 配置、工作区与会话保存在 `~/.openclaw/`；浏览器资产、持久 profile 与运行登记默认保存在 `~/.camoufox-cli/`。程序与用户状态分开存放，安装器可用 `XIAOBEI_HOME` / `OPENCLAW_HOME` 调整程序与 OpenClaw 状态目录，浏览器状态目录可用 `XIAOBEI_BROWSER_HOME` 指定。
 
 🌹 即日起为 xiaobei 开源版本贡献 PR（代码、文档、成功案例分享均欢迎），一经采纳，贡献者将获赠 **VIP Club 一年会员**！
 
@@ -347,7 +348,7 @@ wiseflow/
 ## 🤝 xiaobei 基于如下优秀的开源项目：
 
 - openclaw(Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞) https://github.com/openclaw/openclaw
-- camoufox(🦊 Anti-detect browser, Firefox fork — forked camoufox-cli 作为线 1 浏览器主力，vendor 进 `patches/camoufox-cli/`) https://github.com/daijro/camoufox
+- camoufox(🦊 Anti-detect browser, Firefox fork. SDK include) https://github.com/daijro/camoufox
 - Feedparser（Parse feeds in Python） https://github.com/kurtmckee/feedparser
 - SearXNG（a free internet metasearch engine which aggregates results from various search services and databases） https://github.com/searxng/searxng
 - opencli（A CLI for social media & web platforms — smart-search skill 借鉴了其搜索 URL 模式与平台适配方案） https://github.com/jackwener/opencli
