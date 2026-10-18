@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-send_email.py — Send a single plain-text email via SMTP.
+send_email.py — Send a plain-text email with optional attachments via SMTP.
 
 Uses Python's built-in smtplib only — no third-party dependencies.
 
@@ -15,6 +15,7 @@ Environment Variables:
 Usage:
   python3 send_email.py --to recipient@example.com --subject "Hello" --body "Message"
   python3 send_email.py --to recipient@example.com --subject "Hello" --body-file ./template.txt
+  python3 send_email.py --to recipient@example.com --subject "Files" --body "Attached" --attachment ./report.pdf
 
 Output (JSON to stdout):
   {"ok": true,  "to": "recipient@example.com", "message": "sent"}
@@ -23,13 +24,15 @@ Output (JSON to stdout):
 
 import argparse
 import json
+import mimetypes
 import os
 import smtplib
 import ssl
 import sys
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
+from pathlib import Path
+from typing import Sequence
 
 
 def get_env(name: str, default: str = "") -> str:
@@ -45,7 +48,7 @@ def require_env(name: str) -> str:
     return val
 
 
-def send(to: str, subject: str, body: str) -> dict:
+def send(to: str, subject: str, body: str, attachments: Sequence[str] = ()) -> dict:
     smtp_server = require_env("SMTP_SERVER")
     smtp_port = int(get_env("SMTP_PORT", "587"))
     smtp_user = require_env("SMTP_USER")
@@ -59,18 +62,30 @@ def send(to: str, subject: str, body: str) -> dict:
         display_name = ""
     from_header = formataddr((display_name, from_addr)) if display_name else from_addr
 
-    # Build message
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_header
-    msg["To"] = to
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
     try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = from_header
+        msg["To"] = to
+        msg.set_content(body)
+        attachment_names = []
+        for filename in attachments:
+            attachment = Path(filename).expanduser()
+            try:
+                data = attachment.read_bytes()
+            except OSError as e:
+                return {"ok": False, "to": to, "error": f"Attachment unreadable: {attachment}: {e}"}
+            content_type, encoding = mimetypes.guess_type(attachment.name)
+            if content_type is None or encoding is not None:
+                content_type = "application/octet-stream"
+            maintype, subtype = content_type.split("/", 1)
+            msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=attachment.name)
+            attachment_names.append(attachment.name)
+
         if smtp_port == 465:
             # SSL from the start
             context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=30) as server:
                 server.login(smtp_user, smtp_password)
                 server.sendmail(from_addr, [to], msg.as_string())
         else:
@@ -82,7 +97,14 @@ def send(to: str, subject: str, body: str) -> dict:
                 server.login(smtp_user, smtp_password)
                 server.sendmail(from_addr, [to], msg.as_string())
 
-        return {"ok": True, "to": to, "message": "sent"}
+        return {
+            "ok": True,
+            "to": to,
+            "from": from_header,
+            "subject": subject,
+            "attachments": attachment_names,
+            "message": "sent",
+        }
 
     except smtplib.SMTPAuthenticationError as e:
         return {"ok": False, "to": to, "error": f"Authentication failed: {e.smtp_error.decode(errors='replace')}"}
@@ -106,6 +128,10 @@ def main() -> None:
     body_group = parser.add_mutually_exclusive_group(required=True)
     body_group.add_argument("--body", help="Email body text (plain text)")
     body_group.add_argument("--body-file", help="Path to a file containing the email body")
+    parser.add_argument(
+        "--attachment", action="append", default=[], metavar="FILE",
+        help="Path to an attachment; repeat for multiple files",
+    )
 
     args = parser.parse_args()
 
@@ -113,14 +139,14 @@ def main() -> None:
         try:
             with open(args.body_file, "r", encoding="utf-8") as f:
                 body = f.read()
-        except FileNotFoundError:
-            result = {"ok": False, "to": args.to, "error": f"Body file not found: {args.body_file}"}
+        except (OSError, UnicodeError) as e:
+            result = {"ok": False, "to": args.to, "error": f"Body file unreadable: {args.body_file}: {e}"}
             print(json.dumps(result, ensure_ascii=False))
             sys.exit(1)
     else:
         body = args.body
 
-    result = send(to=args.to, subject=args.subject, body=body)
+    result = send(to=args.to, subject=args.subject, body=body, attachments=args.attachment)
     print(json.dumps(result, ensure_ascii=False))
 
     if not result["ok"]:

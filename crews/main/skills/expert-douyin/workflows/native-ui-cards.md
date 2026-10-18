@@ -4,7 +4,7 @@
 
 ## 1. 按图文 DNA 确定选题
 
-读取 `douyin/dna/<dna-id>/<dna-id>.dna.md` 和 `.template.md`；未指定时用独立的图文 DNA（如 `dna-0-note`），不能套视频 DNA；目标 DNA 不存在先走 Style DNA workflow 建立。读取 `business_knowledge.md` 和用户素材作为事实与输入。先依据图文 DNA 的选题规则确定本次主题、受众、核心问题和表达方向；用户给定的题目也按 DNA 细化，若与 DNA 不一致，先协调再制作。workflow 不另设内容范围。选题确定后，按 DNA 要求用 `smart-search` 核查抖音侧的事实与讨论。跨平台已有成品先核对内容与授权，按抖音图文 DNA 重新定标题、正文与 CTA。
+读取 `douyin/dna/<dna-id>/<dna-id>.dna.md` 和 `.template.md`；未指定时用独立的图文 DNA（如 `dna-0-note`），不能套视频 DNA；目标 DNA 不存在先走 Style DNA workflow 建立。读取 `business_knowledge/business_knowledge.md` 和用户素材作为事实与输入。先依据图文 DNA 的选题规则确定本次主题、受众、核心问题和表达方向；用户给定的题目也按 DNA 细化，若与 DNA 不一致，先协调再制作。workflow 不另设内容范围。选题确定后，按 DNA 要求用 `smart-search` 核查抖音侧的事实与讨论。跨平台已有成品先核对内容与授权，按抖音图文 DNA 重新定标题、正文与 CTA。
 
 按 DNA template 定稿卡片的核心信息；问答卡另写主问题和相关搜索词。DNA 适合反差或反常识表达时，再核查常见看法、新判断及其依据；否则沿用 DNA 的内容结构。真实数字和案例必须可核验；聊天与评论要符合自然交流习惯。
 

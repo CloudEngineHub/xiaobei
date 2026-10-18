@@ -28,10 +28,11 @@ sales-cs-enablement check-channel --account-id <账号> --probe
 sales-cs-enablement link
 ```
 
-把 main workspace 的 `business_knowledge.md` 和 `business_knowledge/` 软链到 sales-cs workspace；无参调用也等价于 link。
+把 main workspace 的 `business_knowledge/` 目录软链到 sales-cs workspace；正文是目录内的普通文件 `business_knowledge.md`，从 workspace 根通过 `read` 读取 `business_knowledge/business_knowledge.md`。无参调用也等价于 link。
 
-- 来源优先 `~/.openclaw/workspace-main/`；正文缺失时复制仓库模板，资料目录缺失时创建。
-- 目标默认 `~/.openclaw/workspace-sales-cs/`；已是软链则更新，真实文件/目录拒绝覆盖。
+- 来源为 `~/.openclaw/workspace-main/business_knowledge/`；旧根目录正文迁入该目录，修正正文中的相对链接并同步工作区文档的路径引用。没有正文时复制仓库模板。
+- 目标默认 `~/.openclaw/workspace-sales-cs/`；只建立目录软链，移除指向旧共享正文的文件软链。`--workspace <绝对路径>` 可重复指定其他 crew。
+- 修改既有文件前备份到 main workspace 同级的 `backups/business-knowledge-*/`。新旧正文内容冲突、目标已有真实目录或旧正文并非本次共享软链时拒绝覆盖；按错误说明处理，不自行删除。
 - `MAIN_WORKSPACE`、`SALES_CS_WORKSPACE`、`REPO_MAIN` 可覆盖路径。exit 0 成功，exit 1 需处理冲突。
 
 编排和业务知识归 main，channel 配置与实例运维交 IT 的 `awada-channel-setup` / `work-channel-binding`。使用这里列出的 PATH wrapper，不拼内部脚本路径。

@@ -17,6 +17,10 @@
 +nano-pdf
 +jq
 +rg
+# 只读文本读取、检索和截取（支持 grep ... | head 等组合）
++cat
++grep
++head
 # PDF image extraction utilities (added 2026-07-01 by IT Engineer, all 3 at /usr/bin/)
 +pdfimages
 +pdftoppm

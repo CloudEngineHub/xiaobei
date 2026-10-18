@@ -62,7 +62,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 
 ### 2. 读取业务知识
 
-从 `business_knowledge.md` 提取：
+从 `business_knowledge/business_knowledge.md` 提取：
 
 - 产品 / 服务与核心差异
 - 目标读者与痛点
@@ -79,7 +79,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 | 主题 / 方向 | 用户指定时不得另起炉灶 |
 | 搜索意图 | 从 DNA 搜索意图地图取主关键词、相关词、用户可能提问；无结论时向用户确认 |
 | 素材 | 用户提供的图片、文案、截图、案例、视频片段优先 |
-| 目标读者 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge.md` |
+| 目标读者 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge/business_knowledge.md` |
 | 标题 | 硬限制 ≤ 20 字；覆盖主关键词或用户问题 |
 | 图组 | 硬限制 ≤ 18 张；用户提供优先 |
 | 行动引导 | DNA 要求时只放一个平台内动作 |
@@ -91,7 +91,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 用户明确交付要求 + 业务事实 / 红线
 > 用户提供的素材
 > DNA template 的生产规则
-> business_knowledge.md 中的相关事实
+> business_knowledge/business_knowledge.md 中的相关事实
 > Agent 的一般内容判断
 ```
 
@@ -103,7 +103,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 2. 视频笔记链接 → self-spawn subagent 走 `viral-chaser`。
 3. 本地图片 / 视频 / 音频 / 文档 → 复制或提取进 `materials/`。
 4. 建立素材清单：用户原话、事实、数据、案例、画面素材、授权信息、待确认项。
-5. 区分必用素材、参考素材、对标素材；冲突时问用户，商业事实以 `business_knowledge.md` 和用户最新说明为准。
+5. 区分必用素材、参考素材、对标素材；冲突时问用户，商业事实以 `business_knowledge/business_knowledge.md` 和用户最新说明为准。
 
 ## Step 3 - 选题与搜索意图
 
@@ -150,7 +150,7 @@ DNA template 是 main agent 的生产输入模板：**图文 DNA 的 template = 
 2. 按 DNA 的定位、核心传达、搜索意图、互动目标组织内容；不套用固定逐句模板。
 3. 开头必须兑现标题与封面承诺，优先回答用户问题或给出核心结论。
 4. 用户必用素材优先进入正文，不得为了形式删除关键事实。
-5. 商业承诺、服务范围、价格和案例必须与 `business_knowledge.md` 一致。
+5. 商业承诺、服务范围、价格和案例必须与 `business_knowledge/business_knowledge.md` 一致。
 6. DNA 要求业务植入时，按 `biz-implant` 决定位置、载体与衔接句；DNA 要求 CTA 时，按 `interaction-cta` 只选择一个平台内动作：评论 / 收藏 / 关注 / 进店 / 咨询 / 搜索品牌词。
 7. 风格转写只改表达与结构呈现，不改事实含义、数据、案例、引用和结论边界。
 8. 同主题改写可借鉴参考结构，文字必须用自己的素材与表达重写，禁止搬运。

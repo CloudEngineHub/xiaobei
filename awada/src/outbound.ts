@@ -13,6 +13,7 @@ import { buildMediaContentFromUrl, decodeAwadaTo, postOutbound } from "./send.js
 import { MAX_UPLOAD_BYTES } from "./api.js";
 import { prepareAwadaHostedMedia } from "./hosted-media.js";
 import { encodeAwadaVoice } from "./voice.js";
+import { filterAwadaReply } from "./reply-filter.js";
 import {
   defineChannelMessageAdapter,
   createMessageReceiptFromOutboundResults,
@@ -142,6 +143,7 @@ export async function deliverAwadaReply(params: {
   beforeSend?: () => void | Promise<void>;
   signal?: AbortSignal;
 }): Promise<string[]> {
+  if (filterAwadaReply(params) === null) return [];
   const account = resolveAwadaAccount({ cfg: params.cfg, accountId: params.accountId });
   if (!account.enabled || !account.configured || !account.relayBaseUrl || !account.awadaKey)
     throw new Error("Awada account is not configured");
@@ -184,6 +186,7 @@ export const awadaOutbound: ChannelOutboundAdapter = {
   chunker: (text, limit) => getAwadaRuntime().channel.text.chunkMarkdownText(text, limit),
   chunkerMode: "markdown",
   textChunkLimit: 2000,
+  normalizePayload: filterAwadaReply,
   sendText: async ({
     cfg,
     to,
@@ -213,7 +216,8 @@ export const awadaOutbound: ChannelOutboundAdapter = {
     return {
       channel: "awada",
       messageId: ids.at(-1) ?? "no_reply_suppressed",
-      meta: { state: "queued", operationIds: ids },
+      ...(ids.length ? {} : { outcome: "not_sent" as const }),
+      meta: { state: ids.length ? "queued" : "suppressed", operationIds: ids },
     };
   },
   sendMedia: async ({
@@ -255,7 +259,8 @@ export const awadaOutbound: ChannelOutboundAdapter = {
     return {
       channel: "awada",
       messageId: ids.at(-1) ?? "no_reply_suppressed",
-      meta: { state: "queued", operationIds: ids },
+      ...(ids.length ? {} : { outcome: "not_sent" as const }),
+      meta: { state: ids.length ? "queued" : "suppressed", operationIds: ids },
     };
   },
 };
@@ -267,6 +272,7 @@ export const awadaMessageAdapter = defineChannelMessageAdapter({
       const { onDeliveryResult: _progress, ...outboundCtx } = ctx;
       const result = await awadaOutbound.sendText!(outboundCtx);
       return {
+        ...(result.outcome ? { outcome: result.outcome } : {}),
         messageId: result.messageId,
         receipt: createMessageReceiptFromOutboundResults({ results: [result], kind: "text" }),
       };
@@ -275,6 +281,7 @@ export const awadaMessageAdapter = defineChannelMessageAdapter({
       const { onDeliveryResult: _progress, ...outboundCtx } = ctx;
       const result = await awadaOutbound.sendMedia!(outboundCtx);
       return {
+        ...(result.outcome ? { outcome: result.outcome } : {}),
         messageId: result.messageId,
         receipt: createMessageReceiptFromOutboundResults({ results: [result], kind: "media" }),
       };

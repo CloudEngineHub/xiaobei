@@ -307,20 +307,19 @@ for agent_dir in "$CREWS_DIR"/*/; do
   inject_media_send_guide "$dest/AGENTS.md"
 done
 
-# ─── 1.5 业务知识软链：非 main crew 共享 main 的 business_knowledge（目录+md）──
-# sales-cs / content-producer 等需要业务上下文的 crew 通过软链读 main 的业务知识。
-# 原 sales-cs 走 sales-cs-manager 包内 sales-cs-enablement 工具手动建；此处统一幂等建好，新 crew 自动获得。
+# ─── 1.5 共享业务知识目录：统一布局、迁移与目录软链 ───────────────────
+# 正文固定为 business_knowledge/business_knowledge.md；只共享目录，不创建文件软链。
+# 与 sales-cs-enablement 共用同一实现，保留旧正文和用户自定义 workspace 文档。
 MAIN_WS="$OPENCLAW_HOME/workspace-main"
-if [ -e "$MAIN_WS/business_knowledge" ]; then
-  for ws in "$OPENCLAW_HOME"/workspace-*/; do
-    [ -d "$ws" ] || continue
-    [ "$(basename "$ws")" = "workspace-main" ] && continue
-    ln -sfn "$MAIN_WS/business_knowledge" "$ws/business_knowledge" 2>/dev/null || true
-    if [ -e "$MAIN_WS/business_knowledge.md" ]; then
-      ln -sfn "$MAIN_WS/business_knowledge.md" "$ws/business_knowledge.md" 2>/dev/null || true
-    fi
-  done
-fi
+knowledge_workspaces=(--workspace "$MAIN_WS")
+for ws in "$OPENCLAW_HOME"/workspace-*/; do
+  [ -d "$ws" ] || continue
+  [ "$(basename "$ws")" = "workspace-main" ] && continue
+  knowledge_workspaces+=(--workspace "${ws%/}")
+done
+MAIN_WORKSPACE="$MAIN_WS" REPO_MAIN="$CREWS_DIR/main" python3 \
+  "$CREWS_DIR/main/skills/sales-cs-manager/tools/sales-cs-enablement/scripts/symlink_business_knowledge.py" \
+  "${knowledge_workspaces[@]}" --backup-dir "$OPENCLAW_HOME/backups"
 # D8 扁平化 + 去 hrbp 化后 crews/shared/ 不存在、无 agent 消费 crew_templates/，
 # 对外 crew 的 channel reply rules 注入改在 §4 对 workspace 直接做（见 inject_channel_reply_rules 调用）。
 
@@ -652,8 +651,7 @@ if [ -f "$CONFIG_PATH" ]; then
 
   # ─── 4c. 应用 Command Tier → exec-approvals + tools.exec ──────
   echo "  📝 Applying command tier exec policies..."
-  EXEC_APPROVALS_PATH="$OPENCLAW_HOME/exec-approvals.json"
-  apply_exec_tiers "$CONFIG_PATH" "$EXEC_APPROVALS_PATH" "$CREWS_DIR" "$PROJECT_ROOT"
+  apply_exec_tiers "$CONFIG_PATH" "$CREWS_DIR" "$PROJECT_ROOT"
 
   # ─── 4d. 注入渠道回复规则到已部署的对外 crew workspaces ──────
   while IFS=$'\t' read -r a_id a_ws; do

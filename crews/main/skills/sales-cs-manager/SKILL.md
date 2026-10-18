@@ -40,7 +40,7 @@ Awada 是项目局部 Relay V2 插件。配置检查须看具体账号、策略�
 ## 核心治理边界
 
 - **sales-cs 不自行升级**：它被设定为不根据客户反馈自主调整自己的 workspace 文件。对它的任何调整（记忆 / 话术 / IDENTITY / 客服手册 / 可用技能）都是 main agent 的责任，一律经 Review workflow 由用户确认后落地。
-- **业务知识单点维护**：`business_knowledge.md` + `business_knowledge/` 只在 main agent workspace 维护，sales-cs workspace 通过软链只读访问（Enablement workflow 建链）。改业务知识在 main workspace 改，不要在 sales-cs 侧改软链目标。
+- **业务知识单点维护**：正文 `business_knowledge/business_knowledge.md` 与支撑材料只在 main agent workspace 的 `business_knowledge/` 目录维护；sales-cs 只共享该目录软链（Enablement workflow 建链）。改业务知识在 main workspace 改，不要在 sales-cs 侧修改共享文件。
 - **反馈只读**：sales-cs workspace 的 `feedback/` 是客户反馈历史，只用于复盘，不修改、不删除。
 - **跟进记录与调度分开**：customer-db 的 follow_up 保存客户级到期时间和发送状态，独立 Automation 负责周期唤起 sales-cs。HEARTBEAT.md、MEMORY 中的登记或 sample 的 heartbeat 段均不能证明扫描任务已启用；须以实际 jobId、schedule 和运行记录验收。
 - **客户消息只发送一次**：跟进任务由 sales-cs 使用标准 message 主动发送，Automation delivery 设为 none；Awada 排队回执须确认 succeeded 后再更新业务状态。调度器运行成功也不等于客户消息发送成功。

@@ -75,5 +75,5 @@ DECLARED_SKILLS 或 SOUL.md 的 crew-type 是安装/权限声明输入，修改�
 
 - **没确认就改**：必须先呈现建议给用户确认，再落地。sales-cs 面对外部客户，误改话术影响真实对话。
 - **把改文件当作配置验收**：binding / agents.entries 交 IT 修改后，分别核对配置和实际路由；不能一概假设必须重启，也不能只凭保存成功宣布已生效。
-- **业务知识双写**：`business_knowledge.md` + `business_knowledge/` 是软链到 main workspace 的，改业务知识在 main workspace 改，不要在 sales-cs workspace 改软链目标。
+- **业务知识双写**：sales-cs 的 `business_knowledge/` 是指向 main workspace 的目录软链，正文为目录内的 `business_knowledge.md`。只在 main workspace 修改业务知识，不另存客服副本。
 - **把一次性问题当系统性问题**：单条负面反馈先核对原始对话再决定是否升级话术；多次出现的同类关键词才作为手册/话术修改依据。

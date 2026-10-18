@@ -147,7 +147,7 @@ design-full pick "<风格描述>"
 - MEMORY.md 中有品牌色 / 字体记录 → 在 DESIGN.md 与 CSS token 中**强制指定**
 - 无记录 → 第一次设计后询问甲方是否认可当前色彩体系，认可才记入 MEMORY.md
 - 核心品牌色 / Logo 不得随意替换；其余 token 可按设计系统适配
-- 品牌事实（产品名、能力表述、资质）只以 Brief 与 `business_knowledge.md` 为准，不自创
+- 品牌事实（产品名、能力表述、资质）只以 Brief 与 `business_knowledge/business_knowledge.md` 为准，不自创
 
 ## 禁止事项（强制）
 

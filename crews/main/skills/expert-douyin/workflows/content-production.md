@@ -66,7 +66,7 @@ DNA template 是 main agent 的生产输入模板：
 
 ### 2. 核实业务事实与边界
 
-读取 Workspace 根的 `business_knowledge.md`，按本次内容需要核实：
+读取 Workspace 的 `business_knowledge/business_knowledge.md`，按本次内容需要核实：
 
 - 产品 / 服务概括和核心差异
 - 目标观众与具体痛点
@@ -85,7 +85,7 @@ DNA template 是 main agent 的生产输入模板：
 | workflow | 视频全案已确定形态时写 CP `expert-video` 支持的 workflow（reversal-ad / collage-broll / deck-talk）；未确定则省略（省略 = CP 按其通用制作流程做） |
 | 主题 / 方向 | 用户给了明确主题时不得另起炉灶，仅按 DNA template 细化选题和钩子 |
 | 素材 | 用户提供的视频片段、图片、录音、文案必须优先使用 |
-| 目标观众 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge.md` |
+| 目标观众 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge/business_knowledge.md` |
 | 视频时长 | 仅视频：未指定时按 DNA template 的时长带；再无要求默认 30-90 秒 |
 | 图文图组 | 仅图文：确定图片数量、图序、逐页信息与首图要求，按图文 template 制作 |
 | 封面 | 视频交付 3:4 竖封面和 4:3 横封面，用户自带封面优先；关键文字避开边缘 15%。比例不符允许等比补底，禁止居中裁切裁掉文字。发布传 `--cover-vertical` / `--cover-horizontal`。图文封面按首图要求制作 |
@@ -97,7 +97,7 @@ DNA template 是 main agent 的生产输入模板：
 用户明确交付要求 + 业务事实 / 红线
 > 用户提供的素材
 > DNA template 的风格规则
-> business_knowledge.md 中的相关事实
+> business_knowledge/business_knowledge.md 中的相关事实
 > Agent 的一般内容判断
 ```
 
@@ -117,7 +117,7 @@ DNA 约束的是选题与观看理由、标题与封面写法、内容创意原�
    - **必用素材**：用户明确要求采用的事实、观点、画面和文案。
    - **参考素材**：提供方向或表达参考，不直接替代用户结论。
    - **对标素材**：只用于模式比较，不能覆盖用户素材和业务事实。
-4. 素材不足时先补问；确实无法补充时，在内容中避免无证据断言。素材之间冲突时列出冲突并问用户；商业事实以 `business_knowledge.md` 和用户最新说明为准。
+4. 素材不足时先补问；确实无法补充时，在内容中避免无证据断言。素材之间冲突时列出冲突并问用户；商业事实以 `business_knowledge/business_knowledge.md` 和用户最新说明为准。
 5. 用户意图是"保留内容、只换我们的表达方式"（同主题改写）时，整理**内容资产清单**而不是风格分析：主题、核心观点、事实、数据、案例、必须保留的关键词与专有名词。不能确认的信息标为「待核实」，禁止为了表达顺滑而补事实。
 
 ## Step 3 - 选题

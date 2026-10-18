@@ -47,7 +47,7 @@ sales-cs-enablement check-channel --account-id <账号> --probe
 
 ## 4. 完善客服内容与素材
 
-结合 business_knowledge.md，填写 sales-cs workspace 的 AGENTS.md、IDENTITY.md、SOUL.md 中由 main 维护的占位内容，并遵循各文件职责。把演示素材实际本地绝对路径或有效 URL 写入 `skills/demo-send/config.json.media`；未准备好时明确记录待补，不写裸云端文件名或虚构路径。
+结合 business_knowledge/business_knowledge.md，填写 sales-cs workspace 的 AGENTS.md、IDENTITY.md、SOUL.md 中由 main 维护的占位内容，并遵循各文件职责。把演示素材实际本地绝对路径或有效 URL 写入 `skills/demo-send/config.json.media`；未准备好时明确记录待补，不写裸云端文件名或虚构路径。
 
 本机路径、环境变量名称、工具别名等备忘写在 `AGENTS.md` 的 `## Tools` 节，不创建 `TOOLS.md`；操作步骤仍查对应 `SKILL.md`，密钥值不写入工作区文档。保留已有工作区的自定义正文；旧版本遗留的 `TOOLS.md` / `HEARTBEAT.md` 由用户升级后手动删除，启用流程不负责迁移或清理。子 agent 只自动加载 AGENTS.md，派工所需的客服边界和操作约束须在该文件或本次派工中说明。
 
@@ -61,6 +61,6 @@ sales-cs-enablement check-channel --account-id <账号> --probe
 sales-cs-enablement link
 ```
 
-正文和支撑材料统一在 main workspace 维护，sales-cs 只通过 business_knowledge.md / business_knowledge/ 软链读取。目标是真实文件时工具拒绝覆盖，确认来源后再处理。
+正文和支撑材料统一在 main workspace 的 business_knowledge/ 目录维护，正文路径为 business_knowledge/business_knowledge.md；sales-cs 只通过目录软链读取。工具会备份并迁移旧正文、同步工作区文档中的路径引用、移除指向旧正文的文件软链。新旧正文冲突或目标已有真实目录时拒绝覆盖，确认来源后再处理。
 
 向用户报告所选 channel/account、workspace、对外称呼、业务知识与演示素材就绪情况，并区分配置、服务连接和实号验收结果。知识仍是模板、素材缺失或测试未获准时如实列出；后续话术和资料优化由 main 按 Review workflow 负责。

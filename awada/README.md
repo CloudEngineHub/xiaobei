@@ -34,6 +34,8 @@
 
 ## 消息与媒体
 
+对外回复默认拦截以 `⚠️ OpenClaw couldn't produce or deliver a reply.` 或 `⚠️ OpenClaw couldn't finish this reply.` 开头的框架故障提示，整条 payload（含附件）不发送。在 Gateway 的 `awada` 告警日志中记录 `openclaw_failure_reply_suppressed`、提示类型、账号及可用的关联 ID，不记录客户正文。普通业务回复和其他业务提示照常发送；客户再次发消息时由正常入站流程处理。
+
 入站使用 OpenClaw 的 ingress 权限、持久队列、上下文构建、音频预转写、inbound turn 和回复管线。agent 获得标准 Sender、MessageSid、MediaPaths、MediaTypes 等字段。连续纯文本按账号、lane、聊天和发送者合并；控制命令、本地 slash、媒体消息不并入普通文本。
 
 插件内部统一处理结构化 @，在合并及命令识别前移除机器人称呼。仅因缺少 @ 而未触发回复的群消息进入同一套历史上下文窗口，下次触发时补充给 agent，不混入命令正文。`historyLimit` 默认沿用系统群聊设置（缺省 50、上限 200）。每个聊天保持顺序，单任务超过五分钟后按飞书规则释放后续消息；已运行的任务继续执行。

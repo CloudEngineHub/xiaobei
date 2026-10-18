@@ -1,6 +1,6 @@
 ---
 name: email-ops
-description: 邮件操作技能。代替用户起草并发送邮件。
+description: 邮件起草与发送，支持纯文本正文和 ZIP、PDF、图片等多个附件。用户要求把文件发到指定邮箱时也使用本技能。
 metadata:
   openclaw:
     emoji: 📨
@@ -16,7 +16,9 @@ metadata:
 
 # Email Ops — 邮件操作技能
 
-代替用户起草并发送邮件。
+代替用户起草并发送邮件，支持纯文本正文和多个附件，统一通过 `email-ops` wrapper 发送。
+
+用户已给出收件人、文件和发送要求时，核对主题、正文和附件后直接执行 Step 5。
 
 ---
 
@@ -267,12 +269,22 @@ email-ops \
   --body "{正文}"
 ```
 
-发送后立即确认：
+发送附件时使用同一个入口；多个附件重复传入 `--attachment`：
 
+```bash
+email-ops \
+  --to "{收件人邮箱}" \
+  --subject "{主题}" \
+  --body-file "/绝对路径/body.txt" \
+  --attachment "/绝对路径/方案.pdf" \
+  --attachment "/绝对路径/安装包.zip"
 ```
-检查 Sent 文件夹（通过邮件客户端 browser 访问 或 IMAP SENT 路径）
-确认：消息是否在 Sent 中可见？
-```
+
+- `--body` 与 `--body-file` 二选一；多行正文先写入 UTF-8 文件，再使用 `--body-file`。
+- 附件使用已确认的文件路径，优先绝对路径。脚本自动保留文件名、识别 MIME 类型；任一附件不可读时不发送邮件。
+- SMTP 配置只从环境变量读取：`SMTP_SERVER`、`SMTP_USER`、`SMTP_PASSWORD` 必填；`SMTP_PORT` 默认 587（STARTTLS），465 使用 SSL；`SMTP_FROM` 可指定显示名和邮箱，未设置时使用 `SMTP_USER`。不要把凭据写进脚本、记忆或聊天。
+- 以脚本的 JSON 回执判断结果：`ok: true` 表示 SMTP 服务器已接受发送，按返回的 `from`、`to`、`subject`、`attachments` 汇报。它不证明对方已收件或阅读。
+- `ok: false` 时报告错误。SMTP 发送不会自动同步邮件客户端的 Sent 文件夹，不因 Sent 中不可见而重发。
 
 **默认行为是起草，不发送。** 只有用户明确说"发送"/"帮我发"时才执行发送。
 
@@ -287,6 +299,7 @@ MAIL OPS REPORT
 收件人：
 邮件类型：
 主题：
+附件：
 
 草稿：
 [邮件正文]
@@ -321,4 +334,4 @@ MAIL OPS REPORT
 | 找不到现有线程 | 告知用户，确认是否以新邮件开始 |
 | 用户说"发给他"但未给邮箱 | 先问清楚收件人邮箱，不猜 |
 | 合作提案缺少关键信息 | 列出缺失项，请用户补充，不用模糊内容填充 |
-| 发送后 Sent 无法确认 | 报告 "awaiting verification"，不声称已发送成功 |
+| 正文文件或附件不可读 | 修正文件路径、权限或正文编码后再执行 |

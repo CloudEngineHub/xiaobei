@@ -71,6 +71,7 @@ BOOTSTRAP.md 只承担一次性用户信息采集。完成后将用户资料写�
 - 已部署工作区不整文件覆盖；模板正文的更新不等于实例自定义正文已被替换。`--force` 是覆盖选项，不能用于日常迁移用户资料。
 - setup 不迁移、归档或删除旧 TOOLS.md / HEARTBEAT.md，也不为它们触发 Doctor；旧文件由用户升级后手动删除。
 - 源码部署的 OFB_ENV.md 记录安装路径和 dotenv 位置；IT 从 AGENTS.md 获知该文件后按需读取。
+- 业务知识正文为 main workspace 的 `business_knowledge/business_knowledge.md`，其他 crew 只共享 `business_knowledge/` 目录软链。setup 与 `sales-cs-enablement link` 共用迁移脚本：备份旧正文、修正迁移后的相对链接和工作区文档引用、移除指向旧正文的文件软链；新旧正文冲突或目标已有真实目录时保留原状并报错。
 
 ## 系统运维与渠道归属
 

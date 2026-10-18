@@ -19,6 +19,7 @@ import { decodeAwadaTo } from "./send.js";
 import type { ResolvedAwadaAccount, AwadaConfig } from "./types.js";
 import { AwadaConfigJsonSchema } from "./config-schema.js";
 import { sendTextToAwada } from "./send.js";
+import { filterAwadaReply } from "./reply-filter.js";
 
 const meta: ChannelMeta = {
   id: "awada",
@@ -145,6 +146,7 @@ export const awadaPlugin: ChannelPlugin<ResolvedAwadaAccount> = {
     },
   }),
   messaging: {
+    transformReplyPayload: filterAwadaReply,
     targetResolver: {
       looksLikeId: (raw) => /^(?:awada:|user:|chat:)/.test(raw),
       resolveTarget: async ({ input }) => {

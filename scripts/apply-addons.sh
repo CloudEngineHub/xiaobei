@@ -91,7 +91,7 @@ fi
 bash "$PROJECT_ROOT/patches/apply.sh"
 NEEDS_INSTALL=true
 
-# ─── 同步 skills 禁用配置（从 config-templates 到运行配置）──────
+# ─── 同步 skills / plugins 默认配置（从 config-templates 到运行配置）──────
 if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" ]; then
   node -e "
     const fs = require('fs');
@@ -118,6 +118,18 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
         } else if (!(name in running.skills.entries)) {
           // 首次写入：用户从未配置过此条目才写默认值
           running.skills.entries[name] = entry;
+          changed = true;
+        }
+      }
+    }
+
+    // 补齐模板中默认禁用的插件；保留用户已有的启用状态和插件配置。
+    if (template.plugins?.entries) {
+      if (!running.plugins) running.plugins = {};
+      if (!running.plugins.entries) running.plugins.entries = {};
+      for (const [name, entry] of Object.entries(template.plugins.entries)) {
+        if (entry?.enabled === false && !(name in running.plugins.entries)) {
+          running.plugins.entries[name] = clone(entry);
           changed = true;
         }
       }
@@ -193,7 +205,7 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
       fs.writeFileSync('$CONFIG_PATH', JSON.stringify(running, null, 2) + '\n');
     }
   "
-  echo "📝 Skills configuration synchronized"
+  echo "📝 Skills and plugin defaults synchronized"
 fi
 
 # ─── 注入 awada 扩展路径（绝对路径，避免 CWD 依赖）──────────────
@@ -414,9 +426,9 @@ if [ "$SKIP_CREW" = "true" ]; then
   echo "⏭️  Skipping setup-crew.sh (--skip-crew)"
 elif [ -f "$CONFIG_PATH" ] && [ -x "$PROJECT_ROOT/scripts/setup-crew.sh" ]; then
   if [ "$FORCE" = "true" ]; then
-    CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh" --force
+    XIAOBEI_DEFER_EXEC_APPROVALS=1 CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh" --force
   else
-    CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh"
+    XIAOBEI_DEFER_EXEC_APPROVALS=1 CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh"
   fi
 fi
 
@@ -435,12 +447,22 @@ fi
 npm ci --ignore-scripts --prefix "$PROJECT_ROOT/browser"
 npm run build --prefix "$PROJECT_ROOT/browser"
 
-# Migrate with the newly built host, validate, then stamp meta only after success.
-node "$PROJECT_ROOT/scripts/migrate-openclaw-config.mjs" --config "$CONFIG_PATH" --write
+# 纯构建/打包环境没有运行配置，不初始化用户状态。
+if [ -f "$CONFIG_PATH" ]; then
+  # Migrate with the newly built host, validate, then stamp meta only after success.
+  node "$PROJECT_ROOT/scripts/migrate-openclaw-config.mjs" --config "$CONFIG_PATH" --write
 
-# Explicit offline schema/state repair. The upstream update guard blocks runtime/service repair.
-OPENCLAW_UPDATE_IN_PROGRESS=1 OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
-  node "$OPENCLAW_DIR/dist/index.js" doctor --fix --non-interactive --no-workspace-suggestions
+  # Explicit offline schema/state repair. The upstream update guard blocks runtime/service repair.
+  OPENCLAW_UPDATE_IN_PROGRESS=1 OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
+    node "$OPENCLAW_DIR/dist/index.js" doctor --fix --non-interactive --no-workspace-suggestions
+
+  # 只让完成构建和状态迁移的新引擎更新宿主审批；不再生成 legacy JSON。
+  if [ "$SKIP_CREW" != "true" ]; then
+    source "$PROJECT_ROOT/scripts/lib/agent-skills.sh"
+    source "$PROJECT_ROOT/scripts/lib/exec-tiers.sh"
+    apply_exec_tiers "$CONFIG_PATH" "$PROJECT_ROOT/crews" "$PROJECT_ROOT"
+  fi
+fi
 
 # ─── 重启 gateway service（如果正在运行） ─────────────────────────
 if [ "$NO_RESTART" = "true" ]; then

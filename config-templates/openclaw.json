@@ -135,7 +135,6 @@
           "skill-creator",
           "visualize",
           "tmux",
-          "summarize",
           "node-connect",
           "github",
           "gh-issues",
@@ -350,6 +349,15 @@
         "enabled": true
       },
       "phone-control": {
+        "enabled": false
+      },
+      "google-meet": {
+        "enabled": false
+      },
+      "teams-meetings": {
+        "enabled": false
+      },
+      "zoom-meetings": {
         "enabled": false
       },
       "codex": {

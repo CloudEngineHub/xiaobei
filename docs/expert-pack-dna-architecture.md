@@ -502,7 +502,7 @@ crews/content-producer/
 | `AGENTS.md` 中各平台流程细节 | 拆进对应专家包 `workflows/*.md` |
 | 各平台起号/运营知识文档 | 拆分：平台规则进 SKILL.md、操作步骤进 workflow、风格偏好进 DNA |
 | 外部移植的专家 persona | 拆分：通用原则进 SKILL.md、风格调性拆成 DNA 文档、KPI 和不适用的内容删除 |
-| `business_knowledge.md`（品牌与业务） | 留在 workspace 根，专家包只引用不复制 |
+| `business_knowledge/business_knowledge.md`（品牌与业务） | 留在 main workspace 的共享业务知识目录，专家包只引用不复制 |
 | `calibration/`、`campaign_assets/`（数据 / 资产） | 留在原位，专家包通过路径引用（不是知识资产，不搬家） |
 | 仅限单一领域的技能 | 整体迁入对应专家包 `tools/`，同时从 `BUILTIN_SKILLS` / allowlist 移除 |
 | 跨领域技能（如 `wx-mp-hunter`、`content-calibrator`、`published-track`） | 保持顶层独立技能，由专家包编排调用 |

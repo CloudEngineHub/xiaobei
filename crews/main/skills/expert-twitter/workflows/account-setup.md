@@ -19,7 +19,7 @@
 
 ## Step 1 - 诊断信息收集
 
-先读取 Workspace 根目录的 `business_knowledge.md`，确认产品 / 服务、目标受众信息可用；缺失项与用户补齐，不凭空编造。
+先读取 Workspace 的 `business_knowledge/business_knowledge.md`，确认产品 / 服务、目标受众信息可用；缺失项与用户补齐，不凭空编造。
 
 再尽量收集账号侧信息。用户没有提供的不要卡住，先用合理假设输出方案，并列出待补充项：
 

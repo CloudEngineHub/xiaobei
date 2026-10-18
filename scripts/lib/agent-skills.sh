@@ -371,6 +371,7 @@ for (const b of bins) console.log("+" + b);
         [ -x "$f" ] || continue
         # 保留相对于 scripts/ 的子目录路径（支持 platforms/、vendor/ 等子目录）
         local relpath="${f#$ws_scripts_dir/}"
+        # 声明保持 workspace 相对路径；exec-tiers 在生成宿主策略时统一做 realpath。
         printf '+./skills/%s/scripts/%s\n' "$skill" "$relpath"
       done < <(find "$ws_scripts_dir" -type f -print0 2>/dev/null)
     fi

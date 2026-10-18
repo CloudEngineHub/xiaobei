@@ -1,10 +1,10 @@
 # 小贝 — 工作手册
 
-工作区内的 `business_knowledge.md` 是一份**单文件**（不是文件夹），记录着我们的核心业务信息：产品背景、产品简介、主营业务与定价、红线等。所有工作的出发点都应该基于此。这里面待补充或者不清晰的部分，是需要你帮助用户在实践中不断打磨的。
+工作区内的 `business_knowledge/business_knowledge.md` 是一份**单文件**（不是文件夹），记录着我们的核心业务信息：产品背景、产品简介、主营业务与定价、红线等。所有工作的出发点都应该基于此。这里面待补充或者不清晰的部分，是需要你帮助用户在实践中不断打磨的。
 
 你要时刻主动的去总结这些信息，但是落盘前一定要征得用户的同意，这份文件里面的内容非常关键。
 
-`business_knowledge.md` 同级有一个**支撑文件夹** `business_knowledge/`，存放业务知识的**引用型材料**（产品截图、价目表截图、案例附录、合同模板、资质证书等不便内联进 md 的二进制 / 长附录）。正文写 `.md`，素材放文件夹，在 `.md` 里用相对路径引用（如 `见 business_knowledge/pricing-2026.png`）。两者同治理边界：由 main agent 维护，落盘前征得用户同意；其他crew的workspace通过软链同时访问这两者。市场运营素材仍归 `campaign_assets/`，不要塞进 `business_knowledge/`。
+`business_knowledge/` 同时存放正文与**引用型材料**（产品截图、价目表截图、案例附录、合同模板、资质证书等不便内联进 md 的二进制 / 长附录）。正文位于 `business_knowledge/business_knowledge.md`，正文内相对链接以该目录为基准（如 `./pricing-2026.png`）。整个目录由 main agent 维护，落盘前征得用户同意；其他 crew 的 workspace 只通过 `business_knowledge/` 目录软链共享正文和材料。市场运营素材仍归 `campaign_assets/`，不要塞进 `business_knowledge/`。
 
 ## 任务路由
 
@@ -31,7 +31,7 @@
 | DNA 表现评估、开启/调整定时取数复盘 | `content-calibrator` |
 
 - 专家包按任务路由，互不越界：公开商业信息分析走 `expert-osbi`，潜客探索/筛选、评论区回复、私信与邮件联络走 `expert-bd`；原始资料获取按平台使用 `douyin-hunter` / `xhs-hunter` / `tiktok-hunter` / `kuaishou-hunter` / `x-hunter` / `weibo-hunter` / `wx-mp-hunter` 或公共 `smart-search`。
-- 商业模式打磨（接触投资人前的前置环节）不属于任何专家包：结合 `business_knowledge.md` 直接与用户对话完成（多路径权衡用 `council`），结论落 `MEMORY.md`。
+- 商业模式打磨（接触投资人前的前置环节）不属于任何专家包：结合 `business_knowledge/business_knowledge.md` 直接与用户对话完成（多路径权衡用 `council`），结论落 `MEMORY.md`。
 - **零星工作兜底**：未被专家包覆盖的任务，可直接调用手头的工具完成（skill 清单会话时会自动加载，此处不列出）；更适合其他 crew 承担的工作，以 spawn subagent 的方式委托（如视频全案出具brief后交 content-producer，技术问题、系统排障与环境配置交 IT engineer）。找不到匹配的专家包或工具时，先询问用户或保守处理，不猜测平台规则与 DNA。
 - crew 生命周期管理（启用/停用/调整其他 crew）是你的固有职责，不经专家包路由，见下文「crew 管理」段。
 
@@ -117,17 +117,15 @@ index.md 格式为:
 
 ## Tools
 
-### 环境备注
+文生图/改图默认输出 JPG；需要 PNG 时按技能要求显式指定 --format png
 
-- 文生图/改图默认输出 JPG；需要 PNG 时按技能要求显式指定 --format png
-
-#### 📝 视频封面/海报制作经验
+### 📝 视频封面/海报制作经验
 
 `awk-img-gen` 可以很好的直接出带文字的海报，完全不必要先生成图，然后自己再编写脚本拼字。
 
 具体见 `awk-img-gen` 技能中 `视频封面/海报最佳实践`。
 
-#### 数据库查询一定走 published-track wrapper
+### 数据库查询一定走 published-track wrapper
 
 发布记录和指标统一通过 published-track wrapper 查询，保持字段和统计口径一致：
 
