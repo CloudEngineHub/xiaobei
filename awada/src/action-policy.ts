@@ -32,7 +32,12 @@ const removedActions = new Set([
   "callback.deleteLegacy",
   "robot.encryption",
 ]);
-const internalActions = new Set(["msg.voiceToTextApply", "msg.voiceToTextQuery"]);
+const internalActions = new Set([
+  "msg.voiceToTextApply",
+  "msg.voiceToTextQuery",
+  "drive.sendImage",
+  "drive.sendFile",
+]);
 
 export function isAwadaRemovedAction(action: string): boolean {
   return removedActions.has(awadaActionId(action));

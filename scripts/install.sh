@@ -1396,6 +1396,8 @@ refresh_gateway_env_only() {
         mv "${daemon_env_file}.new" "$daemon_env_file"
         printf 'OPENCLAW_STATE_DIR=%s\n' "$OPENCLAW_HOME" >> "$daemon_env_file"
         if [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+            "$WISEFLOW_ROOT/$PORTABLE_NODE" "$WISEFLOW_ROOT/scripts/refresh-gateway-service-metadata.mjs" \
+                "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/openclaw-gateway.service"
             ensure_systemd_wait_display_dropin
             systemctl --user daemon-reload 2>/dev/null || true
             systemctl --user restart "openclaw-gateway.service" 2>/dev/null && ui_success "Restarted gateway"

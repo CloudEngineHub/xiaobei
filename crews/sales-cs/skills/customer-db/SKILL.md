@@ -148,6 +148,7 @@ Sender (untrusted metadata):
 ```
 
 输出为 tab 分隔的表格（含 header），字段：`id / peer / user_id_external / follow_up_at / reason / context_summary / status`。
+没有到期任务时输出 `NO_DUE_TASKS` 并正常退出；直接结束本轮扫描，不用 `bash -c`、`ls` 或拼接 `echo` 再次验证。脚本报错时按失败处理，不能当作无任务。
 
 ### 标记首次已发送（pending → sent_once）
 

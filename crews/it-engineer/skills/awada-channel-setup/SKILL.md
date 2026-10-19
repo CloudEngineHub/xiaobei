@@ -62,7 +62,8 @@ awada-channel-setup --project-root <项目根> --account-id <账号> --agent-id 
 
 - 检查所选账号、agent 注册与 binding。401/403 查 key 和 lane scope；lane 歧义/未找到应修正选择，不能回退 V1。
 - 获准实号验证后，检查外部入站、普通回复和标准媒体；只有 operation result 的 `succeeded` 才代表操作执行成功。`queued/running/submitted` 继续查原回执，`unknown` 或部分失败不盲目新发。
-- 业务能力使用 `awada_api capabilities/schema/operation/result/events`。动作名统一如 `room.getRoomList`、`todo.create`，先读 schema 再提交，不按账号挑选另一套动作。登录设备、客户端队列/维护、历史诊断、回调扩展、通信加密、原消息转发不向客户端开放；不要尝试绕过目录调用。账号操作受 owner/工具策略约束，不向普通客户开放整个账号管理。
+- 业务能力使用 `awada_api capabilities/schema/operation/result/events`。动作名统一如 `room.getRoomList`、`todo.create`，先读 schema 再提交，不按账号挑选另一套动作。登录设备、客户端队列/维护、历史诊断、回调扩展、通信加密、原消息转发不向客户端开放；不要尝试绕过目录调用。业务操作遵循宿主工具策略和服务端权限，账号范围的结果查询保留 owner 限制。
+- 普通本地图片继续使用标准 `message` 的 `media`。已存在于网盘的文件使用统一动作 `drive.send`，参数 `targets`、`fileName`、`kind`（`image|file`）及可选 `caption`；不要让 agent 选择底层协议或填写内部指令。业务操作不要求客户本人是 owner；非 owner 的 `result` 仅查询当前 agent/sessionId 已登记的回执，其他会话和历史未登记回执交 owner 核查，不能因查询被拒就重发。
 - CustomerDB 验证在所配 workspace 下进行：`db/` 须存在且可写，`sqlite3` 命令可用；匹配账号的客户私聊应注入 `[CustomerDB]`，首次接触自动建档。客户回复后仅结束 sent_once 跟进，不取消 pending；cron/heartbeat 不执行客户回复处理。静默命令为 `/payment_success`、`/club_join`，不在 commands.json 重复注册。功能边界和完整配置见 `<项目根>/awada/README.md` 的 CustomerDB 节；非聊天服务事件和操作结果不应自动唤起 LLM。使用收到的原始目标 ID，不猜测可变昵称对应的稳定身份。
 
 完整契约和迁移说明见 `<项目根>/awada/README.md`、`docs/AWADA-CLIENT-TRANSPORT.md`。

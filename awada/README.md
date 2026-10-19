@@ -49,7 +49,7 @@ message(action="send", media="https://example.com/demo.mp4")
 
 当前会话省略 target。主动指定目标时使用 `target="user:<用户 ID>"` 或 `target="chat:<群 ID>"`，并按需要指定 channel/account。内部自动回复仍接受历史编码目标。
 
-- 不使用 `[SEND_FILE]`、`sendAttachment` 或仅凭云端文件名发送的约定。
+- 不使用 `[SEND_FILE]` 或 `sendAttachment`。本地文件使用标准 media；已存在于网盘的文件使用 `awada_api` 的 `drive.send`，不将网盘文件名充当本地路径或 URL。
 - 同一 payload 的正文和附件一起保留。图片、视频、文件使用标准 media；语音气泡使用标准 `audioAsVoice`。
 - 本地文件通过 OpenClaw 的媒体权限和大小限制读取，统一提交附件内容；语音内部转换编码并携带真实时长。收到语音后自动完成原生转写申请与结果查询，文本进入标准消息上下文；缺少原始语音 ID、转写失败或超时则尝试 OpenClaw 公共音频转写，不使用独立 ASR 脚本。自动转写仅在入站权限放行后执行，不自动把转写结果另发一条消息。
 - 需要通过链接交付本地附件时，配置 `mediaPublicBaseUrl`，只将该公网 origin 的 `/plugins/awada/media/` 转发到现有 Gateway；不新增监听端口。附件使用带随机 token、最长一小时有效的 URL，仍检查账号启用状态。公网 URL 可直接发送。所有账号采用同样的发送格式，服务端决定内容的执行支持。
@@ -61,6 +61,15 @@ message(action="send", media="https://example.com/demo.mp4")
 启用插件后注册 `awada_api`，提供联系人、群管理、消息类型、标签、朋友圈、媒体上传下载、待办等产品范围内的能力合集；账号返回的部分目录不会删掉其他业务能力。登录/设备管理、客户端指令队列与存储维护、历史诊断、回调扩展、通信加密、原消息转发已从客户端接口移除：目录不展示、schema 不提供、手动提交也拒绝，动态目录不会将它们重新加入。
 
 原生语音转写的申请/查询保留在内部流程，面向 agent 只提供 `voice.transcribe` 一个命令，返回完成的文本。其 `params` 为 `{"messageId":"<原始语音消息 ID>","timeoutMs":30000}`，超时范围 1–60 秒；普通收件自动执行，无需 agent 调用。
+
+网盘发送使用唯一命令 `drive.send`，传 `targets`（接收人的原始名称或群名数组）、`fileName`（网盘中的完整文件名）、`kind`（`image` 或默认 `file`）和可选 `caption`。所有账号使用同样的命令；服务端决定执行支持。不要传本地路径、下载 URL 或底层指令参数；原始网盘发送动作仅在插件内部适配。
+
+```text
+awada_api(action="operation", operation="drive.send", params={"targets":["<客户原始名称>"],"fileName":"payment.jpg","kind":"image"})
+awada_api(action="result", operationId="<返回的 eventId>", waitMs=10000)
+```
+
+返回入队回执后查询原 eventId，只有 `succeeded` 才算执行完成。`unknown` 或超时须核对原操作，不自动换新请求重发。
 
 当前业务目录已隐藏实现名称，但其他同义业务动作尚未全部合并；原始接口数不等于业务命令数。开发要求仍是同一业务能力只有一个公开命令和统一参数，内部适配不应成为 agent 的分支选择。
 
@@ -75,7 +84,7 @@ awada_api(action="events", eventType="SERVICE_EVENT", limit=20)
 
 `params` 可为对象或数组，原生 query 放 `query`，multipart 文件使用 `file: {filename, base64, contentType}`。需要脚本对接时，可直接导入 `index.ts` 导出的 capabilities、submit、get/wait result、HTTP inbound helpers；转写使用 `transcribeAwadaVoice`。
 
-账号操作与账号级结果只对 owner 或经 OpenClaw 工具策略授权的本地自动任务开放；普通外部发送者仅能读取本人的聊天事件。标准 `message` 发送继续走系统的会话和媒体权限。客户端只配置 Awada 访问凭据，不向 agent 下发服务管理凭据。
+已获 OpenClaw 工具权限的 agent 可在客户会话中提交产品范围内的业务动作，不要求客户是 channel owner。非 owner 只能查询该 agent 当前 sessionId 提交的回执；标准 `message` 的回执通过宿主工具完成通知登记到同一会话。归属记录按账号凭据隔离并持久保存七天，插件重载后仍可查询；新建会话不会继承旧会话权限。未知/其他会话的回执由 owner 或已授权本地自动任务核查，不把查询被拒当作发送失败后重发。账号范围结果查询仍要求 owner；普通外部发送者的事件读取仍限本人聊天。标准 `message` 发送继续走系统的会话和媒体权限。客户端只配置 Awada 访问凭据，不向 agent 下发服务管理凭据。
 
 目录保留服务级授权范围、定制和废弃标记；目录存在不等于执行成功。客户端不根据账号类型或服务端目录的 `enabled` 值拦截动作，支持情况与权限由 server 检查后返回。ID 超出 JavaScript 安全整数范围时必须传字符串，响应保留原始数字 token。
 

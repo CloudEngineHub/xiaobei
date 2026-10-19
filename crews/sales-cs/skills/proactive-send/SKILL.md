@@ -29,7 +29,7 @@ message(action="send", channel="awada", target="user:<SenderId>", message="演�
 
 只有被已配置的 Automation 或明确的心跳 scratch 调用时执行；HEARTBEAT.md 不是运行入口。main 通过 `sales-cs-manager` 定义业务范围，IT 管理 schedule，sales-cs 不自行创建、调整或停用系统调度。
 
-1. 从自身真实 workspace 运行 customer-db 的到期查询，使用该技能提供的 follow-up-due.sh 具名脚本；只处理本任务授权范围内的记录。无到期记录时保持静默。
+1. 从自身真实 workspace 运行 customer-db 的到期查询，使用该技能提供的 follow-up-due.sh 具名脚本；只处理本任务授权范围内的记录。输出 `NO_DUE_TASKS` 表示查询成功且无到期记录，结束扫描并保持静默，不用 `bash -c`、`ls` 或拼接 `echo` 验证。脚本报错须报告异常。
 2. 对每条记录读取 context_summary，生成不超过三句话的自然跟进。目标来自记录的原始 user_id_external，账号来自本任务明确配置；不要依赖定时会话中不存在的当前客户 Sender/CustomerDB 注入，也不要猜账号归属。
 3. 回执账本使用 `db/follow-up-receipts.json`，以 `<id>:<status>` 区分本次跟进。保存发送意图、话术、账号及返回的 operationIds/messageId，不保存 key。有原回执先查原操作；有意图但无回执先对账，不自动重发。不覆盖已有账本，不把旧账本当成不存在；账本不可读或无法保存时停止对应记录的发送。
 4. 按上文标准 message 和 awada_api 规则发送并确认。全部 succeeded 后，使用 customer-db 已有的 follow-up-mark-sent.sh 或 follow-up-complete.sh 具名操作推进 `pending → sent_once → completed`；最多两轮。若发送已成功但业务状态更新失败，保留成功回执，后续只补状态，不重新发送。

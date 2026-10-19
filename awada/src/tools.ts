@@ -12,7 +12,11 @@ import {
   type ProviderOperation,
 } from "./api.js";
 import { listAwadaSystemEvents } from "./events.js";
-import { withAwadaSubmissionLedger } from "./ledger.js";
+import {
+  assertAwadaOperationOwner,
+  awadaSessionOwner,
+  withAwadaSubmissionLedger,
+} from "./ledger.js";
 import { awadaPublicValue } from "./presentation.js";
 import { assertAwadaPublicAction, awadaTranscriptionAction } from "./action-policy.js";
 import { transcribeAwadaVoice } from "./transcription.js";
@@ -58,7 +62,7 @@ export function registerAwadaTools(api: OpenClawPluginApi): void {
         name: "awada_api",
         label: "Awada Relay V2",
         description:
-          "Discover and call Awada business actions. Use capabilities, then schema for exact params/query/response. Use the same action IDs for every account; the server decides execution support and permissions. operation enqueues a call; result checks execution. voice.transcribe completes transcription and returns text directly; inbound voice is transcribed automatically. queued/submitted are not successful delivery; unknown must be reconciled without blind resend. events reads service/result callbacks without starting chat turns. Large IDs must be strings.",
+          "Discover and call Awada business actions. Use capabilities, then schema for exact params/query/response. Use the same action IDs for every account; the server decides execution support and permissions. operation enqueues a call; result checks execution. Non-owner callers may submit business actions and read receipts owned by their agent session; account-wide results require the owner. drive.send sends an existing drive file or image by targets/fileName/kind. voice.transcribe completes transcription and returns text directly; inbound voice is transcribed automatically. queued/submitted are not successful delivery; unknown must be reconciled without blind resend. events reads service/result callbacks without starting chat turns. Large IDs must be strings.",
         parameters: Schema,
         execute: async (toolCallId, rawInput, signal) => {
           const input = rawInput as Static<typeof Schema>;
@@ -75,6 +79,8 @@ export function registerAwadaTools(api: OpenClawPluginApi): void {
             lane: account.lane,
           };
           ctx.assertInvocationCurrent();
+          const sessionOwner = awadaSessionOwner(ctx);
+          const restricted = Boolean(ctx.requesterSenderId) && ctx.senderIsOwner !== true;
           let result: unknown;
           switch (input.action) {
             case "health":
@@ -88,20 +94,27 @@ export function registerAwadaTools(api: OpenClawPluginApi): void {
               result = await getAwadaCapabilities(credentials, input.operation, signal);
               break;
             case "operation": {
-              if (ctx.requesterSenderId && ctx.senderIsOwner !== true)
-                throw new Error("Native Awada account operations require the channel owner");
               if (!input.operation) throw new Error("operation is required");
               assertAwadaPublicAction(input.operation);
+              if (restricted && !sessionOwner)
+                throw new Error("Awada business operations require an identified agent session");
               const body: ProviderOperation = {
                 operation: input.operation,
                 params: input.params,
                 query: input.query,
                 file: input.file,
                 request_id:
-                  input.requestId ??
-                  `tool-${createHash("sha256")
-                    .update(JSON.stringify([ctx.sessionId, toolCallId]))
-                    .digest("hex")}`,
+                  input.requestId && !restricted
+                    ? input.requestId
+                    : `tool-${createHash("sha256")
+                        .update(
+                          JSON.stringify([
+                            ctx.agentId,
+                            ctx.sessionId,
+                            input.requestId ?? toolCallId,
+                          ]),
+                        )
+                        .digest("hex")}`,
               };
               if (input.operation === awadaTranscriptionAction.id) {
                 const params = input.params as Record<string, unknown> | undefined;
@@ -124,7 +137,9 @@ export function registerAwadaTools(api: OpenClawPluginApi): void {
                   ctx.assertInvocationCurrent();
                   return submitAwadaOperation(credentials, body, signal);
                 },
+                sessionOwner,
               );
+              ctx.assertInvocationCurrent();
               result = input.waitMs
                 ? {
                     ...receipt,
@@ -137,9 +152,10 @@ export function registerAwadaTools(api: OpenClawPluginApi): void {
               break;
             }
             case "result":
-              if (ctx.requesterSenderId && ctx.senderIsOwner !== true)
-                throw new Error("Account-wide Awada results require the channel owner");
               if (!input.operationId) throw new Error("operationId is required");
+              if (restricted)
+                await assertAwadaOperationOwner(credentials, input.operationId, sessionOwner);
+              ctx.assertInvocationCurrent();
               result = input.waitMs
                 ? await waitForAwadaOperation(credentials, input.operationId, {
                     timeoutMs: input.waitMs,

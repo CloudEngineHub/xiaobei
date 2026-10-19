@@ -3,6 +3,7 @@ import { awadaPlugin } from "./src/channel.js";
 import { setAwadaRuntime } from "./src/runtime.js";
 import { registerCustomerDb } from "./src/customerdb.js";
 import { registerAwadaTools } from "./src/tools.js";
+import { registerAwadaMessageOwnership } from "./src/operation-ownership.js";
 import { registerAwadaCommands } from "./src/commands.js";
 import { registerAwadaMediaRoute } from "./src/hosted-media.js";
 import { AwadaPluginConfigSchema, AwadaPluginConfigJsonSchema } from "./src/config-schema.js";
@@ -42,6 +43,7 @@ const plugin = {
     api.registerChannel({ plugin: awadaPlugin });
     const config = AwadaPluginConfigSchema.parse(api.pluginConfig ?? {});
     registerAwadaTools(api);
+    registerAwadaMessageOwnership(api);
     registerAwadaCommands(api, config.commandsFile);
     registerAwadaMediaRoute(api);
     if (config.customerdb?.enabled !== false && config.customerdb?.agentId)

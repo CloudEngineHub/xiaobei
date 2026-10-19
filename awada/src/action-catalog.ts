@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { awadaActionId, awadaOperationView, type AwadaCatalogOperation } from "./presentation.js";
 import { awadaTranscriptionAction, isAwadaPublicAction } from "./action-policy.js";
+import { awadaDriveSendAction } from "./drive.js";
 
 const snapshot = JSON.parse(
   readFileSync(new URL("./internal/operation-catalog.json", import.meta.url), "utf8"),
@@ -35,11 +36,17 @@ export function awadaCatalogView(
 ) {
   const operations = new Map([...baseline].filter(([id]) => isAwadaPublicAction(id)));
   operations.set(awadaTranscriptionAction.id, awadaTranscriptionAction);
+  operations.set(awadaDriveSendAction.id, awadaDriveSendAction);
   const routes = new Map<string, string>();
   for (const operation of Array.isArray(remote.operations) ? remote.operations : []) {
     if (!operation || typeof operation.id !== "string") continue;
     const id = awadaActionId(operation.id);
-    if (!isAwadaPublicAction(id) || id === awadaTranscriptionAction.id) continue;
+    if (
+      !isAwadaPublicAction(id) ||
+      id === awadaTranscriptionAction.id ||
+      id === awadaDriveSendAction.id
+    )
+      continue;
     routes.set(id, operation.id);
     operations.set(id, { ...operations.get(id), ...operation, id });
   }

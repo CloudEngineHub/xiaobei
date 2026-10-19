@@ -482,16 +482,11 @@ if [ "$NO_RESTART" = "true" ]; then
   echo "⏭️  Skipping gateway restart (--no-restart)"
 elif [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   SERVICE_NAME="openclaw-gateway"
-  # 同步 systemd unit Description 的版本号到 openclaw.version
-  # （升级后 systemctl status 标签不再停留装服务那天的旧版本号）
+  # 2026.10.x 已退役安装时版本戳；不能继续给 Description 写版本号。
   UNIT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${SERVICE_NAME}.service"
-  if [ -f "$UNIT_FILE" ] && [ -f "$PROJECT_ROOT/openclaw.version" ]; then
-    OC_VER="$(grep -E '^OPENCLAW_VERSION=' "$PROJECT_ROOT/openclaw.version" | cut -d= -f2)"
-    if [ -n "$OC_VER" ] && grep -q 'Description=OpenClaw Gateway (v' "$UNIT_FILE"; then
-      sed -i -E "s/(Description=OpenClaw Gateway \(v)[0-9.-]+(\))/\1${OC_VER}\2/" "$UNIT_FILE" 2>/dev/null && \
-        systemctl --user daemon-reload 2>/dev/null && \
-        echo "🏷️  Synced ${SERVICE_NAME}.service Description -> v${OC_VER}"
-    fi
+  if [ -f "$UNIT_FILE" ]; then
+    node "$PROJECT_ROOT/scripts/refresh-gateway-service-metadata.mjs" "$UNIT_FILE"
+    systemctl --user daemon-reload 2>/dev/null || true
   fi
   if systemctl --user is-active "$SERVICE_NAME.service" >/dev/null 2>&1; then
     echo "🔄 Restarting $SERVICE_NAME.service..."

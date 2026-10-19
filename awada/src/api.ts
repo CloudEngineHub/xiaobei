@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { awadaCatalogView, awadaKnownAction, awadaTransportAction } from "./action-catalog.js";
 import { assertAwadaPublicAction, awadaTranscriptionAction } from "./action-policy.js";
+import { awadaDriveSendAction, awadaDriveSendRequest } from "./drive.js";
 import {
   awadaOperationView,
   awadaPublicValue,
@@ -153,6 +154,7 @@ export async function getAwadaCapabilities(
   assertAwadaPublicAction(operation);
   if (operation === awadaTranscriptionAction.id)
     return awadaOperationView(awadaTranscriptionAction, true);
+  if (operation === awadaDriveSendAction.id) return awadaOperationView(awadaDriveSendAction, true);
   const transportAction = awadaTransportAction(credentials, operation);
   assertAwadaPublicAction(transportAction);
   try {
@@ -180,8 +182,12 @@ export function submitAwadaOperation(
   if (typeof input.operation !== "string" || !input.operation.trim())
     throw new Error("Invalid Awada action ID");
   assertAwadaPublicAction(input.operation);
-  const operation = awadaTransportAction(credentials, input.operation);
-  assertAwadaPublicAction(operation);
+  const drive =
+    input.operation === awadaDriveSendAction.id ? awadaDriveSendRequest(input.params) : undefined;
+  if (drive && (input.file || (input.query && Object.keys(input.query).length)))
+    throw new Error("drive.send accepts params only; the file must already exist in the drive");
+  const operation = drive?.operation ?? awadaTransportAction(credentials, input.operation);
+  if (!drive) assertAwadaPublicAction(operation);
   if (input.operation === awadaTranscriptionAction.id)
     throw new Error("Use transcribeAwadaVoice or awada_api operation voice.transcribe");
   if (input.file && Buffer.from(input.file.base64, "base64").length > MAX_UPLOAD_BYTES) {
@@ -191,6 +197,7 @@ export function submitAwadaOperation(
     body: {
       ...input,
       operation,
+      ...(drive ? { params: drive.params } : {}),
       request_id: input.request_id ?? randomUUID(),
     },
     signal,
