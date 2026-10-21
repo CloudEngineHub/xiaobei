@@ -149,6 +149,15 @@ render_awk_api_key() {
       updated = true;
     }
 
+    // Keep explicit logging choices in existing volumes; fill only missing fields.
+    for (const [name, value] of Object.entries(template.logging ?? {})) {
+      config.logging ??= {};
+      if (config.logging[name] === undefined) {
+        config.logging[name] = value;
+        updated = true;
+      }
+    }
+
     for (const [name, provider] of Object.entries(providers)) {
       if (provider && typeof provider.apiKey === "string" && provider.apiKey !== key) {
         provider.apiKey = key;

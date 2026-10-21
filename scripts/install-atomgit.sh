@@ -880,7 +880,7 @@ place_config_template() {
     else
         ui_info "openclaw.json 已存在且健康 (有 models + agents.defaults), 保留"
     fi
-    # 把 plugins.load.paths 里的 ${XIAOBEI_HOME} env ref 直接解析成绝对路径写回 config。
+    # 补齐日志默认值，并把 plugins.load.paths 中的 ${XIAOBEI_HOME} 解析成绝对路径。
     # 原因：openclaw 在 CLI 上下文（daemon install / doctor / status / 用户裸跑 openclaw）校验
     # config 时用的是当前 shell env，未必有 XIAOBEI_HOME → ${XIAOBEI_HOME}/awada 不展开 →
     # "plugin path not found" 误报。awada 位置在 install 时已知（$WISEFLOW_ROOT/awada），
@@ -893,19 +893,32 @@ place_config_template() {
         const c=JSON.parse(fs.readFileSync(p,"utf8"));
         const paths=(c.plugins?.load?.paths) || [];
         let changed=false;
+        const template=JSON.parse(fs.readFileSync(process.argv[3],"utf8"));
+        // Fill logging defaults without overriding deliberate troubleshooting settings.
+        for (const [key,value] of Object.entries(template.logging ?? {})) {
+            c.logging ??= {};
+            if (c.logging[key]===undefined) {
+                c.logging[key]=value;
+                changed=true;
+            }
+        }
+        let pathsChanged=false;
         const fixed=paths.map(s => {
             if (typeof s==="string" && s.indexOf("${XIAOBEI_HOME}")!==-1) {
-                changed=true;
+                pathsChanged=true;
                 return s.split("${XIAOBEI_HOME}").join(root);
             }
             return s;
         });
-        if (changed) {
+        if (pathsChanged) {
             c.plugins.load.paths=fixed;
+            changed=true;
+        }
+        if (changed) {
             fs.writeFileSync(p, JSON.stringify(c,null,2)+"\n");
         }
-    ' "$config_path" "$WISEFLOW_ROOT" 2>/dev/null; then
-        ui_warn "plugins.load.paths 路径解析失败 (非致命, config 仍可用, 但 awada 可能加载不到)"
+    ' "$config_path" "$WISEFLOW_ROOT" "$tmpl" 2>/dev/null; then
+        ui_warn "配置默认值或插件路径同步失败 (非致命, 请核查日志配置及插件路径)"
     fi
 }
 

@@ -892,6 +892,14 @@ place_config_template() {
             c.tools.web.search.enabled=searchEnabled;
             changed=true;
         }
+        // Fill logging defaults without overriding deliberate troubleshooting settings.
+        for (const [key,value] of Object.entries(template.logging ?? {})) {
+            c.logging ??= {};
+            if (c.logging[key]===undefined) {
+                c.logging[key]=value;
+                changed=true;
+            }
+        }
         let pathsChanged=false;
         const fixed=paths.map(s => {
             if (typeof s==="string" && s.indexOf("${XIAOBEI_HOME}")!==-1) {

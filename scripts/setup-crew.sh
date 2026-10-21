@@ -816,6 +816,7 @@ generate_ofb_env_md() {
 - **wiseflow 项目路径**：$_PROJECT_ROOT
 - **openclaw 子目录**：$_PROJECT_ROOT/openclaw
 - **配置文件**：$_CONFIG_PATH
+- **默认 Gateway 主日志**：$_OPENCLAW_HOME/logs/gateway.log（实际位置以配置中的 logging.file 为准）
 
 ## 环境变量文件
 
@@ -871,7 +872,18 @@ $_RESTART_CMD
 
 # 已构建 CLI（不触发源码构建）
 openclaw <subcommand>
+
+# 最近 20 行日志（只读，不跟随）
+openclaw logs --limit 20
+
+# 有界排障窗口（只读）
+openclaw logs --limit 200 --plain
+
+# 用户交互跟随日志（自动巡检不用）
+openclaw logs --follow
 \`\`\`
+
+上面的 openclaw 指已安装入口，不保证在终端 PATH。预构建安装可用 \`"$_PROJECT_ROOT/bin/openclaw" logs --limit 20\`；源码部署可用 \`node "$_PROJECT_ROOT/openclaw/dist/index.js" logs --limit 20\`。Windows PowerShell 使用安装目录中的 bin/openclaw.cmd；完整平台例子见项目 docs/install-troubleshooting.md 的「运行日志」，入口速查在 AGENTS.md 的 Tools 节。
 
 生产运行中优先使用可用且获授权的原生管理工具。终端使用已安装的 openclaw CLI 或已构建 dist/index.js；不要用可能重建共享 dist 的 pnpm openclaw / 源码开发入口。构建前先通过原服务管理器停止 Gateway，不绕过运行中产物保护。
 

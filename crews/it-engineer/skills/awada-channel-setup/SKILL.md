@@ -46,6 +46,14 @@ awada-channel-setup --project-root <项目根> --account-id <账号> --agent-id 
 
 在已授权的重载/重启后，核对 Gateway 没有 hook blocked / DB init failed 错误，并确认 before_prompt_build 已注册；获准验证私聊时确认 `[CustomerDB]` 注入和建档。客户回复仅结束 sent_once，pending 保留；cron/heartbeat 不执行客户回复处理。`/payment_success`、`/club_join` 随 hook 功能注册，不在 commands.json 重复配置。返回 channel 状态和 hook 配置/注册/业务验证结果；仅 channel 已连接不算完整验收。
 
+## 日志排障
+
+- 先按 `AGENTS.md` 的 Tools 节和 `OFB_ENV.md` 选择当前安装的 CLI；下文 `openclaw` 是入口简称，不假设它已经在 PATH。macOS/Linux 默认预构建入口为 `~/xiaobei/bin/openclaw`，Windows PowerShell 为 `& "$env:USERPROFILE\xiaobei\bin\openclaw.cmd"`；源码使用 `node "<PROJECT_ROOT>/openclaw/dist/index.js"`，不在生产中用 `pnpm openclaw`。
+- `openclaw logs --limit 20` 查看最近 20 行；需要更多证据时用 `openclaw logs --limit 200 --plain`，结合账号、时间和请求/回执 ID 核对 Awada、hooks 和投递错误。只有用户明确要求交互跟随时才使用 `openclaw logs --follow`，不在自动诊断中无限等待。
+- 主日志由当前 `logging.file` 决定，产品默认 `<stateDir>/logs/gateway.log`，默认 warn 不记录正常连接/投递流水；没有这些 info 记录不能证明连接或投递失败，仍用状态和原回执核验。
+- Gateway 不可达时直接读取实际日志文件；Linux 服务启动错误可查 `journalctl --user -u openclaw-gateway.service -n 100 --no-pager`。macOS / Windows 不执行 journalctl。
+- 日志读取本身不更改配置、不重启服务、不重发消息；向用户提供摘要前脱敏 key、token、客户标识和消息正文。
+
 ## 媒体与本地命令
 
 - 普通回复直接输出 assistant 文本；文字和附件统一用标准 `message(action="send", media="<本地绝对路径或 URL>")`。不配置专用发送标签或按裸云端文件名发附件。

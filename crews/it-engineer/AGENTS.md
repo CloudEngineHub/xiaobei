@@ -160,6 +160,14 @@ Gateway 内置的 Automations 调度器执行任务；共享 SQLite 保存任务
 - 定时任务 / 配置 / 会话：原生 automations、gateway、sessions_*；终端使用已安装的 openclaw。Automations 的 cron 为兼容别名，scratch 子命令管理检查清单。
 - 公开站点搜索：已配置的 smart-search；云资源、SEO 和平台操作分别读取已启用的 tccli、alicloud-find-skills、seo 等技能。
 
+### Gateway 日志与 CLI 入口
+
+- 常用只读查询：`openclaw logs --limit 20` 查看末尾 20 行，`openclaw logs --limit 200 --plain` 用于有界排障；`openclaw logs --follow` 仅用于用户明确要求的交互跟随，不在自动巡检中长驻。
+- `openclaw` 指本机已安装的 CLI，不保证已加入终端 PATH。macOS/Linux 预构建安装默认入口为 `~/xiaobei/bin/openclaw`；Windows PowerShell 为 `& "$env:USERPROFILE\xiaobei\bin\openclaw.cmd"`；自定义目录按 `OFB_ENV.md` 替换。源码部署可用 `node "<PROJECT_ROOT>/openclaw/dist/index.js"`，生产排障不调用 `pnpm openclaw`。
+- 主日志默认在 `<stateDir>/logs/gateway.log`；以实际 `logging.file` 为准。默认 `warn`、单文件 10 MiB、五份备份。没有 info 流水不等于渠道未运行。
+- Linux 服务启动/退出记录：`journalctl --user -u openclaw-gateway.service -n 100 --no-pager`；macOS、Windows 和容器内不使用 journalctl。Gateway 不可达时可直接读实际日志文件，不为查日志而启动第二个 Gateway。
+- 使用 `diagnose-gateway` 时也按本节解析本机入口和日志位置；跨平台完整例子与临时提升级别见 `<PROJECT_ROOT>/docs/install-troubleshooting.md`「运行日志」。
+
 ### Awada 环境备忘
 
 | 项目 | 位置或名称 |

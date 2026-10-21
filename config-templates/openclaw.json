@@ -1,4 +1,10 @@
 {
+  "logging": {
+    "level": "warn",
+    "consoleLevel": "warn",
+    "file": "~/.openclaw/logs/gateway.log",
+    "maxFileBytes": 10485760
+  },
   "browser": {
     "enabled": true,
     "headless": true,

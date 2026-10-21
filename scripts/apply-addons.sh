@@ -155,6 +155,15 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
       changed = true;
     }
 
+    // 补齐运行日志默认值；保留用户已有的级别、路径和轮转大小。
+    for (const [key, value] of Object.entries(template.logging ?? {})) {
+      running.logging ??= {};
+      if (running.logging[key] === undefined) {
+        running.logging[key] = clone(value);
+        changed = true;
+      }
+    }
+
     // 同步 session.dmScope 默认值（外部 crew 需要 per-channel-peer 隔离）
     if (template.session?.dmScope) {
       if (!running.session) running.session = {};

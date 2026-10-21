@@ -16,6 +16,13 @@
 - 旧 sessions.json、JSONL 和工作区状态 sidecar 是迁移输入；`session-sqlite-import-archive` 保存官方迁移归档，不是日常会话写入目录。
 - 运行中的 SQLite 文件身份受原生保护。Git checkout、rebase 或 autostash 替换打开的数据库会使写入被拒绝；Git 采集数据库文件不等于一致性快照。
 
+## 日志与 CLI 入口
+
+- 产品默认主日志为 `<stateDir>/logs/gateway.log`，Windows 对应用户的 `.openclaw\logs\gateway.log`；实际文件可由 `logging.file` 自定义。记录为 JSONL，默认级别 warn，10 MiB 大小轮转、五份编号备份。
+- 命令入口是否可在任意目录直接使用取决于终端 PATH；安装器给服务配置的 PATH 不等于用户终端的 PATH。预构建安装有独立入口，源码部署已有构建产物可直接调用，不依赖开发入口。
+- Linux 的 systemd journal 保存服务生命周期和控制台记录；macOS / Windows / Docker 的服务管理入口不同。旧参考目录或 `/tmp/openclaw` 中的日志不一定是当前活动日志。
+- 日志命令与平台入口速查在 AGENTS.md 的 Tools 节，渠道排障步骤在 `awada-channel-setup` / `work-channel-binding`；不把查日志当作重启或修改配置的授权。
+
 ## 心跳与 Automations
 
 - 目前版本OpenClaw的心跳属于系统维护的 Automation；Gateway 内置调度器执行，共享 SQLite 持久化任务、monitor scratch 和运行记录。

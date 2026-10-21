@@ -30,7 +30,7 @@
 #      need to install zstd)
 #   2. Extract to $XIAOBEI_HOME (default $env:USERPROFILE\xiaobei, the program directory)
 #   3. portable node + pnpm install --prod --frozen-lockfile (under openclaw\)
-#   4. pip install --user (python deps for skills; only runs if python is present)
+#   4. Upgrade pip, then pip install --user (skill deps; only runs if python is present)
 #   5. Place config-templates\openclaw.json -> $OPENCLAW_HOME\openclaw.json + prefill WeChat binding
 #   6. setup-crew.sh (requires bash: Git Bash or WSL; if absent, warn and skip; user can run it
 #      manually later)
@@ -199,15 +199,23 @@ function Install-PythonDeps {
         ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
     if (-not $merged) { Write-Ok "no python deps"; return }
-    Invoke-Streamed { python -m pip install --user $merged }
+    Capture-Streamed { & $py.Source -m pip --version } | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warn "python -m pip unavailable, skipping skill python deps"; return }
+    # Keep the same interpreter for the upgrade and dependency installation. Windows does not
+    # need the Unix-only PEP 668 override; these arguments also work with older pip versions.
+    $pipArgs = @('--user', '--no-warn-script-location', '--disable-pip-version-check')
+    Write-Stage "Upgrading pip"
+    Invoke-Streamed { & $py.Source -m pip install @pipArgs --upgrade pip }
+    if ($LASTEXITCODE -ne 0) { Write-Warn "pip upgrade failed; attempting skill dependencies with the current pip" }
+    Write-Stage "Installing python skill deps"
+    Invoke-Streamed { & $py.Source -m pip install @pipArgs $merged }
     if ($LASTEXITCODE -ne 0) { Write-Warn "pip install returned non-zero; you can manually install the skills' python deps later" }
     else { Write-Ok "python deps installed" }
 }
 
 # --- 6. Place config template (mirrors install.sh place_config_template) ---
-# The template already pre-populates channels.openclaw-weixin / bindings / session.dmScope; we no
-# longer mutate it at runtime (the sh version once broke the plugins top-level via runtime mutation,
-# causing "Invalid input"; that mutation has been removed in parallel here).
+# The template pre-populates channels.openclaw-weixin / bindings / session.dmScope. Existing
+# healthy configs keep user settings; only missing logging defaults and plugin path refs are filled.
 # Health check: if the existing config is missing models/agents.defaults (most likely a minimal config
 # auto-created by `openclaw plugins install` when Install-WeixinPlugin ran first, or by openclaw's
 # first launch), back it up and overwrite with the template; otherwise channels/bindings would be
@@ -255,6 +263,26 @@ function Place-Config {
         [System.IO.File]::WriteAllText($cfg, $raw.Replace('${XIAOBEI_HOME}', $rootFwd), [System.Text.UTF8Encoding]::new($false))
         Write-Ok "resolved XIAOBEI_HOME refs -> $rootFwd"
     }
+
+    # Fill only missing logging fields on both fresh installs and updates. Use the bundled Node
+    # to preserve arbitrary JSON values and nesting; stdin avoids PS 5.1 native quote rewriting.
+    $syncLogging = @'
+const fs = require('node:fs');
+const [configPath, templatePath] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+let changed = false;
+for (const [key, value] of Object.entries(template.logging ?? {})) {
+    config.logging ??= {};
+    if (config.logging[key] === undefined) {
+        config.logging[key] = value;
+        changed = true;
+    }
+}
+if (changed) fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+'@
+    Invoke-Streamed { $syncLogging | & $NodeExe --input-type=commonjs - $cfg $tmpl }
+    if ($LASTEXITCODE -ne 0) { throw "logging defaults sync failed (exit $LASTEXITCODE)" }
 }
 
 # --- 7. setup-crew (requires bash) ---

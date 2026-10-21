@@ -61,6 +61,16 @@ After installing a channel plugin, tell the user that Gateway may need a restart
 12. On next session, complete followup:
    - `python3 ./skills/work-channel-binding/scripts/complete-pending-followup.py`
 
+## Gateway Logs for Verification
+
+Resolve the installed CLI from `AGENTS.md` → `Tools` and `OFB_ENV.md`; `openclaw` below is shorthand, not a guarantee that the command is on the terminal PATH. The default macOS/Linux tarball entry is `~/xiaobei/bin/openclaw`; Windows PowerShell uses `& "$env:USERPROFILE\xiaobei\bin\openclaw.cmd"`. A source installation can use `node "<PROJECT_ROOT>/openclaw/dist/index.js"`; do not run `pnpm openclaw` against a production Gateway.
+
+- `openclaw logs --limit 20` reads the last 20 lines without following. Use `openclaw logs --limit 200 --plain` for a bounded diagnostic window and correlate channel/account, timestamps and errors with the binding being checked.
+- `openclaw logs --follow` is for explicitly requested interactive watching. Do not leave an automated check following indefinitely.
+- Read the actual `logging.file`; the product default is `<stateDir>/logs/gateway.log`, with warning/error records by default. Missing successful-connection or delivery info lines is not evidence of failure.
+- When the Gateway is unavailable, read its configured file directly. For Linux service startup failures, use `journalctl --user -u openclaw-gateway.service -n 100 --no-pager`; do not use journalctl on macOS, Windows or inside a container.
+- Reading logs does not authorize a config change, restart or test message. Redact credentials, customer identifiers and message content before reporting findings.
+
 ## First Work Channel Binding Reminder
 
 If this is the first work channel binding, check whether `it-engineer` and enabled/soon-to-be-enabled `hrbp` already have direct bindings. If not, ask whether the user wants to bind them together.

@@ -9,22 +9,26 @@
 > 排障前先确认这两个目录的存在与结构：
 > `ls ~/xiaobei/{openclaw,patches,crews,skills,scripts} && ls ~/.openclaw/{openclaw.json,.env,daemon.env,workspaces,skills}`
 
-## 速断：openclaw doctor
+## 运行日志
 
-openclaw 自带 `doctor` 命令做配置迁移 + 健康检查 + 自修复建议，是排障第一动作：
+默认日志级别为 `warn`，保留警告、错误和致命故障，日常模型请求、连接状态和成功投递不写入。主日志位于 `~/.openclaw/logs/gateway.log`，每行一条 JSON；由 OpenClaw 原生按 10 MiB 大小轮转，保留五份编号备份。Docker 中位于持久化的 `/root/.openclaw/logs/`。安装和更新只补缺少的日志配置，保留用户显式设置的级别、路径与轮转大小。
 
-```bash
-cd ~/xiaobei/openclaw
-pnpm openclaw doctor
-```
+本节中的 `openclaw` 指当前安装的 CLI 入口。只有入口已加入终端 PATH 时，才能在任意目录直接敲 `openclaw`；服务的 PATH 配置不等于终端的 PATH。按实际安装目录选择下面的一条独立命令：
 
-输出会标出每个异常项的修复建议（如 `agents.defaults.workspace` 路径过期、`channels.feishu` 字段下沉未做等）。**优先按 doctor 输出修，再回头看本文档**。
+| 安装方式 / 终端 | 查看最近 20 行，不跟随 |
+| --- | --- |
+| 已有 CLI 在 PATH（各平台） | `openclaw logs --limit 20` |
+| macOS / Linux 预构建安装（默认目录） | `~/xiaobei/bin/openclaw logs --limit 20` |
+| Windows 原生预构建安装，PowerShell | `& "$env:USERPROFILE\xiaobei\bin\openclaw.cmd" logs --limit 20` |
+| 源码部署，使用已构建引擎（按实际项目目录替换） | `node "/实际项目目录/openclaw/dist/index.js" logs --limit 20` |
 
-doctor 本身有 `--non-interactive` flag，CI / 自动化场景可用：
+WSL 使用 WSL 内的 Linux 入口，不把 Windows 原生安装与 WSL 路径混用。源码的 `pnpm openclaw` 支持相同日志参数，但可能触发构建，运行中的 Gateway 排障使用已安装入口或已构建 CLI。
 
-```bash
-pnpm openclaw doctor --non-interactive
-```
+需要更多记录时使用 `openclaw logs --limit 200 --plain`；交互持续查看使用 `openclaw logs --follow`。自动巡检使用有界的 `--limit`，不无限跟随。Gateway 不可达时可以直接读取实际日志文件；Linux 服务启动和退出记录用 `journalctl --user -u openclaw-gateway.service -n 100 --no-pager` 查看，macOS / Windows / 容器内不使用该命令。旧机器若仍有 `StandardOutput` / `StandardError` 文件重定向，以实际 systemd drop-in 为准，先核实依赖该文件的监控再迁移。不要把参考源码目录 `wiseflow-pro/` 作为新的运行日志目录。
+
+需要复现和排查正常流程时，可临时运行 `openclaw config set logging.level '"info"' --strict-json`；需要更细信息时设为 `debug`，完成后恢复 `warn`。这些原生日志配置可热更新；console 输出单独由 `logging.consoleLevel` 控制。不要用 `silent` 或删除错误日志来消除告警。
+
+日志汇总时，单纯的 `memory pressure: level=warning reason=rss_threshold` 属于内存观察项；结合主机可用内存、连续运行趋势判断。持续增长、`critical`、OOM、事件循环阻塞和任务失败仍须核查，不因默认降噪而忽略。
 
 ## 常见症状 → 速查表
 
@@ -32,7 +36,7 @@ pnpm openclaw doctor --non-interactive
 |------|------|------|
 | `bash: pnpm: command not found` 装好后新开 shell 才报 | corepack 装的 pnpm 路径未在 PATH | `corepack enable` 或 `npm install -g pnpm@11.2.2`，新开 shell 验证 |
 | `node: v18.x.x` 装好但版本低于 22.19 | 系统 node 太旧，install.sh 装的新版未生效 | mac: `brew link --overwrite --force node@24`；Linux: 检查 nvm/nodenv 当前版本，或 `source ~/.nvm/nvm.sh && nvm use 24` |
-| `openclaw: command not found` 但 `pnpm openclaw --version` 能跑 | 全局 bin 未在 PATH | `pnpm -C ~/xiaobei/openclaw openclaw` 路线绕过全局 bin；或 `npm install -g openclaw` 装个 stub（但会拉滞后版，不推荐） |
+| `openclaw: command not found` | 当前安装的 CLI 未在终端 PATH | 使用上方平台入口；源码部署使用已构建的 dist/index.js，不为查日志额外安装可能版本不匹配的全局 CLI |
 | onboard 报 `Non-interactive setup requires explicit risk acknowledgement` | 在 CI/无 TTY 跑 onboard 没加 `--accept-risk` | 加 `--non-interactive --accept-risk`，且补全所有 `--auth-choice` / `--custom-api-key` 等必填 flag |
 | onboard `--skip-channels` 后 channel 段仍问 | openclaw 版本低于本仓 `openclaw.version` 锁的 commit | `cd ~/xiaobei && ./scripts/update.sh` 重 checkout + build |
 | `pnpm install` 报 `ERR_PNPM_OUTDATED_LOCKFILE` | lockfile 与 package.json 不同步（仓里有未提交改动） | `pnpm install --no-frozen-lockfile`（install.sh 已走此路） |
@@ -127,9 +131,8 @@ onboard 是唯一交互段（问模型供应商 + API key）。失败常见：
 ### 7. gateway 起不来
 
 ```bash
-cd ~/xiaobei/openclaw
-pnpm openclaw gateway status --deep  # 深探
-pnpm openclaw gateway logs            # 看日志
+~/xiaobei/bin/openclaw gateway status --deep  # 深探
+~/xiaobei/bin/openclaw logs --limit 200 --plain  # 查看最近日志
 ```
 
 常见：
