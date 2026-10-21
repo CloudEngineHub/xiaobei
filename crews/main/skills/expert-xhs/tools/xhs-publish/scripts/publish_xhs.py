@@ -13,6 +13,12 @@ from creator_session import CreatorSessionMissing, creator_api, observe  # noqa:
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared"))
 from publish_text import PublishTextError, read_publish_text  # noqa: E402
 
+SUBMISSION_RECOVERY = (
+    "先用 xhs-engagement list 核查；列表可能滞后，未查到也不要自动重发。"
+    "仍不确定时请用户在 App 或创作者后台确认并提供链接，确认成功后按实际发布日补录 published-track"
+)
+
+
 def _note_id(response: dict) -> str:
     data = response.get("data") or {}
     for source in (data, response):
@@ -50,7 +56,7 @@ def publish(args, body: str, topics: list[dict]) -> dict:
         return {
             "ok": False,
             "error": "SUBMISSION_UNKNOWN",
-            "message": f"提交结果不确定；先检查创作者后台，避免重复发布：{str(exc)[:160]}",
+            "message": f"提交结果不确定，平台可能已收单。{SUBMISSION_RECOVERY}。错误：{str(exc)[:160]}",
         }
 
     code = response.get("code") if isinstance(response, dict) else None
@@ -68,7 +74,7 @@ def publish(args, body: str, topics: list[dict]) -> dict:
         return {
             "ok": False,
             "error": "SUBMISSION_UNCONFIRMED",
-            "message": "平台返回成功但未给出笔记 ID；先检查创作者后台，避免重复发布",
+            "message": f"平台返回成功但未给出笔记 ID。{SUBMISSION_RECOVERY}",
         }
     observe("publish", "ok")
     return {

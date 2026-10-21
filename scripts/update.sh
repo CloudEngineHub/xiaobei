@@ -18,7 +18,7 @@
 #   3. git fetch + reset --hard 拉取最新 wiseflow 代码
 #   4. 读取 openclaw.version，按锚定版本检出 openclaw 子目录
 #      - 若已是目标 commit，跳过耗时的 install
-#   5. apply-addons.sh（patches + skills + crew 模板，内含 setup-crew.sh）
+#   5. apply-addons.sh（patches + skills + crew 模板，先升级 pip，再按需安装 Python 依赖；内含 setup-crew.sh）
 #   6. pnpm build（编译 openclaw dist）
 #   7. daemon 升级（已装只 reload + restart 不卸装，避免掐断正在跑的会话）
 #   8. 微信 channel 插件同步 + meta 回正

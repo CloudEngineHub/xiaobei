@@ -7,7 +7,7 @@
 #   2. 应用基础补丁（patches/*.patch）+ 依赖覆盖（patches/overrides.sh）
 #   3. 安装默认全局 skills（项目根目录 skills/ → ~/.openclaw/skills/）
 #   4. 注入 awada 扩展路径 + 同步 openclaw.json skills 节点
-#   5. 安装依赖：Node per-skill（node_modules 落仓内技能目录）/ Python 统一 pip install --user
+#   5. 安装依赖：Node per-skill（node_modules 落仓内技能目录）/ Python 先升级 pip，再统一 pip install --user
 #   6. 编译 dist + 重启 gateway service
 # Crew 模板安装由 setup-crew.sh 单独负责（扫顶层 crews/）。
 #
@@ -311,9 +311,9 @@ node "$PROJECT_ROOT/scripts/install-skill-deps.mjs" \
   --root "$PROJECT_ROOT" --state-dir "$OPENCLAW_HOME"
 
 # ─── 安装全仓统一 Python 依赖（pip --user）──────────────────────
-# 扫描 skills/、addons/、crews/ 下所有 requirements.txt，合并去重。
-# 内容哈希守卫：仅当依赖集发生变化时才执行 pip install。
-# 优先使用 pip install --user；若不可用则回退 --break-system-packages。
+# 扫描 skills/、crews/ 和仓根的 requirements.txt，合并去重。
+# 每次先升级 pip；技能依赖仍受内容哈希守卫，仅在依赖集变化时重装。
+# 使用 --user，按 pip 的实际支持情况加入 --break-system-packages。
 PIP_HASH_FILE="$OPENCLAW_HOME/.skill-pip-hash"
 
 merged_pip_deps="$(node -e "
@@ -356,7 +356,7 @@ merged_pip_deps="$(node -e "
 current_pip_hash="$(printf '%s' "$merged_pip_deps" | _md5)"
 stored_pip_hash="$(cat "$PIP_HASH_FILE" 2>/dev/null || echo '')"
 
-if [ -n "$merged_pip_deps" ] && { [ "$current_pip_hash" != "$stored_pip_hash" ] || [ ! -f "$PIP_HASH_FILE" ]; }; then
+if [ -n "$merged_pip_deps" ]; then
   # 查找可用的 pip 命令：pip → pip3 → python3 -m pip
   PIP_CMD=""
   if command -v pip &>/dev/null; then
@@ -387,30 +387,37 @@ if [ -n "$merged_pip_deps" ] && { [ "$current_pip_hash" != "$stored_pip_hash" ] 
   if [ -z "$PIP_CMD" ]; then
     echo "  ❌ pip not available. Install it with: sudo apt install python3-pip" >&2
   else
-    echo "🐍 Installing skill Python dependencies ($PIP_CMD --user)..."
-    # 写入合并后的 requirements 文件
-    pip_req_tmp="$OPENCLAW_HOME/.skill-requirements.txt"
-    echo "$merged_pip_deps" > "$pip_req_tmp"
+    pip_base_flags=(--user --quiet --no-warn-script-location --disable-pip-version-check
+      -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com)
+    pip_install_flags=("${pip_base_flags[@]}")
+    # Ubuntu 22.04 的旧 pip 不认识该参数；新 pip 需要它处理 PEP 668。
+    if $PIP_CMD install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+      pip_install_flags+=(--break-system-packages)
+    fi
+    echo "🐍 Upgrading pip ($PIP_CMD --user)..."
+    if ! $PIP_CMD install "${pip_install_flags[@]}" --upgrade pip; then
+      echo "  ⚠️  pip 升级失败，将按当前 pip 支持的参数尝试安装技能依赖" >&2
+    fi
 
-    pip_install_flags="--user --quiet --no-warn-script-location -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"
-    if ! $PIP_CMD install $pip_install_flags -r "$pip_req_tmp" 2>/dev/null; then
-      echo "  ⚠️  pip --user failed, retrying with --break-system-packages..."
-      pip_install_flags="--break-system-packages --user --quiet --no-warn-script-location -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"
-      if ! $PIP_CMD install $pip_install_flags -r "$pip_req_tmp"; then
-        echo "  ❌ pip install failed" >&2
-      else
+    if [ "$current_pip_hash" != "$stored_pip_hash" ] || [ ! -f "$PIP_HASH_FILE" ]; then
+      echo "🐍 Installing skill Python dependencies ($PIP_CMD --user)..."
+      pip_req_tmp="$OPENCLAW_HOME/.skill-requirements.txt"
+      echo "$merged_pip_deps" > "$pip_req_tmp"
+      # 升级后重新检测参数支持，后续安装仍使用同一个 pip 命令。
+      pip_install_flags=("${pip_base_flags[@]}")
+      if $PIP_CMD install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_flags+=(--break-system-packages)
+      fi
+      if $PIP_CMD install "${pip_install_flags[@]}" -r "$pip_req_tmp"; then
         echo "$current_pip_hash" > "$PIP_HASH_FILE"
         echo "✅ Python dependencies installed (hash: ${current_pip_hash:0:8})"
+      else
+        echo "  ❌ pip install failed" >&2
       fi
+      rm -f "$pip_req_tmp"
     else
-      echo "$current_pip_hash" > "$PIP_HASH_FILE"
-      echo "✅ Python dependencies installed (hash: ${current_pip_hash:0:8})"
+      echo "✅ Python dependencies up to date (hash: ${current_pip_hash:0:8})"
     fi
-    rm -f "$pip_req_tmp"
-  fi
-else
-  if [ -n "$merged_pip_deps" ]; then
-    echo "✅ Python dependencies up to date (hash: ${current_pip_hash:0:8})"
   fi
 fi
 

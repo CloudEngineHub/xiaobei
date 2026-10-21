@@ -34,6 +34,18 @@ xhs-publish --mode video --title "标题" --body @/绝对路径/body.txt --video
 
 标题 1–20 字，正文 1–1000 字；图文需 1–18 张图片，视频需 `--video`。`--topics` 可补充话题，合计最多 10 个；`--private` 设为仅自己可见。笔记含 AI 合成内容时加 `--ai-declaration`，发布请求会带上创作者端的“笔记含 AI 合成内容”声明；纯实拍内容不加。正文中的 `#话题` 自动整理为 Creator 可识别的内联话题格式。
 
-发布前让用户确认标题、正文、图片顺序及可见性。提交成功必须同时有 `ok: true` 和 `note_id`，再记录返回的 `url`。`SUBMISSION_UNKNOWN` 或 `SUBMISSION_UNCONFIRMED` 时先到创作者后台核查，**不要自动重发**。接口明确拒绝时根据错误码处理。操作结果写入 `~/.openclaw/logs/xhs-creator-observe.jsonl`，不含正文或 Cookie。
+发布前让用户确认标题、正文、图片顺序及可见性。提交成功必须同时有 `ok: true` 和 `note_id`，再记录返回的 `url`。接口明确拒绝时根据错误码处理。`TITLE_INVALID` 在本地校验阶段返回，尚未上传或提交；把标题改到 1–20 字并确认后可重新调用。
 
 发布 Workflow 负责判断内容是否需要 AI 声明，并在调用发布命令时传入 `--ai-declaration`。
+
+## 提交结果不确定时
+
+`SUBMISSION_UNKNOWN`（包括 `curl: (28) Operation timed out`）表示无法确认结果；`SUBMISSION_UNCONFIRMED` 表示平台返回成功但缺少作品 ID。两者都不能当作发布失败，**不要自动重发**，也不要因创作者列表未出现目标笔记就重发。
+
+- 用现有 `xhs-engagement list` 查看当前账号的已发作品。候选笔记须结合账号、标题和实际内容核实；同名多条时不能自动取第一条。确认目标笔记后保留真实作品 ID 和链接，不再次提交。
+- 列表可能滞后，没查到仍属于待核实。停止发布重试，请用户在 App 核对（必须用app，不可同时登陆网页端创作者后台，会造成平台风控），提供目标笔记链接；用户确认已发布时按该链接恢复记录。只有用户核实确实未发布并明确要求重试，才重新提交；触发风控时继续遵守 `expert-xhs` 的限频和停手规则。
+- 确认成功后的记录沿用 `published-track`，先查询是否已有对应记录。补录使用原作品目录、实际发布日期和发布账号，内容类型与原图文 / 视频一致；历史发布显式传 `--publish-date`，不要把补录日当作发布日。同一目录和发布日的 `record` 会更新原行；不要新造目录或日期造成重复记录。分发状态按实际需求填写，不因超时恢复就统一设为无需分发。
+
+操作结果写入 `~/.openclaw/logs/xhs-creator-observe.jsonl`：`SUBMISSION_UNKNOWN` 对应 `outcome: "unknown"`，`SUBMISSION_UNCONFIRMED` 对应 `outcome: "unconfirmed"`，不含正文或 Cookie。日志只说明本次请求结果，不能代替平台侧发布核实。
+
+当前 HTTP 单次请求超时为 120 秒，媒体上传与发布提交均使用该设置；这不是整轮发布的总时限。若仍报约 15000 毫秒超时，请 IT engineer 核查实际加载版本和外层超时限制，不要由发布智能体临时改共享库来反复重试。即使延长超时，结果不确定时仍按上面的核查规则处理。

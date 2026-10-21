@@ -15,7 +15,7 @@
 #   4. 下载 xiaobei-{ver}-{plat}.{tar.zst|tar.gz} → 临时文件（linux 用 zst，mac/win 用 gzip，bsdtar 原生支持）
 #   5. 解压到 WISEFLOW_ROOT（默认 ~/xiaobei，程序目录）：openclaw/ + tools/node + tools/pnpm + bin/openclaw + crews/ + skills/ + scripts/ + camoufox-cli/ + awada/
 #   6. pnpm install --prod --frozen-lockfile（用 ship 的 portable node + pnpm，在 openclaw/ 下；只拉依赖不编译，无 OOM，native 自动按平台）
-#   7. pip install --user（skills 的 python deps，扫 requirements.txt）
+#   7. 先升级 pip，再 pip install --user（skills 的 python deps，扫 requirements.txt）
 #   8. 放置 config-templates/openclaw.json → ~/.openclaw/openclaw.json（运行数据目录 OPENCLAW_HOME）+ 预填微信 channel binding
 #   9. setup-crew.sh（裸跑，无 --force；--force 只用户手动修复用；crew 模板来自 WISEFLOW_ROOT/crews，workspace 落 OPENCLAW_HOME）
 #   10. camoufox-cli：npm install -g 本地 fork（ship 的 portable node）+ camoufox-cli install 下 Firefox
@@ -477,18 +477,33 @@ install_python_deps() {
         ui_warn "$PY_BIN -m pip 不可用，跳过 python 依赖"
         return 0
     fi
-    ui_info "Installing python skill deps via $PY_BIN (--user --break-system-packages)"
+    local pip_args=(--user --no-warn-script-location --disable-pip-version-check
+        -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com)
+    local pip_install_args=("${pip_args[@]}")
+    # Ubuntu 22.04 自带的旧 pip 不识别 --break-system-packages；新 pip 用它处理 PEP 668。
+    if "$PY_BIN" -m pip install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_args+=(--break-system-packages)
+    fi
+    ui_info "Upgrading pip via $PY_BIN"
+    if ! "$PY_BIN" -m pip install "${pip_install_args[@]}" --upgrade pip; then
+        ui_warn "pip 升级失败，将按当前 pip 支持的参数尝试安装技能依赖"
+    fi
+    # 升级后重新检测，确保后续调用使用同一解释器及升级后的参数能力。
+    pip_install_args=("${pip_args[@]}")
+    if "$PY_BIN" -m pip install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_args+=(--break-system-packages)
+    fi
+    ui_info "Installing python skill deps via $PY_BIN"
     # --no-warn-script-location 抑制 'script installed in .../bin which is not on PATH'（小白噪音）
     # --disable-pip-version-check 抑制 pip 升级提示
     # PEP 668：现代系统（Homebrew/Debian/PEP 668）下 pip install --user 仍被拒，
-    # 直接加 --break-system-packages 跨过；--user 限目标目录，不碰系统 site-packages，安全。
-    printf '%s' "$merged" | sort -u | grep -vE '^\s*#|^\s*$' | \
-        "$PY_BIN" -m pip install --user --break-system-packages \
-            --no-warn-script-location --disable-pip-version-check \
-            -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
-            -r /dev/stdin || \
+    # 支持时加入 --break-system-packages；--user 保持依赖安装到当前用户目录。
+    if printf '%s' "$merged" | sort -u | grep -vE '^\s*#|^\s*$' | \
+        "$PY_BIN" -m pip install "${pip_install_args[@]}" -r /dev/stdin; then
+        ui_success "Python deps done"
+    else
         ui_warn "pip install 部分失败，可稍后手动补"
-    ui_success "Python deps done"
+    fi
 }
 
 install_deck_render() {
