@@ -6,6 +6,8 @@
 #   - update.sh  = 本脚本，git clone 源码用户的升级路线（fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 12+）
 #
 # 适用场景：用户是 git clone 本仓装的（项目目录内有 .git），后续要拉新版本用此脚本。
+#   源码分发测试可加 --skip-sync，直接使用本地代码，跳过本仓 git 初始化、remote 配置和 fetch/reset。
+#   OpenClaw 引擎仍按本地 openclaw.version 检出，依赖安装与构建照常执行。
 #   ⚠️ 通过 install.sh 以 tarball 装的机器**不要**用本脚本——重跑 install.sh 即可升级。
 #   本脚本对无 .git 的目录会 git init + fetch + reset --hard，等于把 tarball 安装转成源码路线，
 #   并要求系统 Node/git/pnpm 12+ 自行 build，恰是 tarball 用户特意绕开的依赖。
@@ -29,6 +31,8 @@ OFB_REPO_ATOMGIT="https://atomgit.com/wiseflow/xiaobei.git"
 # 默认 GitHub；--atomgit 切到 atomgit 国内镜像（git remote 可匿名 fetch/clone，实测可用）
 OFB_REPO="$OFB_REPO_DEFAULT"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/download-network.sh"
+xiaobei_configure_download_network "$PROJECT_ROOT"
 OPENCLAW_DIR="$PROJECT_ROOT/openclaw"
 VERSION_FILE="$PROJECT_ROOT/openclaw.version"
 OPENCLAW_HOME="$HOME/.openclaw"
@@ -36,6 +40,7 @@ OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-$OPENCLAW_HOME/openclaw.json}"
 SYSTEMD_ENV_FILE="$OPENCLAW_HOME/daemon.env"
 MACOS_GATEWAY_ENV="$OPENCLAW_HOME/service-env/ai.openclaw.gateway.env"
 FORCE=false
+SKIP_SYNC=false
 SKIP_CREW=false
 SKIP_WEIXIN=false
 
@@ -43,6 +48,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --force)
       FORCE=true
+      shift
+      ;;
+    --skip-sync)
+      SKIP_SYNC=true
       shift
       ;;
     --skip-crew)
@@ -65,8 +74,9 @@ while [ $# -gt 0 ]; do
       ;;
     *)
       echo "❌ Unknown option: $1"
-      echo "Usage: $0 [--force] [--skip-crew] [--skip-weixin] [--atomgit] [--github]"
+      echo "Usage: $0 [--force] [--skip-sync] [--skip-crew] [--skip-weixin] [--atomgit] [--github]"
       echo "  --force        Overwrite existing workspace files (including MEMORY.md)"
+      echo "  --skip-sync    Use local project code; skip project git init, remote setup and fetch/reset (OpenClaw pin still enforced)"
       echo "  --skip-crew   Skip setup-crew.sh (only sync addons, no workspace updates)"
       echo "  --skip-weixin Skip bundled/online openclaw-weixin plugin installation"
       echo "  --atomgit     Use atomgit 国内镜像 git remote (default: GitHub)"
@@ -229,48 +239,52 @@ install_weixin_channel() {
 }
 
 # ─── 2. 配置 git remote ────────────────────────────────────────
-if [ ! -d "$PROJECT_ROOT/.git" ]; then
-  echo "📦 Initializing git repository..."
-  git init
-  git remote add origin "$OFB_REPO"
-  echo "  ✅ git initialized, remote set to $OFB_REPO"
+if [ "$SKIP_SYNC" = "true" ]; then
+  echo "⏭️  Skipping project repository sync (--skip-sync); using local code."
 else
-  CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null || echo "")"
-  if [ -z "$CURRENT_REMOTE" ]; then
+  if [ ! -d "$PROJECT_ROOT/.git" ]; then
+    echo "📦 Initializing git repository..."
+    git init
     git remote add origin "$OFB_REPO"
-    echo "  ✅ Remote 'origin' added: $OFB_REPO"
-  elif [ "$CURRENT_REMOTE" != "$OFB_REPO" ]; then
-    echo "  ℹ️  Current remote: $CURRENT_REMOTE"
-    echo "  ℹ️  Official wiseflow repo: $OFB_REPO"
-    echo ""
-    echo "  Remote is not the official wiseflow repo. Continue anyway? [y/N]"
-    read -r reply
-    case "$reply" in
-      y|Y) echo "  Continuing with existing remote..." ;;
-      *) echo "  Aborted."; exit 0 ;;
-    esac
-  fi
-fi
-
-# ─── 3. 拉取最新 wiseflow 代码 ────────────────────────────────────────
-echo "📥 Fetching latest wiseflow code..."
-if git fetch origin master; then
-  COMMITS_BEHIND="$(git rev-list HEAD..origin/master --count 2>/dev/null || echo "?")"
-  if [ "$COMMITS_BEHIND" = "0" ]; then
-    echo "  ✅ wiseflow code is already up to date."
-  elif [ "$COMMITS_BEHIND" = "?" ]; then
-    echo "  ⚠️  Unable to compare with origin/master, continuing with local wiseflow code."
+    echo "  ✅ git initialized, remote set to $OFB_REPO"
   else
-    echo "  📊 $COMMITS_BEHIND new commit(s) available"
-    if git reset --hard origin/master; then
-      echo "  ✅ wiseflow code updated"
-    else
-      echo "  ⚠️  Failed to reset to origin/master, continuing with local wiseflow code."
+    CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null || echo "")"
+    if [ -z "$CURRENT_REMOTE" ]; then
+      git remote add origin "$OFB_REPO"
+      echo "  ✅ Remote 'origin' added: $OFB_REPO"
+    elif [ "$CURRENT_REMOTE" != "$OFB_REPO" ]; then
+      echo "  ℹ️  Current remote: $CURRENT_REMOTE"
+      echo "  ℹ️  Official wiseflow repo: $OFB_REPO"
+      echo ""
+      echo "  Remote is not the official wiseflow repo. Continue anyway? [y/N]"
+      read -r reply
+      case "$reply" in
+        y|Y) echo "  Continuing with existing remote..." ;;
+        *) echo "  Aborted."; exit 0 ;;
+      esac
     fi
   fi
-else
-  echo "  ⚠️  Failed to fetch latest wiseflow code from origin/master."
-  echo "  ⚠️  Continuing with local wiseflow code."
+
+  # ─── 3. 拉取最新 wiseflow 代码 ────────────────────────────────────────
+  echo "📥 Fetching latest wiseflow code..."
+  if git fetch origin master; then
+    COMMITS_BEHIND="$(git rev-list HEAD..origin/master --count 2>/dev/null || echo "?")"
+    if [ "$COMMITS_BEHIND" = "0" ]; then
+      echo "  ✅ wiseflow code is already up to date."
+    elif [ "$COMMITS_BEHIND" = "?" ]; then
+      echo "  ⚠️  Unable to compare with origin/master, continuing with local wiseflow code."
+    else
+      echo "  📊 $COMMITS_BEHIND new commit(s) available"
+      if git reset --hard origin/master; then
+        echo "  ✅ wiseflow code updated"
+      else
+        echo "  ⚠️  Failed to reset to origin/master, continuing with local wiseflow code."
+      fi
+    fi
+  else
+    echo "  ⚠️  Failed to fetch latest wiseflow code from origin/master."
+    echo "  ⚠️  Continuing with local wiseflow code."
+  fi
 fi
 echo ""
 

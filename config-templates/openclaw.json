@@ -86,6 +86,9 @@
         "mode": "safeguard"
       },
       "thinkingDefault": "medium",
+      "heartbeat": {
+        "every": "0m"
+      },
       "maxConcurrent": 3,
       "subagents": {
         "maxConcurrent": 4,
@@ -124,11 +127,6 @@
             "host": "gateway",
             "mode": "full"
           }
-        },
-        "heartbeat": {
-          "every": "1d",
-          "target": "none",
-          "isolatedSession": true
         },
         "reasoningDefault": "off"
       },

@@ -73,14 +73,12 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ### 推荐：一键脚本安装（预构建 tarball 路线）
 
-一行命令，全程无需预装 Node / pnpm / git（tarball 自带 portable Node + pnpm）。脚本完成后**唯一人工输入**是填 `AWK_API_KEY`（「TOKEN PLAN」套餐的 key）。
-
 **macOS / Linux（bash，一行命令）：**
 
 ```bash
 # GitHub 线路（适合能正常访问 GitHub 的网络环境）
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.sh)"
-# 国内 atomgit 线路（tarball 走 atomgit.com → GitCode CDN，全程国内直连，脚本也从 raw.atomgit.com 拉取）
+# 国内推荐：AtomGit 线路
 bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
 ```
 
@@ -92,15 +90,17 @@ bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/script
 ```powershell
 # GitHub 线路（适合能正常访问 GitHub 的网络环境）
 irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.ps1 | iex
-# 国内 atomgit 线路（tarball 走 atomgit.com → GitCode CDN，全程国内直连，脚本也从 raw.atomgit.com 拉取）
+# 国内推荐：AtomGit 线路
 irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 | iex
 ```
 
-> 按网络环境选一条命令即可：能正常访问 GitHub 走 GitHub 线路（脚本 `install.sh` / `install.ps1`）；国内网络走 atomgit 线路（脚本 `install-atomgit.sh` / `install-atomgit.ps1`，全程不经 GitHub）。两条线路安装产物完全一致，只是下载源不同。
+> 按网络环境选一条线路：能正常访问 GitHub 可用 `install.sh` / `install.ps1`；国内客户推荐 AtomGit 预构建 tarball 配合 `XIAOBEI_GITHUB_PROXY`，客户端无需完整构建 OpenClaw。两条线路安装产物一致。
+
+> `XIAOBEI_GITHUB_PROXY` 可设为其他 HTTPS URL 前缀；不设置时 GitHub 下载保持直连。它覆盖浏览器、指纹模型、GeoIP、Matrix 原生库及安装期间的 GitHub Git 拉取；代理模式还为未自定义的 npm/pnpm、Node headers 和 Playwright 下载配置国内镜像。uBlock 的 Mozilla 下载、系统包管理器及非 GitHub 的可选依赖仍按各自来源访问，不能仅凭此开关承诺全程国内访问。完整范围与覆盖配置见 [安装脚本说明](scripts/README.md#github-下载代理)。升级时也需要设置该变量，并使用包含此功能的新安装包。
 
 > install 脚本默认拉最新 release tag + 下载 tarball。指定版本：`export XIAOBEI_TAG=v5.6.3`（PowerShell：`$env:XIAOBEI_TAG="v5.6.3"`）。
 
-> 💡 **下载中断 / 安装失败？多试几次就好。** tarball 体积较大（~140MB），首装还要下 Firefox 反指纹浏览器（~557MB），网络偶发中断属正常。脚本幂等，重跑会续上已下的部分。
+> 💡 **下载中断 / 安装失败？** 主程序 tarball 有版本缓存；浏览器资源会自动尝试最多 5 次，中断后优先续传，连续 2 分钟没有新数据才超时。当前 Camoufox 156.0.1-beta.36 Linux x64 压缩包约 1.29 GB。五次都失败后临时文件会清理；需要跨次安装续传时，可用 `curl` 下载到本地目录，再通过 `XIAOBEI_BROWSER_DOWNLOADS` 提供给资源安装器，校验通过后使用。见[资源下载缓存](scripts/README.md#浏览器资源下载缓存)。
 
 > ⚠️ **Windows 必须装 bash**（Git Bash 或 WSL）。install.ps1 / install-atomgit.ps1 用 `tar`（Win10 1803+ 自带）解压 tarball，但 `setup-crew.sh` 是 bash 脚本，部署 crew workspace 离不开 bash。无 bash 时脚本会跳过 crew 模板部署并提示手动补跑——此时小贝团队起不来。装 Git Bash：https://git-scm.com （安装时勾选 "Add to PATH"）。
 
@@ -159,6 +159,14 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 ```
 
 > 已手动 `git clone` 仓做开发的用户仍可用 `scripts/update.sh` 走 fetch + rebuild 路线（不重装依赖、不卸 daemon）。普通用户用上面的 install 脚本即可。
+
+源码分发测试需要直接部署当前目录中的代码时，在项目根目录执行：
+
+```bash
+bash scripts/update.sh --skip-sync
+```
+
+`--skip-sync` 跳过小贝仓库的 Git 初始化、remote 配置和 fetch/reset，适用于开发仓 checkout 或源码 ZIP。OpenClaw 引擎仍按本地 `openclaw.version` 检出；依赖安装、构建和服务重启照常执行，仍可能需要联网。
 
 ### 系统与环境要求
 

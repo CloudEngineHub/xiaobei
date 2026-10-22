@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 // Explicit, checksum-verified asset installation. Runtime startup never downloads.
-import { createHash } from "node:crypto";
 import {
-  createReadStream,
-  createWriteStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -16,19 +13,14 @@ import {
   copyFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import { ensureModel, MODEL_PIN } from "camoufox/dist/fpgen/index.js";
 import { assetPaths, lock } from "./asset-paths.mjs";
+import { githubDownloadUrl } from "./download-network.mjs";
+import { downloadAsset, verify } from "./download-asset.mjs";
 export { lock };
-export async function verify(file, expected) {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  if (hash.digest("hex") !== expected)
-    throw new Error("Asset SHA-256 mismatch; nothing was installed");
-}
+export { verify };
 async function download(url, file, sha256) {
   const cache = process.env.XIAOBEI_BROWSER_DOWNLOADS;
   const cached = cache && join(cache, new URL(url).pathname.split("/").pop());
@@ -37,12 +29,7 @@ async function download(url, file, sha256) {
     copyFileSync(cached, file);
     return;
   }
-  process.stderr.write(`Downloading ${url}\n`);
-  const response = await fetch(url, { signal: AbortSignal.timeout(600000) });
-  if (!response.ok || !response.body)
-    throw new Error(`Asset download failed: HTTP ${response.status}`);
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(file, { flags: "wx" }));
-  await verify(file, sha256);
+  await downloadAsset(githubDownloadUrl(url), file, sha256);
 }
 export function extract(file, destination) {
   const zip = new AdmZip(file);
@@ -75,7 +62,16 @@ function launcher(root) {
 async function prepareModel(directory) {
   if (JSON.stringify(lock.model) !== JSON.stringify(MODEL_PIN))
     throw new Error("SDK model pin differs from assets.lock.json");
-  await ensureModel({ dir: directory });
+  let attempts = 0;
+  try {
+    await ensureModel({ dir: directory, fetchImpl: (url, options) => {
+      const target = githubDownloadUrl(url);
+      process.stderr.write(`Downloading fingerprint model (attempt ${++attempts}): ${target}\n`);
+      return fetch(target, options);
+    } });
+  } catch (error) {
+    throw new Error(`Fingerprint model installation failed: ${error.message}${error.cause?.code ? ` (${error.cause.code})` : ""}`, { cause: error });
+  }
   for (const [name, digest] of Object.entries({ ...lock.model.file_sha256, ...lock.model.decompressed_sha256 }))
     await verify(join(directory, name), digest);
 }

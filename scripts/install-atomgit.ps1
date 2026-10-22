@@ -103,6 +103,26 @@ function Capture-Streamed([scriptblock]$sb) {
     finally { $ErrorActionPreference = $prev }
 }
 
+# Standalone bootstrap: portable Node is not available before extracting the tarball.
+function Get-GitHubDownloadUrl([string]$Url) {
+    $prefix = $env:XIAOBEI_GITHUB_PROXY
+    if (-not $prefix) { return $Url }
+    $proxyUri = $null
+    if (-not [Uri]::TryCreate($prefix, [UriKind]::Absolute, [ref]$proxyUri) -or
+        $proxyUri.Scheme -ne 'https' -or -not $proxyUri.Host -or $proxyUri.UserInfo -or
+        $proxyUri.Query -or $proxyUri.Fragment -or $prefix -match '[\s?#]') {
+        throw 'XIAOBEI_GITHUB_PROXY must be an HTTPS URL prefix without credentials, query or fragment'
+    }
+    $prefix = $prefix.TrimEnd('/') + '/'
+    if ($Url.StartsWith($prefix, [StringComparison]::Ordinal)) { return $Url }
+    $target = [Uri]$Url
+    if ($target.Scheme -eq 'https' -and $target.Authority -in @(
+        'github.com', 'api.github.com', 'raw.githubusercontent.com',
+        'codeload.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'
+    )) { return $prefix + $Url }
+    return $Url
+}
+
 # --- 1. Resolve latest release tag (atomgit v5 API) ---
 function Resolve-Tag {
     if ($env:XIAOBEI_TAG) { return $env:XIAOBEI_TAG }
@@ -752,6 +772,7 @@ function Bind-WeixinChannel {
 
 # --- main ---
 function Main {
+    Get-GitHubDownloadUrl 'https://github.com/' | Out-Null
     Write-Host "wiseflow installer (Windows, atomgit) - prebuilt tarball route" -ForegroundColor Magenta
     Write-Host "  Program dir : $Root"
     Write-Host "  Runtime dir : $OpenclawHome"
@@ -782,6 +803,14 @@ function Main {
 
     Write-Stage "Extracting tarball"
     Extract-Tarball $tb
+    if ($env:XIAOBEI_GITHUB_PROXY) {
+        $networkHelper = Join-Path $Root 'scripts\lib\download-network.ps1'
+        if (-not (Test-Path $networkHelper)) {
+            throw 'This release does not support XIAOBEI_GITHUB_PROXY; install a newer tarball.'
+        }
+        . $networkHelper
+        Initialize-XiaobeiDownloadNetwork $Root $NodeExe
+    }
 
     Install-Deps
     Write-Stage "Installing per-skill Node.js dependencies"

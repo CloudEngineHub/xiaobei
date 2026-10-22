@@ -20,6 +20,8 @@
 
 `HEARTBEAT.md` 已退役，运行时不读取，仓内不再提供或部署该文件的模板。心跳频率、活跃时段与通知目标仍由 `agents.defaults.heartbeat` / `agents.entries.<id>.heartbeat` 定义，检查清单存入共享 SQLite 的 monitor scratch；独立周期业务通过原生 Automations 管理。
 
+新安装配置模板不预置 main 的心跳任务，统一以 `agents.defaults.heartbeat.every="0m"` 关闭默认心跳，避免回退到上游的 30 分钟周期。需要启用时，由 IT Engineer 按用户需求配置指定 agent 的心跳频率、活跃时段和通知目标。
+
 main 原心跳模板已移入 `content-calibrator/references/scheduled-review.md`，供用户开启定时取数时参考；main 交 IT 将用户选定的执行内容写入独立 Automation 或其显式引用的 workspace 任务说明。销售客服主动跟进按 `sales-cs-manager` 的 Follow-up Scheduling workflow 配置，不默认启用，也不重建 HEARTBEAT.md。
 
 ## 自动加载范围

@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { configureInstallationNetwork } from "../browser/scripts/download-network.mjs";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -13,6 +14,7 @@ if (args.includes("--help")) {
   );
   process.exit(0);
 }
+configureInstallationNetwork();
 let root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let build = false,
   assets = true,

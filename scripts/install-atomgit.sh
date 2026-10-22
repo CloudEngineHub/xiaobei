@@ -2,7 +2,7 @@
 # install-atomgit.sh - wiseflow 一键首装脚本（预构建 tarball 路线，atomgit 国内镜像专线）
 #
 # 与 install.sh 区别：本脚本走 atomgit 国内镜像（tarball 走 atomgit.com → GitCode CDN，
-#   tag 解析走 api.atomgit.com/api/v5），不经 GitHub；适合国内网络环境。
+#   tag 解析走 api.atomgit.com/api/v5）；第三方 GitHub 下载可用 XIAOBEI_GITHUB_PROXY 加速。
 #
 # 用法：
 #   bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
@@ -13,6 +13,7 @@
 #   - update.sh          = git clone 源码用户的升级路线（git fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
 # 执行流程：
+#   0. Ubuntu/Debian 检查并补齐 curl/tar/zstd/CA/Python/pip（仅安装缺项，普通用户按需 sudo）
 #   1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
 #   2. bootstrap gum UI（TTY 才有，非 TTY 静默跳过）
 #   3. 解析最新 release tag（atomgit v5 API：api.atomgit.com/api/v5/repos/wiseflow/xiaobei/releases/latest）
@@ -26,7 +27,7 @@
 #   11. openclaw-weixin 插件：openclaw plugins install @tencent-weixin/openclaw-weixin@<pin> --pin（npmmirror）
 #       幂等按**版本**判定：已装版本 == pin 才跳过，不等则 --force 升级到 pin
 #   12. 交互问 AWK_API_KEY → 写 gateway env（Linux daemon.env / Darwin service-env/ai.openclaw.gateway.env，均落 OPENCLAW_HOME）
-#       → openclaw daemon install + restart（唯一人工输入点；不走 onboard，小白友好）
+#       → openclaw daemon install + restart（不走 onboard，小白友好）
 #   13. 打印访问指引
 #
 # 目录职责：WISEFLOW_ROOT（~/xiaobei）= 程序（引擎+模板+脚本+工具+wrapper）；OPENCLAW_HOME（~/.openclaw）= 运行数据（config+env+workspace+logs）。
@@ -288,7 +289,7 @@ print_installer_banner() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# OS / downloader
+# OS / system dependencies / downloader
 # ═══════════════════════════════════════════════════════════════════
 detect_os_or_die() {
     OS="unknown"
@@ -307,6 +308,89 @@ detect_os_or_die() {
     ui_success "Detected: $OS"
 }
 
+# Keep this bootstrap self-contained: the tarball and portable Node are not available yet.
+missing_linux_system_packages() {
+    local tool
+    for tool in curl tar zstd python3; do
+        command -v "$tool" &>/dev/null || printf '%s\n' "$tool"
+    done
+    if ! command -v dpkg-query &>/dev/null || \
+        [[ "$(dpkg-query -W -f='${Status}' ca-certificates 2>/dev/null || true)" != "install ok installed" ]]; then
+        printf '%s\n' ca-certificates
+    fi
+    if ! command -v python3 &>/dev/null || ! python3 -m pip --version &>/dev/null; then
+        printf '%s\n' python3-pip
+    fi
+    return 0
+}
+
+ensure_system_dependencies() {
+    # Other platforms retain their existing package-manager setup.
+    [[ "$OS" == "linux" ]] || return 0
+    command -v apt-get &>/dev/null || return 0
+
+    local packages=() package
+    while IFS= read -r package; do
+        [[ -n "$package" ]] && packages+=("$package")
+    done < <(missing_linux_system_packages)
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        ui_success "System dependencies ready"
+        return 0
+    fi
+
+    local runner=(env)
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if ! command -v sudo &>/dev/null; then
+            ui_error "Missing system packages: ${packages[*]}; sudo is required to install them."
+            ui_info "Ask an administrator to run: apt-get update && apt-get install -y ${packages[*]}"
+            return 1
+        fi
+        runner=(sudo env)
+    fi
+    runner+=("DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-noninteractive}" "NEEDRESTART_MODE=${NEEDRESTART_MODE:-a}")
+    ui_info "Installing missing system packages: ${packages[*]}"
+    if ! "${runner[@]}" apt-get update; then
+        ui_error "apt-get update failed; check package sources and sudo access, then rerun the installer."
+        return 1
+    fi
+    if ! "${runner[@]}" apt-get install -y --no-install-recommends "${packages[@]}"; then
+        ui_error "System package installation failed; resolve the apt error, then rerun the installer."
+        return 1
+    fi
+    hash -r
+    local remaining
+    remaining="$(missing_linux_system_packages)"
+    if [[ -n "$remaining" ]]; then
+        ui_error "System dependencies still unavailable after installation: ${remaining//$'\n'/, }"
+        ui_info "Check command paths and python3 -m pip --version before rerunning the installer."
+        return 1
+    fi
+    ui_success "System dependencies installed"
+}
+
+# Bootstrap is standalone: no Node runtime or neighbouring files are required yet.
+github_download_url() {
+    local url="$1" proxy="${XIAOBEI_GITHUB_PROXY:-}"
+    if [[ -n "$proxy" ]]; then
+        local pattern='^https://[[:alnum:].-]+(:[0-9]+)?(/[^?#[:space:]]*)?$'
+        [[ "$proxy" =~ $pattern ]] || { echo 'XIAOBEI_GITHUB_PROXY must be an HTTPS URL prefix without credentials, query or fragment' >&2; return 1; }
+        while [[ "$proxy" == */ ]]; do proxy="${proxy%/}"; done
+        case "$url" in
+            "$proxy/"*) ;;
+            https://github.com/*|https://api.github.com/*|https://raw.githubusercontent.com/*|https://codeload.github.com/*|https://objects.githubusercontent.com/*|https://release-assets.githubusercontent.com/*) url="$proxy/$url" ;;
+        esac
+    fi
+    printf '%s\n' "$url"
+}
+
+configure_download_network() {
+    [[ -n "${XIAOBEI_GITHUB_PROXY:-}" ]] || return 0
+    local helper="$WISEFLOW_ROOT/scripts/lib/download-network.sh"
+    [[ -f "$helper" ]] || { ui_error 'This release does not support XIAOBEI_GITHUB_PROXY; install a newer tarball.'; return 1; }
+    source "$helper"
+    xiaobei_configure_download_network "$WISEFLOW_ROOT" "$WISEFLOW_ROOT/$PORTABLE_NODE"
+}
+
 DOWNLOADER=""
 detect_downloader() {
     if command -v curl &> /dev/null; then
@@ -322,7 +406,7 @@ detect_downloader() {
 }
 
 download_file() {
-    local url="$1"
+    local url; url="$(github_download_url "$1")" || return $?
     local output="$2"
     if [[ -z "$DOWNLOADER" ]]; then
         detect_downloader
@@ -366,7 +450,7 @@ resolve_latest_version() {
     fi
     local resp
     resp="$(curl -fsSL "$XIAOBEI_ATOMGIT_API/releases/latest" 2>/dev/null || true)"
-    XIAOBEI_TAG="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[^"]+"' | head -1 | sed -E 's/.*"v([^"]+)".*/v\1/')"
+    XIAOBEI_TAG="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[^"]+"' | head -1 | sed -E 's/.*"v([^"]+)".*/v\1/' || true)"
     if [[ -z "$XIAOBEI_TAG" ]]; then
         ui_error "无法解析最新 release tag（atomgit v5 API）"
         echo "指定版本：export XIAOBEI_TAG=v5.5.0 后重跑"
@@ -467,7 +551,7 @@ pnpm_install_prod() {
 }
 
 # skills 的 python 依赖（扫仓内 requirements.txt，pip install --user）
-# 优先高版本 python（3.12/3.11/3.10），回退 python3；小白机可能只有 CommandLineTools 的 3.9。
+# 优先选已有 pip 的高版本 python（3.12/3.11/3.10），回退 python3。
 install_python_deps() {
     local root="$WISEFLOW_ROOT"
     local merged=""
@@ -479,7 +563,10 @@ install_python_deps() {
     # 选 python：优先 3.12/3.11/3.10，回退 python3
     local PY_BIN=""
     for cand in python3.12 python3.11 python3.10 python3; do
-        if command -v "$cand" &>/dev/null; then PY_BIN="$cand"; break; fi
+        if command -v "$cand" &>/dev/null; then
+            [[ -n "$PY_BIN" ]] || PY_BIN="$cand"
+            if "$cand" -m pip --version &>/dev/null; then PY_BIN="$cand"; break; fi
+        fi
     done
     if [[ -z "$PY_BIN" ]]; then
         ui_warn "python3 未安装，跳过 python 依赖（skills 用到时再装）"
@@ -1071,17 +1158,19 @@ bind_weixin_channel() {
 main() {
     parse_args "$@"
     configure_verbose
-
-    echo -e "${INFO}Preparing installer interface...${NC}"
-    bootstrap_gum_temp || true
-    print_installer_banner
-    print_gum_status
+    github_download_url 'https://github.com/' >/dev/null
     detect_os_or_die
 
     if [[ "$OS" == "linux" ]]; then
         export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
         export NEEDRESTART_MODE="${NEEDRESTART_MODE:-a}"
     fi
+    ensure_system_dependencies || return $?
+
+    echo -e "${INFO}Preparing installer interface...${NC}"
+    bootstrap_gum_temp || true
+    print_installer_banner
+    print_gum_status
 
     ui_kv "OS" "$OS"
     ui_kv "Program dir" "$WISEFLOW_ROOT"
@@ -1121,6 +1210,7 @@ main() {
     # ─── Step 2: 下载 + 解压 tarball（更新 program）──────────
     ui_stage "Downloading pre-built tarball (atomgit CDN)"
     download_and_extract_tarball
+    configure_download_network
 
     # ─── Step 3: pnpm install --prod（拉依赖，无 OOM）────────
     ui_stage "Installing dependencies (pnpm install --prod)"

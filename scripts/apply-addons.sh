@@ -17,6 +17,8 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/download-network.sh"
+xiaobei_configure_download_network "$PROJECT_ROOT"
 CREWS_DIR="$PROJECT_ROOT/crews"
 OPENCLAW_DIR="$PROJECT_ROOT/openclaw"
 OPENCLAW_HOME="$HOME/.openclaw"

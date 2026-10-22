@@ -33,12 +33,18 @@ const original = fs.readFileSync(config);
 const raw = JSON.parse(original);
 if (Object.hasOwn(raw, "$include"))
   throw new Error("Included configs require the upstream Doctor ownership-aware workflow");
-const name = fs.readdirSync(dist).find((name) => /^config-flow-steps-.+\.mjs$/.test(name));
-if (!name) throw new Error("Built Doctor migration module missing");
-const mod = await import(pathToFileURL(path.join(dist, name)).href);
-const migrate = Object.values(mod).find(
-  (value) => typeof value === "function" && value.name === "migrateLegacyConfig",
-);
+// A build can emit several chunks with this prefix, including re-export shims.
+// Hash ordering must not decide whether the native migration entry is available.
+const names = fs.readdirSync(dist).filter((name) => /^config-flow-steps-.+\.mjs$/.test(name));
+if (!names.length) throw new Error("Built Doctor migration module missing");
+let migrate;
+for (const name of names) {
+  const mod = await import(pathToFileURL(path.join(dist, name)).href);
+  migrate = Object.values(mod).find(
+    (value) => typeof value === "function" && value.name === "migrateLegacyConfig",
+  );
+  if (migrate) break;
+}
 if (!migrate) throw new Error("This OpenClaw build has no compatible Doctor migration entry");
 const result = migrate(raw, {});
 if (result.partiallyValid)

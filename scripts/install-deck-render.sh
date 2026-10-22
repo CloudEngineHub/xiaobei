@@ -3,6 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/download-network.sh"
+xiaobei_configure_download_network "$ROOT"
 TOOL="$ROOT/crews/content-producer/skills/expert-video/tools/deck-render"
 BROWSER_DIR="$TOOL/.browsers"
 MARKER="$TOOL/.deck-render-browser"

@@ -19,19 +19,36 @@
 
 **一键首装 / 升级**（预构建 tarball 路线）。新用户首装和老用户升级都跑这一个脚本，重跑即升级、保留运行数据。
 
-按网络环境选一条命令即可：能正常访问 GitHub 走 GitHub 线路（`install.sh` / `install.ps1`）；国内网络走 atomgit 线路（`install-atomgit.sh` / `install-atomgit.ps1`，安装脚本与主 tarball 从 atomgit 下载）。两条线路安装产物完全一致，只是主程序下载源不同。第三方依赖仍按各自的包源下载；Windows 中文画面使用系统微软雅黑，不下载 Noto 字体。
+国内客户默认推荐 AtomGit 预构建 tarball，配合 `XIAOBEI_GITHUB_PROXY` 下载第三方 GitHub 资源；客户机无需完整构建 OpenClaw。能正常访问 GitHub 也可使用 `install.sh` / `install.ps1`。两条线路安装产物一致。Windows 中文画面使用系统微软雅黑，不下载 Noto 字体；Docker 保留为需要环境隔离的可选渠道。
+
+### Ubuntu / Debian 系统依赖
+
+`install.sh` 和 `install-atomgit.sh` 在下载与解压前检查 `curl`、`tar`、`zstd`、`ca-certificates`、`python3`、`python3-pip`。存在缺项时先执行 `apt-get update`，再仅安装缺少的包；依赖齐全则跳过 apt。普通用户通过 `sudo` 安装系统包，程序与运行数据仍归该用户；root 直接运行时直接调用 apt。权限不足、apt 失败或安装后 Python/pip 仍不可用时提前退出，升级路线此时尚未停止已有 Gateway。其他平台保留原有系统依赖准备方式。
+
+安装脚本自带的 Node/pnpm 和预构建 OpenClaw 不要求预装系统 Node、Git 或完整编译工具。Python 库仍由脚本使用可用的 Python/pip 安装，并优先选择已有 pip 的解释器。
+
+下面的一行安装命令使用 `curl` 获取脚本，因此极简系统若连 curl 或 CA 证书也没有，需要先准备这两项，或先通过浏览器取得脚本再本地执行：
+
+```bash
+sudo apt update
+sudo apt install -y curl ca-certificates
+```
+
+### 安装命令
 
 ```bash
 # macOS / Linux（GitHub 线路）
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.sh)"
-# macOS / Linux（atomgit 线路，国内；tarball 走 atomgit.com → GitCode CDN，全程国内直连，脚本也从 raw.atomgit.com 拉取）
+# macOS / Linux（国内推荐；脚本与主程序从 AtomGit 下载）
+export XIAOBEI_GITHUB_PROXY="https://ghfast.top/"
 bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
 ```
 
 ```powershell
 # Windows（PowerShell，需 Git Bash 或 WSL；GitHub 线路）
 irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.ps1 | iex
-# Windows（atomgit 线路，国内；脚本和 tarball 全程走 atomgit，不经 GitHub）
+# Windows（国内推荐；脚本与主程序从 AtomGit 下载）
+$env:XIAOBEI_GITHUB_PROXY="https://ghfast.top/"
 irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 | iex
 ```
 
@@ -56,6 +73,42 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 
 环境变量：`XIAOBEI_REPO`（仅 GitHub 线路认，atomgit 线路硬编码 `wiseflow/xiaobei`）、`XIAOBEI_TAG`（指定版本）、`XIAOBEI_TARBALL`（本地已下好的 tarball 路径，跳过下载）、`XIAOBEI_HOME`（程序目录覆盖）、`OPENCLAW_HOME`（运行数据目录覆盖）。
 
+### GitHub 下载代理
+
+`XIAOBEI_GITHUB_PROXY` 是可选的 HTTPS URL 前缀，例如 `https://ghfast.top/`。不设置或设为空时保持原有下载线路；启用后将 GitHub 下载地址改写成 `https://ghfast.top/https://github.com/...`。可以更换代理站点，不能包含账号密码、查询参数或 fragment。
+
+| 入口 | 启用后的行为 |
+|------|------|
+| 四个 install 脚本 | GitHub release/raw/API 地址加前缀；AtomGit API、tarball/CDN 保持原线路 |
+| Camoufox、GeoIP、指纹模型 | 使用统一前缀；版本锁、缓存与 SHA-256 校验保留 |
+| Matrix 原生库 | 通过依赖支持的 `MATRIX_SDK_CRYPTO_DOWNLOADS_BASE_URL` 下载 |
+| 源码 update/apply、npm/pnpm 的 GitHub Git 依赖 | 通过进程级 Git 配置改写 HTTPS/SSH 地址；不修改 remote 或全局 Git 配置 |
+| npm/pnpm、Node headers | 未自定义时分别使用 npmmirror 包源和 Node headers 镜像 |
+| Playwright Chromium | 未自定义时使用 `https://registry.npmmirror.com/-/binary/playwright`，下载超时 120 秒 |
+
+共享资源安装入口 `install-browser.mjs`、`install-skill-deps.mjs` 与 deck-render 安装器也识别该变量。现有 `PLAYWRIGHT_DOWNLOAD_HOST`、各浏览器专用下载地址、`MATRIX_SDK_CRYPTO_DOWNLOADS_BASE_URL` 等镜像设置继续生效。安装器将配置传给子进程，不写入 Gateway 配置或系统环境文件。新终端里首装、重跑或升级时需重新设置变量。
+
+部分代理（包含本次检查的 ghfast）不支持 GitHub API。推荐使用 AtomGit 查询最新版本；若选择 GitHub 安装线路，应额外指定 `XIAOBEI_TAG`。代理模式查询失败时安装器会提示处理，不会通过 gh CLI 自动绕回 GitHub 直连。最外层下载 GitHub 安装脚本的 `curl` / `irm` 发生在脚本运行前，需要调用者自行加前缀；上面的 AtomGit 命令无需处理这个问题。
+
+该功能需要使用包含 `browser/scripts/download-network.mjs` 的新 tarball；仅更新 bootstrap 脚本不能让旧发行包获得资源代理能力，启用变量时遇到旧包会明确报错。
+
+此变量不是通用 HTTP/HTTPS 代理。Mozilla 的 uBlock、apt/brew/winget 等系统包管理器、ONNX 可选 NuGet 下载等仍按各自配置访问，不对这些地址机械添加 GitHub 前缀；完整国内网络安装还需逐项验证这些来源。无 CUDA 的 CPU 云电脑可另设 `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`，此开关不自动改变 GPU 安装选项。
+
+#### 浏览器资源下载缓存
+
+弱网下下载浏览器压缩包，可先用支持续传的下载器保存为 `<缓存目录>/<assets.lock.json 中的平台 asset.name>`，设置 `XIAOBEI_BROWSER_DOWNLOADS=<缓存目录>`，再单独运行 `node browser/scripts/install-assets.mjs`。资源安装器会先核对 SHA-256，再使用缓存，不需要重跑 OpenClaw 构建；缓存文件不能只改名或跳过校验。该缓存入口也适用于 uBlock 和 GeoIP，指纹模型使用 SDK 自身的安装目录。
+
+Camoufox、uBlock 和 GeoIP 的内置资源下载默认包含首次最多尝试 5 次。连接中断、HTTP 408/429/5xx 会分别等待 3、6、12、24 秒后重试；同一次安装中优先用 Range 续传，服务端不支持时从头重下。每 30 秒显示下载进度，连续 2 分钟没有新数据才超时，没有固定的总下载时限。HTTP 403/404、磁盘写入错误和 SHA-256 校验失败会立即报错。指纹模型沿用 SDK 自带的重试，并打印请求次数及错误原因。
+
+当前锁定的 Camoufox 156.0.1-beta.36 Linux x64 包经 Range 探测为 1,294,875,941 字节（约 1.29 GB），支持断点续传。安装结束或重试耗尽后临时文件仍会清理；需要跨次安装保留部分下载时，应使用上面的独立缓存和续传下载器。资源安装器末尾出现 `Camoufox ... ready at ...` 才表示资源安装完成。
+
+源码用户使用同一变量，例如：
+
+```bash
+export XIAOBEI_GITHUB_PROXY="https://ghfast.top/"
+bash scripts/update.sh --atomgit
+```
+
 执行流程：
 
 1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
@@ -65,7 +118,7 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 5. `pip install --user`（skills 的 Python 依赖）
 6. awada 本地插件 deps（`awada/` 下 `npm install --omit=dev` 装 ws+zod）
 7. `install-deck-render.sh`（Windows 为 `.ps1`）：安装或校验 FFmpeg/FFprobe、锁定 HyperFrames/GSAP/Playwright、Chromium headless shell 与中文字体（Linux/macOS 为 Noto Sans CJK SC，Windows 为系统微软雅黑）；重跑会复用已有依赖
-8. `camoufox-cli install`（下 Firefox 反指纹浏览器，约 557MB，仅首装）
+8. 安装锁定的 Camoufox 浏览器资源（当前 Linux x64 压缩包约 1.29 GB，已有安装会复用）
 9. `openclaw plugins install @tencent-weixin/openclaw-weixin@<pin> --pin`（微信插件，走 npmmirror）
 10. 首装：放 `config-templates/openclaw.json` → `~/.openclaw/` + 预填微信 binding + `setup-crew.sh` + 交互收 `AWK_API_KEY` + `openclaw daemon install` + restart
 11. 首装末尾：自动出微信绑定二维码（已绑过则跳过），手机扫码确认即用
@@ -145,9 +198,9 @@ cd openclaw && pnpm build && cd ..   # 首次或修改源码后手动 build
 | 场景 | 命令 |
 |------|------|
 | 小白首装（macOS/Linux，GitHub） | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.sh)"` |
-| 小白首装（macOS/Linux，国内 atomgit） | `bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"` |
+| 小白首装（macOS/Linux，国内 atomgit） | 先 `export XIAOBEI_GITHUB_PROXY="https://ghfast.top/"`，再运行上面的 AtomGit 安装命令 |
 | 小白首装（Windows，GitHub） | **以管理员身份打开 PowerShell**，然后 `irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.ps1 \| iex` |
-| 小白首装（Windows，国内 atomgit） | **以管理员身份打开 PowerShell**，然后 `irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 \| iex` |
+| 小白首装（Windows，国内 atomgit） | **以管理员身份打开 PowerShell**，先设置 `$env:XIAOBEI_GITHUB_PROXY="https://ghfast.top/"`，再运行上面的 AtomGit 安装命令 |
 | 老用户升级 | 重跑对应线路的 install 脚本（保留 `~/.openclaw` 运行数据） |
 | 已 git clone 的开发者升级 | `./scripts/update.sh` |
 | 修改了 patch 后测试 | `./scripts/apply-addons.sh` |

@@ -15,6 +15,11 @@ foreach ($path in @($node, $npm, (Join-Path $tool 'package.json'))) {
 $nodeMajor = & $node -p 'process.versions.node.split(".")[0]'
 if ($LASTEXITCODE -ne 0 -or [int]$nodeMajor -lt 22) { throw 'deck-render needs Node >=22' }
 
+if ($env:XIAOBEI_GITHUB_PROXY) {
+    . (Join-Path $Root 'scripts\lib\download-network.ps1')
+    Initialize-XiaobeiDownloadNetwork $Root $node
+}
+
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or
     -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
