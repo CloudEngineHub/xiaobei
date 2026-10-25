@@ -1462,8 +1462,17 @@ class XHSLiveAPI:
     def detect_message_policy(self, *, source: str = "discovery"):
         return self._request(self.edith_url, "/api/sns/v6/message/web/detect?" + urlencode({"source": source}), method="GET")
 
-    def mark_messages_read(self, chat_list: list[Mapping[str, Any]], *, chat_total_unread_count: int = 0,
-                           mute_chat_total_unread_count: int = 0, stranger_total_unread_count: int = 0):
+    def mark_messages_read(self, chat_list: list[Mapping[str, Any]], *, chat_total_unread_count: int,
+                           mute_chat_total_unread_count: int, stranger_total_unread_count: int):
+        from .im_read_state import global_counters, nonnegative_integer
+
+        counters = global_counters({
+            "chat_total_unread_count": chat_total_unread_count,
+            "mute_chat_total_unread_count": mute_chat_total_unread_count,
+            "stranger_total_unread_count": stranger_total_unread_count,
+        })
+        if not isinstance(chat_list, list) or not chat_list:
+            raise ValueError("READ_STATE_MISSING")
         required = ("chat_id", "read_store_id", "unread_count", "type", "need_rm_offline")
         normalized = []
         for item in chat_list:
@@ -1473,12 +1482,14 @@ class XHSLiveAPI:
                     "mark_messages_read chat item missing captured fields: "
                     + ", ".join(missing)
                 )
+            store = nonnegative_integer(item["read_store_id"], "READ_STATE_MISSING")
+            if not store or not isinstance(item["chat_id"], str) or not item["chat_id"]:
+                raise ValueError("READ_STATE_MISSING")
+            unread = nonnegative_integer(item["unread_count"], "READ_UNREAD_STATE_INVALID")
             normalized.append({key: item[key] for key in required})
+            normalized[-1].update(read_store_id=store, unread_count=unread)
             normalized[-1].update({key: value for key, value in item.items() if key not in required})
-        body = {"chat_list": normalized,
-                "chat_total_unread_count": chat_total_unread_count,
-                "mute_chat_total_unread_count": mute_chat_total_unread_count,
-                "stranger_total_unread_count": stranger_total_unread_count}
+        body = {"chat_list": normalized, **counters}
         # Chrome's message page uses this exact media-type spelling for the
         # read acknowledgement (including the space and UTF-8 casing).
         return self._request(

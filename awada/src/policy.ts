@@ -14,7 +14,6 @@ import { isAwadaLocalCommand } from "./commands.js";
 export function normalizeAwadaPeer(raw: string): string {
   return raw
     .trim()
-    .toLowerCase()
     .replace(/[\x00-\x1f\x7f]/g, "");
 }
 export function isAwadaGroup(event: InboundEvent): boolean {

@@ -61,4 +61,4 @@
 4. 待用户确认的 DNA 优化建议：每条含目标维度/template 部分与证据篇目。
 5. 未完成项和需要 IT 排查的技术故障。
 
-本任务不包含客户留言、私信或评论自动回复；此类互动按 `expert-bd` 的实际能力和用户授权另行安排。
+私信互动仅在对应 Automation 已获用户授权时执行。先 `xhs-im unread`，仅处理有未读的单聊，再取第一页历史（`history --limit 10 --cursor 0`）。回复前使用 `_shared/xhs_im_reply_guard.py check` 区分真实客户消息、我方消息和平台提示，并按消息 ID 检查持久账本，不以日期更换为重发依据。平台提示即使使用客户 sender_id，也不属于客户新咨询；结构化风控提示需用 `record --outcome platform_notice` 持久保存。返回 `suppress_external_guidance=true` 时不得再发联系方式或站外引导，只在平台内简短答复真实新诉求，不改说法绕过限制。发送前记录 `unknown` 意图，提交后记录 `submitted`；核验历史确认存在再记 `confirmed`。已读失败不重发、不清账本，调用 `xhs-im read --conversation <用户ID> --confirm`，缺失真实状态安全停止。业务知识来源、回复长度、正常咨询入口及报告格式以具体任务说明为准；`revoke` / `delete` / 群聊写操作禁用。

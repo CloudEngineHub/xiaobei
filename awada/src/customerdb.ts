@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS follow_up (
  *
  * Rules (applied in order):
  *   1. trim leading/trailing whitespace
- *   2. lowercase (preserves existing database keys on both hook and command paths)
+ *   2. preserve case and punctuation: routing IDs are opaque and case-sensitive
  *   3. strip ASCII control characters U+0000–U+001F and U+007F
  *      (\t \n \r \0 etc. — \t breaks tab-separated sqlite3 output parsing;
  *       \n/\r break line-based output; \0 is a null-byte hazard in SQLite C layer)
@@ -87,7 +87,6 @@ CREATE TABLE IF NOT EXISTS follow_up (
 function normalizePeer(raw: string): string {
   return raw
     .trim()
-    .toLowerCase()
     .replace(/[\x00-\x1f\x7f]/g, "");
 }
 

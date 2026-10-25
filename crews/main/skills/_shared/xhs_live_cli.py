@@ -44,7 +44,8 @@ WRITE_METHODS = frozenset({
 
 
 def im_operation(command: str, conversation: str, *, limit: int = 30,
-                 cursor: str = '0', message: str = '') -> dict:
+                 cursor: str = '0', message: str = '',
+                 read_counters: dict | None = None) -> dict:
     """Resolve chat state and perform one bounded operation with a single auth lease."""
     from xhs_utils.live import XHSLiveAPI
 
@@ -69,27 +70,34 @@ def im_operation(command: str, conversation: str, *, limit: int = 30,
             elif command == 'delete':
                 result = api.delete_message({'chat_user_id': conversation})
             else:
-                chat = None
+                from xhs_utils.im_read_state import chat_id, chat_page, read_state
+
+                chats = []
+                seen = set()
                 for page in range(20):
                     response = api.get_chats(limit=100, page=page)
                     if not response_ok(response):
                         return {'ok': False, 'command': command, 'data': response}
-                    data = response.get('data') or {}
-                    entries = data.get('chat_list', data.get('chats', []))
-                    if not isinstance(entries, list):
-                        raise ValueError('CHAT_LIST_INVALID')
-                    chat = next((item for item in entries if str(item.get('chat_user_id') or
-                                (item.get('info') or {}).get('user_id') or item.get('chat_id')) == conversation), None)
-                    if chat is not None or not data.get('has_more') or not entries:
+                    entries, complete = chat_page(response, page, len(chats))
+                    for entry in entries:
+                        identity = chat_id(entry)
+                        if identity in seen:
+                            raise ValueError('READ_CHAT_STATE_DUPLICATE')
+                        seen.add(identity)
+                        chats.append(entry)
+                    if complete:
                         break
+                else:
+                    raise ValueError('READ_PAGINATION_INCOMPLETE')
+                chat = next((row for row in chats if chat_id(row) == conversation), None)
                 if chat is None:
                     raise ValueError('CONVERSATION_NOT_FOUND')
-                store_id = chat.get('last_store_id', chat.get('store_id'))
-                unread = chat.get('unread_count')
-                if store_id is None or unread is None or not str(store_id).isdigit() or not str(unread).isdigit():
-                    raise ValueError('READ_STATE_MISSING')
-                result = api.mark_messages_read([{'chat_id': conversation, 'read_store_id': int(store_id),
-                                                 'unread_count': int(unread), 'type': 1, 'need_rm_offline': True}])
+
+                unread_response = api.get_unread()
+                if not response_ok(unread_response):
+                    return {'ok': False, 'command': command, 'data': unread_response}
+                item, counters = read_state(chat, conversation, unread_response, read_counters, chats=chats)
+                result = api.mark_messages_read([item], **counters)
             return {'ok': response_ok(result), 'command': command, 'data': result}
         finally:
             try:
@@ -251,6 +259,9 @@ def main() -> int:
         if name in ('list', 'groups', 'history'):
             part.add_argument('--limit', type=int, default=30)
             part.add_argument('--cursor', default='0')
+        if name == 'read':
+            part.add_argument('--read-counters',
+                              help='可选校验三个全局统计 JSON；默认自动计算，与实时状态冲突即停止')
         if name == 'revoke':
             part.add_argument('--message', required=True)
         if name in ('read', 'revoke', 'delete'):
@@ -302,7 +313,9 @@ def main() -> int:
                           'conversation': conversation, 'message': getattr(args, 'message', None)}
             else:
                 result = im_operation(args.command, conversation, limit=getattr(args, 'limit', 30),
-                                      cursor=getattr(args, 'cursor', '0'), message=getattr(args, 'message', ''))
+                                      cursor=getattr(args, 'cursor', '0'), message=getattr(args, 'message', ''),
+                                      read_counters=(_json_arg(args.read_counters, dict, '--read-counters')
+                                                     if getattr(args, 'read_counters', None) else None))
             emit(result)
             return 0 if result.get('ok') else 1
         write = args.command in ('send', 'room-text', 'send-captured-frame') or (

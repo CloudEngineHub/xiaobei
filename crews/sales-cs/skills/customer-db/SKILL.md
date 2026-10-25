@@ -23,9 +23,9 @@ description: >
 本系统中客户有两个用途不同的标识符；两者的值可能相同，使用时仍按各自来源取值：
 
 ### peer（来自 [CustomerDB] 块）
-数据库主键。系统 hook 优先读取宿主传入的 senderId（与 Sender.id、入站 user_id_external 同源），按 `trim → 小写 → 移除 ASCII 控制字符` 生成并注入。保留中文、空格、全角括号及其他 Unicode 字符，不做 NFKC、去标点或拼音转换。只有缺少 senderId 时才解析已识别的私聊 sessionKey；新版会话键还包含 lane 和账号信息，不能将整个后缀当作 peer。
+数据库主键。系统 hook 优先读取宿主传入的 senderId（与 Sender.id、入站 user_id_external 同源），按 `trim → 移除 ASCII 控制字符` 生成并注入，保留字母大小写、中文、空格、全角括号及其他 Unicode 字符，不做 NFKC、去标点或拼音转换。只有缺少 senderId 时才解析已识别的私聊 sessionKey；新版会话键还包含 lane 和账号信息，不能将整个后缀当作 peer。
 
-所有查库和写库操作都使用注入的 `[CustomerDB].peer`，不要让 agent 自行推导或重新清洗。清洗规则沿用既有数据库约定，不因会话键格式变化而给 peer 增加账号/lane 前缀。
+所有查库和写库操作都使用注入的 `[CustomerDB].peer`，不要自行推导或重新清洗(hook程序已自动处理)。
 
 ### user_id_external（来自 Sender 块的 `id` 字段）
 由 Awada 服务直接提供的路由标识。它不保证是真实微信 ID，也不保证是未经处理的原始昵称。每轮对话开始时，OpenClaw 会在消息上下文中注入 Sender 信息块：

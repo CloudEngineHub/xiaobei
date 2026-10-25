@@ -148,6 +148,8 @@ IT engineer 配置 Awada channel 时，默认同时配置并核验 CustomerDB ho
 
 严格说是一个 `before_prompt_build` hook 加两个原生 slash 命令。命令随 CustomerDB 注册，不需要放入 commands.json，也不要用自定义命令占用这两个名字。两条命令仅修改业务状态，不代表插件独立校验了支付订单或真实入群事实。它们保留原有 requireAuth=false 设置，仍受渠道入站策略和账号/agent 归属限制。
 
+数据库主键来自入站 Sender.id，仅 trim 并移除 ASCII 控制字符，保留字母大小写、标点及 Unicode。hook 与两个静默命令使用同一规则，不按大小写或显示名自动合并客户。
+
 客户上下文 hook 跳过其他账号/agent、其他渠道、群聊，以及 cron/heartbeat 触发；失败写 Gateway 日志。它不负责创建定时调度、发送跟进、新建跟进前取消旧 pending、48 小时清理或发送次数封顶，这些仍属于 customer-db/proactive-send 的业务流程。启用验收应分别核对 hook 注册、私聊注入和业务命令，不能仅凭 channel 已连接就判定 CustomerDB 生效。
 
 ## 迁移与验证
