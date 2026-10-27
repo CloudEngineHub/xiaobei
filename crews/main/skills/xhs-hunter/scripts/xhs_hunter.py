@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 import time
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse, urlunparse
 from uuid import uuid4
 
 from xhs_utils.pc_session import LOGIN_DIR, SESSION_FILE, SessionMissing, load_auth, save_auth, session_lock
@@ -306,25 +306,49 @@ def bounded_feed(category: str, count: int) -> dict:
 
 
 def _note_url(value: str) -> str:
+    value = value.strip()
+    if not value.startswith('https://') or re.search(r'\s', value):
+        match = re.search(r'https://[^\s<>"“”]+', value)
+        if not match:
+            raise ValueError('请提供小红书笔记 HTTPS 链接或 xhslink 短链')
+        value = match.group(0).rstrip('。，、；！）)]}')
     parsed = urlparse(value)
     if parsed.scheme == 'https' and parsed.hostname in {'xhslink.com', 'www.xhslink.com',
                                                           'xhslink.cn', 'www.xhslink.cn'}:
         import requests
 
-        with requests.get(value, stream=True, timeout=(10, 15)) as response:
-            response.raise_for_status()
-            value = response.url
+        try:
+            with requests.get(value, stream=True, timeout=(10, 15)) as response:
+                response.raise_for_status()
+                value = response.url
+        except requests.RequestException as exc:
+            raise ValueError(f'小红书短链展开失败：{type(exc).__name__}；未获取笔记详情') from None
         parsed = urlparse(value)
-    if parsed.scheme != 'https' or parsed.hostname not in {'www.xiaohongshu.com', 'xiaohongshu.com'}:
-        raise ValueError('请提供小红书笔记 HTTPS 链接或 xhslink 短链')
-    match = re.fullmatch(r'/(?:explore|discovery/item)/([A-Za-z0-9]+)/?', parsed.path)
-    if not match:
-        raise ValueError('笔记链接路径应为 /explore/<note_id>')
-    if not parsed.path.startswith('/explore/'):
-        from urllib.parse import urlunparse
-
-        value = urlunparse(parsed._replace(path=f'/explore/{match.group(1)}'))
-    return value
+    for _ in range(5):
+        if (parsed.scheme == 'http' and parsed.hostname in {'www.xiaohongshu.com', 'xiaohongshu.com'}
+                and not parsed.username and not parsed.password and parsed.port in (None, 80)):
+            # App share redirects may embed an absolute HTTP note URL inside HTTPS login.
+            parsed = parsed._replace(scheme='https', netloc=parsed.hostname)
+        if (parsed.scheme != 'https' or parsed.hostname not in {'www.xiaohongshu.com', 'xiaohongshu.com'}
+                or parsed.username or parsed.password or parsed.port not in (None, 443)):
+            raise ValueError('小红书链接解析失败：目标不是受支持的小红书 HTTPS 地址')
+        match = re.fullmatch(r'/(?:explore|discovery/item)/([A-Za-z0-9]+)/?', parsed.path)
+        if match:
+            return urlunparse(parsed._replace(path=f'/explore/{match.group(1)}'))
+        target = (parse_qs(parsed.query).get('redirectPath') or [''])[0]
+        if not target:
+            break
+        # Login redirects retain the original note and its matching xsec_token.
+        for _ in range(3):
+            if target.startswith(('/', 'https://', 'http://')):
+                break
+            decoded = unquote(target)
+            if decoded == target:
+                break
+            target = decoded
+        value = urljoin('https://www.xiaohongshu.com/', target)
+        parsed = urlparse(value)
+    raise ValueError('小红书链接解析失败：重定向后没有有效笔记路径；请重新分享笔记链接')
 
 
 def _media_https_url(value: str) -> str:

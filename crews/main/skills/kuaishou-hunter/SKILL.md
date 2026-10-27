@@ -12,8 +12,11 @@ metadata:
 
 # 快手内容采集
 
-首次登录：`kuaishou-hunter login`。
-扫码登录返回二维码与下一步提示，交用户扫码后运行 `kuaishou-hunter login-confirm`。短信登录由 `login --method sms --phone <手机号>` 请求，用户给验证码后 `login-confirm --method sms --code <验证码>` 完成；手机与中间票据由脚本保存，不手工拼接。不要在非交互 Agent 环境等待终端输入。快手主站、创作者中心和直播站票据由运行库内同一登录流程管理。
+首次扫码登录：用原生 `exec` 运行 `kuaishou-hunter login`，设置 `background:true, timeoutSeconds:660`。保留 exec 返回的后台会话句柄，通过原生 `process poll/log` 查看二维码事件；不要追加 `&`、nohup 或创建脱离工具的后台进程。二维码事件包含 `job_id`、`qr_path` 和状态，把二维码图片交用户扫码并等待其回复。任务完成会返回 `awaiting_confirmation:true`；用户确认后运行 `kuaishou-hunter login-confirm` 校验并保存会话。
+
+`login-confirm` 可查询同账号正在执行的任务：`starting` 表示二维码尚未就绪，`awaiting_scan` 才可使用二维码，`awaiting_phone_confirmation` 表示已扫码待手机确认，`completing` 表示手机已确认、正在保存会话。`LOGIN_WORKER_LOST`/`LOGIN_WORKER_UNRESPONSIVE`、失败或过期时不继续提示扫码旧图；查看原生后台任务。活进程异常时先通过原生 process 结束该任务，进程退出后再 login；已失败或丢失的任务可安全重建。任务总时限为十分钟，不是二维码有效期；平台未提供可核验期限时 `qr_expires_at:null`，不得自行承诺有效秒数。平台报告过期后停止，不静默更换二维码。
+
+短信登录由 `login --method sms --phone <手机号>` 请求，用户给验证码后 `login-confirm --method sms --code <验证码>` 完成；手机与中间票据由脚本保存，不手工拼接。不要在非交互 Agent 环境等待终端输入。快手主站、创作者中心和直播站票据由运行库内同一登录流程管理。
 
 
 ```bash

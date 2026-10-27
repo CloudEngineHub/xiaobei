@@ -4,6 +4,7 @@ import tempfile
 import time
 
 from loguru import logger
+from apis.xhs_readiness import VideoReadinessError, classify_transcode
 
 from xhs_utils.http_util import REQUEST_TIMEOUT
 from xhs_utils.xhs_core.http import ordered_wire_headers
@@ -500,6 +501,7 @@ class XHS_Creator_Apis:
 
     def query_transcode(self, video_id, proxies=None):
         res_json = None
+        http_status = None
         success, msg = False, ''
         try:
             api = "/web_api/sns/capa/postgw/query_transcode"
@@ -526,12 +528,16 @@ class XHS_Creator_Apis:
                 proxies=self._proxies(proxies),
                 timeout=REQUEST_TIMEOUT,
             )
+            http_status = response.status_code
             res_json = response.json()
-            success = res_json["success"]
+            res_json['_xiaobei_query'] = {'http_status': http_status}
+            success = bool(res_json.get("success"))
             if 'msg' in res_json:
                 msg = res_json['msg']
         except Exception as error:
             success, msg = False, _log_api_error(error)
+            res_json = {'_xiaobei_query': {'http_status': http_status,
+                        'kind': 'network_error' if http_status is None else 'invalid_response'}}
         return success, msg, res_json
 
     def encryption(self, file_id, proxies=None):
@@ -574,6 +580,7 @@ class XHS_Creator_Apis:
         location = noteInfo.get('location')
         privacy_type = noteInfo.get('type', 1)
         media_type = noteInfo.get('media_type', 'image')
+        readiness = None
 
         if location is not None:
             success, msg, location_info = self.get_location_info(
@@ -610,35 +617,24 @@ class XHS_Creator_Apis:
             success, msg, coverInfo = self.upload_media(cover, 'image', proxies=proxies)
             if not success:
                 raise RuntimeError(msg)
-            transcode_ready = False
             for _ in range(TRANSCODE_MAX_RETRIES):
                 success, msg, res = self.query_transcode(
                     fileInfo['video_id'],
                     proxies=proxies,
                 )
-                if not success:
-                    # query_transcode 需要 PC 侧 web_session（Creator 登录只发
-                    # creator 系 Cookie，401 无登录信息）。2026-07-25 实证跳过
-                    # 轮询直接发布可成功——服务端异步转码，等待仅为封面建议。
-                    logger.warning(
-                        f'转码查询不可用（{msg}），跳过等待直接发布'
-                    )
-                    transcode_ready = True
+                readiness = classify_transcode(success, msg, res)
+                if readiness['state'] == 'ready':
                     break
-                data_info = res.get('data') or {}
-                if (
-                    data_info.get('hasFirstFrame') is True
-                    or data_info.get('has_first_frame') is True
-                    or data_info.get('firstFrameFileId')
-                    or data_info.get('first_frame_file_id')
-                    or data_info.get('status') in (2, 'success', 'SUCCESS')
-                    or not data_info
-                ):
-                    transcode_ready = True
+                # Creator-only sessions may submit for asynchronous transcoding,
+                # but unavailable www authentication never proves readiness.
+                if readiness.get('reason') == 'auth_unavailable':
+                    logger.warning('转码查询缺少认证；提交后仍需核实可播放状态')
                     break
+                if readiness['state'] == 'readiness_unknown':
+                    raise VideoReadinessError(readiness)
                 time.sleep(TRANSCODE_RETRY_DELAY)
-            if not transcode_ready:
-                raise TimeoutError('video transcode not ready after polling')
+            else:
+                raise VideoReadinessError(readiness or {'state': 'pending'})
             data = get_post_note_video_data(
                 title,
                 desc,
@@ -733,6 +729,8 @@ class XHS_Creator_Apis:
             timeout=REQUEST_TIMEOUT,
         )
         res_json = response.json()
+        if readiness is not None:
+            res_json['_xiaobei_publication'] = {'readiness': readiness}
         # 成功响应为 {"result":0,"success":true,"msg":"",...}，部分响应缺 msg 字段
         success = bool(res_json.get("success"))
         msg = res_json.get("msg") or res_json.get("message") or (

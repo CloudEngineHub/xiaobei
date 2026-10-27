@@ -37,9 +37,11 @@ description: 视频制作原子能力集——剧本/分镜、素材 slot 与解
 
 #### deck-compose：Deck Talk 三模式
 
-`--mode footage --presenter 已剪口播.mp4`：从视频提取唯一音轨；`--mode avatar --avatar-job presenter.liveportrait.json`：校验任务与音视频哈希，使用原驱动音频；`--mode audio --audio 录音.wav`：无小窗。三者均必填 `--base 底画面.mp4 --output 新成片.mp4`，可调 `--corner`、`--size`、`--subtitle-safe`。底画面可为幻灯、B-roll 或混合画面，时长需与音频一致（容差 0.12 秒），禁止替换/拉伸口播。另存 `.deck-talk.json` 音频来源记录。
+`--mode footage --presenter 已剪口播.mp4`：从视频提取唯一音轨；`--mode avatar --avatar-job presenter.avatar.json`：校验任务、时长、当前音视频的人工口型审查与哈希，使用原驱动音频；`--mode audio --audio 录音.wav`：无小窗。三者均必填 `--base 底画面.mp4 --output 新成片.mp4`，可调 `--corner`、`--size`、`--aspect`、`--subtitle-safe`、`--crop-anchor top|center|bottom`（avatar 默认top，实拍默认center）。底画面可为幻灯、B-roll 或混合画面，时长需与音频一致（容差 0.12 秒），禁止替换/拉伸口播。另存 `.deck-talk.json` 音频来源记录；兼容读取旧 `.liveportrait.json`。
 
 #### pip-compose：底画面与可选小窗
+
+`--crop-anchor top|center|bottom` 控制纵向裁切；直接调用默认center。合成有小窗的成片时自动保存三张 `*.pip-preview-N.jpg` 放大帧，路径记入 `.pip.json`，交付前检查头顶、肩线与字幕遮挡。几何或时长通过不代替目检。
 
 ```bash
 video-producer pip-compose --base /absolute/slides.mp4 --presenter /absolute/presenter.mp4 --audio /absolute/narration.mp3 --output /absolute/composed.mp4 --dry-run
@@ -47,11 +49,19 @@ video-producer pip-compose --base /absolute/slides.mp4 --presenter /absolute/pre
 ```
 
 - `--base` 与 `--output` 必填。`--presenter` 可省略，仅合旁白；`--audio` 是唯一音轨，省略时仅保留底视频音轨，**从不混入 presenter 音轨**。两者均无音轨则报错。外部音频编码为 AAC，底视频无小窗时视频流复制。
-- 小窗 `--corner` 四选 top-left/top-right/bottom-left/bottom-right；默认 bottom-right。`--size` 是画布宽占比（默认 .22，范围 .1–.5），`--aspect` 宽高比（默认 1），保比放大后居中裁切，不能以此改变口型时序。
+- 小窗 `--corner` 四选 top-left/top-right/bottom-left/bottom-right；默认 bottom-right。`--size` 是画布宽占比（默认 .22，范围 .1–.5），`--aspect` 宽高比（默认 1），保比放大后按 crop-anchor 裁切，不能以此改变口型时序。
 - `--margin 32`、`--radius 24`、`--border 4`、`--border-color '#ffffff'`、`--subtitle-safe 160` 均以像素计（颜色除外）；字幕安全区是全宽底部禁入带。默认适配 1080p，改尺寸后先 dry-run，超界报错。`--threads` 默认 2。
 - 底视频应为方形像素、无旋转元数据、偶数尺寸、1–120fps。音轨与底视频必须等长（容差 0.12 秒）；presenter 可长于底视频（裁去尾部），短于底视频超过容差就报错，不循环/定帧/变速。先用 clip-trim 对齐入点；时长相同不等于内容同源，人工检查口型。
 - `--dry-run` 只探测并输出合成计划 JSON，不生成媒体；实际输出使用临时文件，验证宽高/帧率/音视频时长后原子落盘，旁写 `.pip.json`。输入与输出必须不同，已有输出用 `--force` 显式重做。
 - 返回码 0 成功、1 输入/几何/合成断言失败、2 依赖缺失。Pillow 使用仓根已有依赖；不需要新增 pip 包。
+
+#### run-stage 与 visual-plan-check
+
+长步骤用 `video-producer run-stage <project> --stage <name> --artifact <产物> -- <wrapper 命令及参数>` 运行。状态、错误摘要、产物绝对路径/哈希和单一恢复入口写入 `.pipeline/checkpoint.json`，失败另写 `failure.md`；子任务回传这些路径。已有 avatar job 的失败会指向原任务 resume，不生成新任务。
+
+`video-producer visual-plan-check <project>` 按项目 `visual_requirements` 统计声明的文字时长与动态图数量；预览审片后用 `--preview <文件> --verdict pass|fail --reviewer <审片人> --notes <结论>` 登记当前 spec、承诺和预览哈希。配置了数值要求的 deck-talk 在 Stage 10 强制核对；具体 schema 读 deck-talk workflow，不预置所有项目通用阈值。
+
+与 `deck-render` 共用 `script/deck-spec.json` 的 `scenes`：一场多节拍放场内 `beats`，字幕放所属场/节拍的 `cues`，由同一适配器验证连续时长、范围与映射。报告输出 `scene_beat_mapping` 和总 `duration`。旧计划可仅用 `segments` / `slides` / `pages` 之一；与 `scenes` 并列会拒绝，先在副本合并为单一计划源。完整字段契约见 `tools/deck-render/SKILL.md`（相对 expert-video 根）。
 
 ### Stage 13–14：审核、响度、字幕和封面
 

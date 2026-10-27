@@ -1,7 +1,9 @@
-import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, stat, writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { stateHome, runtimeDir, activeAccount, credential, credentialPath, atomicJson, runBackend, PlatformError } from './backend.mjs';
+import { join, resolve, dirname } from 'node:path';
+import { stateHome, activeAccount, credential, credentialPath, atomicJson, runBackend, PlatformError } from './backend.mjs';
+import { processIdentity, jobLiveness, withLoginLock, writeJob } from './login-job.mjs';
+import { runKuaishouLoginWorker } from './kuaishou-login-worker.mjs';
 
 function option(args, flag, fallback) {
   const matches = args.flatMap((arg, index) => arg === flag || arg.startsWith(flag + '=') ? [index] : []);
@@ -53,41 +55,62 @@ async function performLogin(action, input) {
   const pointer = join(root, 'current.json');
   let previous;
   try { previous = JSON.parse(await readFile(pointer, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (previous && (typeof previous.home !== 'string' || dirname(resolve(previous.home)) !== resolve(root)))
+    throw new PlatformError('LOGIN_STATE_INVALID', '登录任务目录与当前账号不一致，保留状态供核查');
+  let result, job;
+  if (previous) {
+    try { result = JSON.parse(await readFile(join(previous.home, 'result.json'), 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { job = JSON.parse(await readFile(join(previous.home, 'job.json'), 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  const liveness = previous ? jobLiveness(previous, job) : null;
   if (action === 'login-confirm') {
     if (!previous) throw new PlatformError('LOGIN_NOT_STARTED', '先运行 kuaishou-hunter login');
-    let result;
-    try { result = JSON.parse(await readFile(join(previous.home, 'result.json'), 'utf8')); }
-    catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-      if (Date.now() - previous.started_at > 240000) throw new PlatformError('LOGIN_TIMEOUT', '扫码任务已过期，请重新发起登录', 2);
-      return { ok: true, platform: 'kuaishou', awaiting_scan: true, qr_path: join(previous.home, 'cache/kuaishou/qrcode.png') };
+    if (!result) {
+      if (liveness !== 'alive') {
+        if (liveness === 'worker_lost' && job) writeJob(join(previous.home, 'job.json'),
+          { ...job, state: 'worker_lost', exit_reason: 'owner_lost', observed_at: Date.now() });
+        throw new PlatformError(liveness === 'worker_lost' ? 'LOGIN_WORKER_LOST' : 'LOGIN_WORKER_UNRESPONSIVE',
+          '扫码任务无有效执行进程或心跳；先核对原生后台任务，勿继续使用旧二维码', 2);
+      }
+      if (['expired', 'cancelled', 'failed'].includes(job.state)) throw new PlatformError(job.exit_reason ||
+        (job.state === 'expired' ? 'LOGIN_QR_EXPIRED' : job.state === 'cancelled' ? 'LOGIN_CANCELLED' : 'LOGIN_FAILED'),
+        '扫码任务已停止，等待原后台进程结束后重新 login', 2);
+      const qrPath = join(previous.home, 'cache/kuaishou/qrcode.png');
+      const qrExists = ['awaiting_scan', 'awaiting_phone_confirmation'].includes(job.state) && !!(await stat(qrPath).catch(() => null));
+      return { ok: true, platform: 'kuaishou', account, job_id: previous.job_id,
+        state: job.state, awaiting_scan: qrExists && job.state === 'awaiting_scan',
+        awaiting_qr: job.state === 'starting', ...(qrExists ? { qr_path: qrPath } : {}),
+        heartbeat_at: job.heartbeat_at, deadline_at: job.deadline_at, qr_expires_at: job.qr_expires_at };
     }
-    if (!result.ok) throw new PlatformError(result.error || 'LOGIN_FAILED', '快手登录失败，请重新检查账号与验证码状态', 2);
+    if (!result.ok) throw new PlatformError(result.error || 'LOGIN_FAILED', '快手扫码任务已结束；重新 login 可创建新任务', 2);
     const imported = await adopt(account, previous.home);
     await rm(pointer, { force: true });
     return imported;
   }
-  if (previous && Date.now() - previous.started_at < 240000) throw new PlatformError('BUSY', '已有扫码登录任务，请先使用 login-confirm 查看结果');
+  if (result?.ok) throw new PlatformError('LOGIN_CONFIRM_REQUIRED', '扫码任务已完成；使用 login-confirm 验证并保存会话，不重新扫码');
+  if (previous && !result && liveness === 'worker_lost' && job?.backend_pid && processIdentity(job.backend_pid) !== null)
+    throw new PlatformError('LOGIN_BACKEND_STILL_RUNNING', '登录 owner 已丢失，原平台进程尚未退出；等待其退出后再 login', 2);
+  if (previous && !result && liveness !== 'worker_lost') throw new PlatformError('BUSY',
+    liveness === 'alive' ? '该账号已有受管扫码任务；使用 login-confirm 查看状态' : '原登录进程仍存活但心跳异常；先结束其原生后台任务');
   if (previous) await rm(previous.home, { force: true, recursive: true });
   const home = await mkdtemp(join(root, 'qr-'));
-  const child = spawn(process.execPath, [join(runtimeDir, 'scripts/kuaishou-login-worker.mjs'), account, home], { detached: true, stdio: 'ignore', env: process.env });
-  child.on('error', () => {});
-  child.unref();
-  await atomicJson(pointer, { home, account, started_at: Date.now(), pid: child.pid });
-  const qrPath = join(home, 'cache/kuaishou/qrcode.png');
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (await stat(qrPath).catch(() => null)) return { ok: true, platform: 'kuaishou', account, awaiting_scan: true, qr_path: qrPath, message: '交用户扫码确认后调用 login-confirm；任务有时限' };
-    if (await stat(join(home, 'result.json')).catch(() => null)) return { ok: true, platform: 'kuaishou', account, awaiting_confirmation: true, message: '扫码任务已结束，使用 login-confirm 校验并保存会话' };
-    await new Promise(done => setTimeout(done, 100));
-  }
-  return { ok: true, platform: 'kuaishou', account, awaiting_qr: true, message: '二维码仍在准备，使用 login-confirm 查看任务状态' };
+  const pending = { home, account, started_at: Date.now(), pid: process.pid,
+    process_identity: processIdentity(process.pid), job_id: randomUUID() };
+  writeJob(join(home, 'job.json'), { job_id: pending.job_id, state: 'starting', heartbeat_at: Date.now() });
+  await atomicJson(pointer, pending);
+  return { run_job: pending };
 }
 export async function kuaishouLogin(action, args) {
   const root = join(stateHome, 'locks');
   await mkdir(root, { recursive: true, mode: 0o700 });
-  const lock = join(root, 'login-kuaishou.lock');
-  try { await mkdir(lock, { mode: 0o700 }); }
-  catch (error) { if (error.code !== 'EEXIST') throw error; throw new PlatformError('BUSY', '已有快手登录操作正在执行'); }
-  try { return await performLogin(action, args); }
-  finally { await rm(lock, { recursive: true, force: true }); }
+  const copy = [...args];
+  const account = await activeAccount('kuaishou', option(copy, '--account', option(copy, '-a', undefined)));
+  const result = await withLoginLock(join(root, `login-kuaishou-${account}.lock`), () => performLogin(action, args));
+  if (!result.run_job) return result;
+  const finished = await runKuaishouLoginWorker(result.run_job);
+  if (!finished.ok) throw new PlatformError(finished.error || 'LOGIN_FAILED', '扫码任务已结束；检查原因后重新发起登录', 2);
+  return { ok: true, platform: 'kuaishou', account, job_id: result.run_job.job_id,
+    state: 'succeeded', awaiting_confirmation: true, message: '使用 login-confirm 校验并保存会话' };
 }

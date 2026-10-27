@@ -35,10 +35,12 @@ talking-head-cut 按 utterance 切段）。
 from __future__ import annotations
 
 import base64
+import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
+from bailian_errors import BailianAPIError
 
 DEFAULT_ASR_MODEL = "qwen-audio-3.1-asr-flash"
 WS_ASR_MODELS = [DEFAULT_ASR_MODEL, "qwen-audio-3.0-asr-flash"]
@@ -212,6 +214,8 @@ def bailian_asr(audio_path: str, endpoint: BailianEndpoint | None = None) -> dic
             if result.get("ok"):
                 return result
             errors.append(f"{model}: {result.get('error', '未知错误')}")
+            if result.get("error_category") != "model_unsupported":
+                return {**result, "error": " | ".join(errors)}
         return {"ok": False, "error": " | ".join(errors)}
     finally:
         for tmp in cleanups:
@@ -244,13 +248,15 @@ def _recognize(endpoint: BailianEndpoint, model: str, data_uri: str, fmt: str) -
 
     try:
         r = requests.post(f"{base}{ASR_PATH}", json=body, headers=headers, timeout=300)
-    except Exception as e:
-        return {"ok": False, "error": f"百炼 ASR 请求失败 ({mode}): {e}"}
+    except Exception:
+        return {"ok": False, "error_category": "network", "error": f"百炼 ASR network ({mode})：请求失败，未重试该端点"}
 
     if r.status_code != 200:
+        error = BailianAPIError(r.status_code, r.text)
         return {
             "ok": False,
-            "error": f"百炼 ASR 失败 ({mode}, HTTP {r.status_code}): {r.text[:500]}",
+            "error_category": error.category,
+            "error": f"百炼 ASR ({mode}, {model}): {error}",
         }
 
     try:
@@ -258,6 +264,9 @@ def _recognize(endpoint: BailianEndpoint, model: str, data_uri: str, fmt: str) -
     except Exception as e:
         return {"ok": False, "error": f"响应解析失败: {e}; raw={r.text[:500]}"}
 
+    if resp.get("code") not in (None, "0", 0, "Success"):
+        error = BailianAPIError(200, json.dumps(resp))
+        return {"ok": False, "error_category": error.category, "error": f"百炼 ASR ({mode}, {model}): {error}"}
     output = resp.get("output") or {}
     text = output.get("text") or ""
     sentence = output.get("sentence") or {}
@@ -286,4 +295,5 @@ def _recognize(endpoint: BailianEndpoint, model: str, data_uri: str, fmt: str) -
         }
 
     utterances = _split_utterances(sentence, raw_words)
-    return {"ok": True, "text": text, "utterances": utterances, "words": words}
+    return {"ok": True, "text": text, "utterances": utterances, "words": words,
+            "provider": f"bailian-{mode}", "model": model}

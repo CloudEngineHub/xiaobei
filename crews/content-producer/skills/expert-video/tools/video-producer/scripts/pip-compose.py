@@ -51,7 +51,7 @@ def geometry(w, h, args):
     if x < 0 or y < 0 or x+pw > w or y+ph > h-args.subtitle_safe:
         raise ValueError('小窗放不进画布或侵入底部字幕安全区')
     return {'x': x, 'y': y, 'width': pw, 'height': ph, 'radius': args.radius, 'border': args.border,
-            'subtitle_safe': args.subtitle_safe}
+            'subtitle_safe': args.subtitle_safe, 'crop_anchor': getattr(args, 'crop_anchor', 'center')}
 
 
 def main():
@@ -63,6 +63,7 @@ def main():
     parser.add_argument('--corner', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], default='bottom-right')
     parser.add_argument('--size', type=float, default=.22, help='小窗宽 / 画布宽')
     parser.add_argument('--aspect', type=float, default=1, help='小窗宽高比；源视频居中裁切，不拉伸')
+    parser.add_argument('--crop-anchor', choices=['top', 'center', 'bottom'], default='center', help='纵向裁切锚点；top 保留头顶')
     parser.add_argument('--margin', type=int, default=32, help='像素')
     parser.add_argument('--subtitle-safe', type=int, default=160, help='底部禁入带，像素')
     parser.add_argument('--radius', type=int, default=24, help='像素')
@@ -152,10 +153,11 @@ def main():
             draw.rounded_rectangle((b, b, pw-b-1, ph-b-1), radius=max(0, r-b), fill=(0, 0, 0, 0))
             border.save(temp / 'border.png')
             mask_index = 2 + bool(args.audio)
+            crop_y = {'top': '0', 'center': '(in_h-out_h)/2', 'bottom': 'in_h-out_h'}[args.crop_anchor]
             cmd += ['-loop', '1', '-framerate', str(fps), '-i', temp / 'mask.png',
                     '-loop', '1', '-framerate', str(fps), '-i', temp / 'border.png']
             graph = (f'[0:v]setpts=PTS-STARTPTS,setsar=1[base];'
-                     f'[1:v]setpts=PTS-STARTPTS,scale={iw}:{ih}:force_original_aspect_ratio=increase,crop={iw}:{ih},setsar=1,fps={fps},format=rgba[p];'
+                     f'[1:v]setpts=PTS-STARTPTS,scale={iw}:{ih}:force_original_aspect_ratio=increase,crop={iw}:{ih}:(in_w-out_w)/2:{crop_y},setsar=1,fps={fps},format=rgba[p];'
                      f'[p][{mask_index}:v]alphamerge[rounded];'
                      f'[base][rounded]overlay=x={box["x"]+b}:y={box["y"]+b}:eof_action=pass:repeatlast=0[inner];'
                      f'[inner][{mask_index+1}:v]overlay=x={box["x"]}:y={box["y"]}:format=auto,format=yuv420p[v]')
@@ -171,6 +173,16 @@ def main():
         ra = stream(result, 'audio')
         if not rv or not ra or (rv['width'], rv['height']) != (w, h) or abs(float(Fraction(rv['r_frame_rate']))-fps) > .01 or abs(duration(result, rv)-seconds) > .12 or abs(duration(result, ra)-seconds) > .12:
             raise ValueError('输出音视频尺寸/帧率/时长校验失败')
+        if box:
+            previews = []
+            for index, position in enumerate((0, seconds/2, max(0, seconds-.1)), 1):
+                preview = temp/f'pip-preview-{index}.jpg'
+                run(['ffmpeg', '-v', 'error', '-nostdin', '-ss', str(position), '-i', dest,
+                     '-frames:v', '1', '-vf', f'crop={box["width"]}:{box["height"]}:{box["x"]}:{box["y"]},scale=512:-2', preview])
+                final_preview = output.with_name(f'{output.stem}.pip-preview-{index}.jpg')
+                preview.replace(final_preview)
+                previews.append(str(final_preview))
+            plan['pip_preview_frames'] = previews
         dest.replace(output)
     output.with_suffix('.pip.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(plan, ensure_ascii=False))

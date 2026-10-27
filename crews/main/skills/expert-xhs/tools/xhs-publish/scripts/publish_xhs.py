@@ -10,6 +10,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from creator_session import CreatorSessionMissing, creator_api, observe  # noqa: E402
+from apis.xhs_readiness import VideoReadinessError  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared"))
 from publish_text import PublishTextError, read_publish_text  # noqa: E402
 
@@ -51,6 +52,11 @@ def publish(args, body: str, topics: list[dict]) -> dict:
             success, message, response = api.post_note(note_info)
     except CreatorSessionMissing:
         raise
+    except VideoReadinessError as exc:
+        observe("publish", "not_submitted", reason=exc.readiness.get('reason', 'pending'))
+        return {"ok": False, "error": "VIDEO_READINESS_UNCONFIRMED", "accepted": False,
+                "submission_attempted": False, "readiness": exc.readiness,
+                "message": "媒体已上传，但转码状态未确认；尚未提交笔记，先处理查询错误或等待转码"}
     except Exception as exc:
         observe("publish", "unknown", error_type=type(exc).__name__)
         return {
@@ -65,6 +71,7 @@ def publish(args, body: str, topics: list[dict]) -> dict:
         return {
             "ok": False,
             "error": "PUBLISH_REJECTED",
+            "accepted": False,
             "code": code,
             "message": message,
         }
@@ -74,11 +81,19 @@ def publish(args, body: str, topics: list[dict]) -> dict:
         return {
             "ok": False,
             "error": "SUBMISSION_UNCONFIRMED",
+            "accepted": True, "id_resolved": False, "public": None, "playable": None,
+            **((response.get('_xiaobei_publication') or {}) if isinstance(response, dict) else {}),
             "message": f"平台返回成功但未给出笔记 ID。{SUBMISSION_RECOVERY}",
         }
     observe("publish", "ok")
     return {
         "ok": True,
+        "accepted": True,
+        "id_resolved": True,
+        "visibility_requested": "private" if args.private else "public",
+        "public": None,
+        "playable": None,
+        **((response.get('_xiaobei_publication') or {}) if isinstance(response, dict) else {}),
         "note_id": note_id,
         "url": f"https://www.xiaohongshu.com/explore/{note_id}",
     }

@@ -49,6 +49,8 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
   clip-trim            Stage 12 精确切素材段（入点/出点/倍速/归一化/调色/多窗/定帧缓推）
   deck-compose        三模式 deck-talk 合成（实拍 / 数字人 / 仅音频）
   pip-compose          Stage 12 幻灯底视频 + 可选口播小窗 + 唯一音轨（四角/圆角/描边/字幕安全区/干跑守卫）
+  visual-plan-check    按项目视觉承诺检查文字时长/动态图数量，登记绑定当前产物的预览审查
+  run-stage           执行一条 wrapper 阶段命令并保存 checkpoint、失败交接与恢复入口
   audio-mix            Stage 12 多轨混音（每轨独立延时、音量与淡入淡出）
   timeline-compose     Stage 12 按时间轴 JSON 合成片段（内部调 clip-trim + audio-mix）
   scene-compose        Stage 12 单 Scene 分段合成（片段+旁白+对白 → 一个 Scene 片段）

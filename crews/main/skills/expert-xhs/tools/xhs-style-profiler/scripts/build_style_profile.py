@@ -10,6 +10,9 @@
 脚本只做 scaffold 与统计证据底座：不评分、不判定风格合格，定性结论由 Agent 回读原文补齐。
 """
 import argparse, json, math, re, shutil
+import difflib
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -245,9 +248,61 @@ def title_candidates(path: Path, text: str) -> list[str]:
     return candidates
 
 
-def document_metrics(path: Path, text: str, duration: float = 0.0) -> dict:
+def narration_text(body: str) -> tuple[str, str, bool]:
+    """只提取明确的口播正文；混合文档没有口播节时不猜测正文边界。"""
+    lines = body.splitlines()
+    heading_re = re.compile(r"^\s*#{1,6}\s+(.+?)\s*#*\s*$")
+    selected = None
+    for index, line in enumerate(lines):
+        heading = heading_re.match(line)
+        if heading and re.fullmatch(r"(?:口播全文|转录全文|逐字稿)(?:\s*[（(].*[）)])?", heading[1]):
+            end = next((i for i in range(index + 1, len(lines)) if heading_re.match(lines[i])), len(lines))
+            selected = lines[index + 1:end]
+            break
+    if selected is None:
+        if re.match(r"^---\s*\n", body) or any(
+            heading_re.match(line) or line.lstrip().startswith((">", "```", "~~~", "<!--"))
+            for line in lines
+        ):
+            return "", "unavailable", False
+        selected = lines
+        scope = "plain-transcript"
+    else:
+        scope = "narration-section"
+
+    timestamp = r"\d+(?::\d{1,2}){0,2}(?:\.\d+)?"
+    time_range = re.compile(
+        rf"^\[?{timestamp}(?:s|秒)?\s*[-–—~]\s*{timestamp}(?:s|秒)?\]?\s*[：:]\s*"
+    )
+    single_time = re.compile(rf"^\[{timestamp}(?:s|秒)?\]\s*[：:]?\s*")
+    spoken = []
+    complete = True
+    in_fence = False
+    section = re.sub(r"<!--.*?-->", "", "\n".join(selected), flags=re.DOTALL)
+    for line in section.splitlines():
+        line = line.strip()
+        if line.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line or line.startswith(">"):
+            continue
+        line = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", line)
+        line = single_time.sub("", time_range.sub("", line))
+        if re.search(r"\[(?:剧情概括|概括|转述)\]|【(?:剧情概括|概括|转述)】", line):
+            complete = False
+            continue
+        spoken.append(line)
+    return "\n".join(spoken), scope, complete
+
+
+def document_metrics(path: Path, text: str, duration: float = 0.0, kind: str = DEFAULT_KIND) -> dict:
     """统计证据底座：视频与图文共用一套超集，展示哪些指标由 STATISTICS_METRICS[kind] 决定。"""
     title, body = split_title_body(text)
+    candidates = title_candidates(path, text)
+    scope, complete = "note", True
+    if kind == "video":
+        text, scope, complete = narration_text(body)
+        body = text
     sentences = split_sentences(text)
     sentence_lengths = [len(tokenize(sentence)) for sentence in sentences]
     sentence_count = len(sentences)
@@ -256,11 +311,28 @@ def document_metrics(path: Path, text: str, duration: float = 0.0) -> dict:
     paragraphs = split_paragraphs(body)
     paragraph_lengths = [len(tokenize(paragraph)) for paragraph in paragraphs]
     emoji_count = len(EMOJI_RE.findall(body))
-    speech_chars_per_minute = rounded(character_count / duration * 60) if duration > 0 else 0.0
+    speech_characters = sum(character.isalnum() for character in body) if kind == "video" else 0
+    speech_chars_per_minute = (
+        rounded(speech_characters / duration * 60)
+        if kind == "video" and duration > 0 and speech_characters and complete else None
+    )
+    warning = ""
+    if kind == "video":
+        if scope == "unavailable":
+            warning = "混合文档未找到口播全文节；请单列口播正文后重新统计。"
+        elif not complete:
+            warning = "口播节含剧情概括或转述；仅统计逐字部分，口播密度未提供。"
+        elif not speech_characters:
+            warning = "未提供有效口播正文，口播密度未提供。"
+        elif not duration:
+            warning = "未提供视频时长，口播密度未提供。"
 
     return {
         "source_transcript": str(path.resolve()),
-        "title_candidates": title_candidates(path, text),
+        "title_candidates": candidates,
+        "statistics_scope": scope,
+        "statistics_warning": warning,
+        "speech_characters": speech_characters,
         "characters": character_count,
         "sentences": sentence_count,
         "duration": duration,
@@ -356,13 +428,16 @@ def build_statistics(reports: list[dict], kind: str) -> dict:
         pairs = [
             (float(report["document"][metric_name]), float(report["weight"]))
             for report in reports
+            if report["document"].get(metric_name) is not None
+            and report["document"].get("statistics_scope") != "unavailable"
         ]
-        center = weighted_median(pairs)
+        center = weighted_median(pairs) if pairs else None
         numeric_metrics[metric_name] = {
+            "sample_count": len(pairs),
             "weighted_median": center,
-            "weighted_mad": weighted_mad(pairs, center),
-            "min": rounded(min(value for value, _ in pairs)) if pairs else 0.0,
-            "max": rounded(max(value for value, _ in pairs)) if pairs else 0.0,
+            "weighted_mad": weighted_mad(pairs, center) if pairs else None,
+            "min": rounded(min(value for value, _ in pairs)) if pairs else None,
+            "max": rounded(max(value for value, _ in pairs)) if pairs else None,
         }
 
     weights = [report["weight"] for report in reports]
@@ -380,8 +455,10 @@ def statistics_markdown(statistics: dict, kind: str) -> str:
         "|---|---:|---:|---:|---:|",
     ]
     for metric_name, values in statistics["numeric_metrics"].items():
+        cells = [str(values[key]) if values[key] is not None else "未提供"
+                 for key in ("weighted_median", "weighted_mad", "min", "max")]
         lines.append(
-            f"| {metric_label(metric_name)} | {values['weighted_median']} | {values['weighted_mad']} | {values['min']} | {values['max']} |"
+            f"| {metric_label(metric_name)} | {' | '.join(cells)} |"
         )
     lines.extend(
         [
@@ -391,7 +468,8 @@ def statistics_markdown(statistics: dict, kind: str) -> str:
         ]
     )
     if kind == "video":
-        lines.append("口播密度（字/分钟）仅在 report 提供 `duration` 时有意义；未提供时该行只是 0 值占位。")
+        covered = statistics["numeric_metrics"]["speech_chars_per_minute"]["sample_count"]
+        lines.append(f"口播密度有效样本：{covered}/{statistics['report_count']}；仅统计明确口播正文中的字母、数字与汉字，排除标题、元信息、时间码和备注。缺失时长、正文边界不明或含概括/转述的样本不参与该指标聚合，缺项显示「未提供」。")
     lines.extend(
         [
             "「账号运营子模块」维度（简介写法、内容形式比例、发布习惯）不能由单篇样本推导：样本非对标账号批量时写未观测。",
@@ -457,6 +535,7 @@ def load_reports(paths: list[Path]) -> list[dict]:
             source_path,
             source_path.read_text(encoding="utf-8", errors="ignore"),
             duration,
+            parse_quoted(metadata.get("kind", DEFAULT_KIND)),
         )
         reports.append(
             {
@@ -523,6 +602,11 @@ def report_markdown(
     ]
     if kind == "video":
         statistics_lines.append(f"- 视频时长：{document['duration'] or '未提供'}")
+        statistics_lines.append(f"- 口播有效字符（不含标点与空白）：{document['speech_characters']}")
+        density = document["speech_chars_per_minute"]
+        statistics_lines.append(f"- 口播密度（字/分钟）：{density if density is not None else '未提供'}")
+        if document["statistics_warning"]:
+            statistics_lines.append(f"- 统计说明：{document['statistics_warning']}")
     else:
         statistics_lines.extend(
             [
@@ -578,7 +662,8 @@ def user_input_markdown(user_inputs: list[str], kind: str, existing_body: str | 
         return existing_body or "暂无待转译输入。"
     dimension_count = len(dimensions_for(kind))
     entries = []
-    for index, user_input in enumerate(user_inputs, start=1):
+    prior_indices = [int(n) for n in re.findall(r"(?m)^### 输入 (\d+)$", existing_body or "")]
+    for index, user_input in enumerate(user_inputs, start=max(prior_indices, default=0) + 1):
         entries.append(
             f"### 输入 {index}\n"
             f"- raw_input: {yaml_value(user_input)}\n"
@@ -600,6 +685,8 @@ def dna_document_markdown(
     user_inputs: list[str] | None = None,
     previous_dna: str | None = None,
 ) -> str:
+    if previous_dna is not None:
+        return preserved_dna_update(previous_dna, reports, statistics, kind, user_inputs or [])
     dimensions = dimensions_for(kind)
     old_sections = extract_markdown_sections(previous_dna, "### ")
     dimension_blocks = []
@@ -741,6 +828,8 @@ def template_markdown(
     source_dna: str,
     previous_template: str | None = None,
 ) -> str:
+    if previous_template is not None:
+        return previous_template
     stages = TEMPLATE_STAGES[kind]
     old_sections = extract_template_sections(previous_template, kind)
     stage_values = stage_values_from_template(old_sections, kind)
@@ -872,7 +961,7 @@ def report_command(args: argparse.Namespace) -> None:
     paths = collect_input_paths(inputs_from_args(args), {".md", ".txt"})
     if len(paths) != 1:
         raise SystemExit("report command accepts exactly one transcript; use build to aggregate reports")
-    document = document_metrics(paths[0], paths[0].read_text(encoding="utf-8", errors="ignore"), duration)
+    document = document_metrics(paths[0], paths[0].read_text(encoding="utf-8", errors="ignore"), duration, kind)
     output_dir = Path(args.output_dir or f"{PLATFORM}/dna/{args.dna_id}/reports")
     cover_image = ""
     if args.cover_image:
@@ -908,9 +997,100 @@ def build_command(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir or f"{PLATFORM}/dna/{args.dna_id}")
     dna_path = output_dir / f"{args.dna_id}.dna.md"
     template_path = output_dir / f"{args.dna_id}.template.md"
+    if dna_path.exists() or template_path.exists():
+        raise SystemExit("DNA/template 已存在；用 update 保留人工规则，或在新目录 build")
     write_text(dna_path, dna_document_markdown(args.dna_id, kind, reports, statistics, args.user_input))
     write_text(template_path, template_markdown(args.dna_id, kind, dna_path.name, None))
     print(f"Wrote DNA document and template ({KIND_LABELS[kind]}): {output_dir}")
+
+
+def preserved_dna_update(previous: str, reports: list[dict], statistics: dict,
+                         kind: str, user_inputs: list[str]) -> str:
+    """Only replace machine statistics/references; never regenerate human rules."""
+    def incompatible(detail):
+        raise SystemExit(f"DNA 格式不兼容，未写入：{detail}。请在副本恢复报告引用/统计/用户输入区结构后重试；不要重新 build 覆盖人工规则。")
+
+    if len(REPORT_BLOCK_RE.findall(previous)) != 1:
+        incompatible("必须保留唯一 <!-- dna-reports ... --> 引用区块")
+    # Native legacy statistics have a fixed start/end. Reject rather than guess
+    # if these machine boundaries have been edited. All other text stays opaque.
+    stats_pattern = re.compile(r"(?m)^\| 指标 \| 加权中位数 \| 加权 MAD \| 最小值 \| 最大值 \|\n"
+                               r"[\s\S]*?^统计只用于辅助聚合，不生成评分；定性判断必须回到各篇 DNA report 与原文。$")
+    if len(stats_pattern.findall(previous)) != 1:
+        incompatible("找不到唯一的原生统计表边界")
+    machine_prefixes = ("|", "样本覆盖度：", "权重模式：", "口播密度有效样本：",
+                        "「账号运营子模块」维度", "统计只用于辅助聚合，")
+    if any(line.strip() and not line.startswith(machine_prefixes)
+           for line in stats_pattern.search(previous).group().splitlines()):
+        incompatible("统计区含人工段落；请先移到统计区之外保留")
+    allowed_metrics = {metric_label(key) for key in statistics["numeric_metrics"]} | {"指标", "---"}
+    for line in stats_pattern.search(previous).group().splitlines():
+        if line.startswith("|") and line.split("|")[1].strip() not in allowed_metrics:
+            incompatible("统计表含未知行；请先将人工规则移到统计区之外保留")
+    if previous.count("\n## 报告与权重\n") != 1 or previous.count("\n## 用户输入转译区\n") != 1:
+        incompatible("保留 ## 报告与权重 与 ## 用户输入转译区 标题")
+    result = stats_pattern.sub(lambda _: statistics_markdown(statistics, kind), previous, count=1)
+    for key in ("report_count", "total_weight", "weighting"):
+        pattern = rf"(?m)^{key}:.*$"
+        if len(re.findall(pattern, result)) != 1:
+            incompatible(f"缺少或重复的 frontmatter {key}")
+        result = re.sub(pattern, lambda _: f"{key}: {statistics[key]}", result, count=1)
+    result = re.sub(r"(?m)^generated_at:.*$", lambda _: f"generated_at: {yaml_value(generated_at())}", result, count=1)
+    # Update recognized citation lines, leaving hand-written evidence/comments.
+    for report in reports:
+        line = f"- `{report['report_path']}`：weight `{report['weight']}`，focus `{', '.join(report['focus']) or 'all'}`"
+        pattern = r"(?m)^- `" + re.escape(report['report_path']) + r"`：weight `[^`]*`，focus `[^`]*`$"
+        if re.search(pattern, result):
+            result = re.sub(pattern, lambda _: line, result)
+        else:
+            result = result.replace("## 报告与权重\n", f"## 报告与权重\n\n{line}\n", 1)
+    report_paths = "\n".join(report["report_path"] for report in reports)
+    result = REPORT_BLOCK_RE.sub(lambda _: f"<!-- dna-reports\n{report_paths}\n-->", result, count=1)
+    if user_inputs:
+        match = re.search(r"(?m)^## 用户输入转译区\s*\n", result)
+        end = re.search(r"(?m)^## ", result[match.end():])
+        stop = match.end() + end.start() if end else len(result)
+        body = result[match.end():stop].strip()
+        result = result[:match.end()] + "\n" + user_input_markdown(user_inputs, kind, body) + "\n\n" + result[stop:]
+    return result
+
+
+def protected_update_files(dna_path: Path, template_path: Path, previous_dna: str,
+                           previous_template: str, updated_dna: str) -> Path:
+    """Prepare backup and reviewable diff before replacing either asset."""
+    if dna_path.resolve() == template_path.resolve():
+        raise SystemExit("DNA 和 template 必须为不同文件")
+    backup_root = dna_path.parent / ".profile-backups"
+    backup_root.mkdir(exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S-"), dir=backup_root))
+    shutil.copy2(dna_path, backup / "original.dna.md")
+    shutil.copy2(template_path, backup / "original.template.md")
+    changes = "".join(difflib.unified_diff(previous_dna.splitlines(True), updated_dna.splitlines(True),
+                                         fromfile=str(dna_path), tofile=str(dna_path)))
+    (backup / "update.diff").write_text(changes, encoding="utf-8")
+    deleted = [line for line in changes.splitlines() if line.startswith("-") and not line.startswith("---")]
+    (backup / "audit.json").write_text(json.dumps({"dna": str(dna_path.resolve()), "template": str(template_path.resolve()),
+        "template_preserved": True, "deleted_lines": deleted, "phase": "before_write"}, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Stage on the same filesystem. The template is deliberately byte-preserved:
+    # translating a new preference into production rules remains the Agent's job.
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=dna_path.parent, delete=False) as handle:
+            staged = Path(handle.name)
+            handle.write(updated_dna)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if dna_path.read_text(encoding="utf-8") != previous_dna or template_path.read_text(encoding="utf-8") != previous_template:
+            raise SystemExit("资产在更新准备期间被其他进程修改，停止写入")
+        os.chmod(staged, dna_path.stat().st_mode & 0o777)
+        os.replace(staged, dna_path)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+    print(f"[backup] {backup}\n[diff] {backup / 'update.diff'}")
+    if deleted:
+        print(f"[warn] diff 含 {len(deleted)} 行统计/引用/元数据替换；人工正文与 template 原样保留，请核对 diff")
+    return backup
 
 
 def update_command(args: argparse.Namespace) -> None:
@@ -921,10 +1101,19 @@ def update_command(args: argparse.Namespace) -> None:
     previous_dna = dna_path.read_text(encoding="utf-8")
     previous_template = template_path.read_text(encoding="utf-8")
     metadata = parse_frontmatter(previous_dna)
+    if parse_quoted(metadata.get("type", "")) != "dna-document":
+        raise SystemExit("--dna 必须是 dna-document；未写入")
     dna_id = parse_quoted(metadata.get("dna-id", dna_path.name.removesuffix(".dna.md")))
     validate_id(dna_id, "--dna-id")
     declared_kind = parse_quoted(metadata.get("kind", "")) or None
     kind = validate_kind(args.kind) or validate_kind(declared_kind)
+    if declared_kind and kind != declared_kind:
+        raise SystemExit("--kind 与原 DNA kind 冲突；未写入")
+    template_metadata = parse_frontmatter(previous_template)
+    if parse_quoted(template_metadata.get("type", "")) != "dna-template":
+        raise SystemExit("--template 必须是 dna-template；未写入")
+    if parse_quoted(template_metadata.get("dna-id", "")) != dna_id or parse_quoted(template_metadata.get("kind", "")) != kind:
+        raise SystemExit("template 的 dna-id/kind 与 DNA 不一致；未写入")
 
     input_values = args.input or []
     new_paths = collect_input_paths(input_values, {".md"}) if input_values else []
@@ -932,6 +1121,9 @@ def update_command(args: argparse.Namespace) -> None:
     if input_values and not new_reports:
         raise SystemExit("update accepts DNA report .md files generated by the report command")
     historical = hidden_path(REPORT_BLOCK_RE.search(previous_dna))
+    old_count = int(metadata.get("report_count", "0"))
+    if old_count > len({path.resolve() for path in historical}):
+        raise SystemExit("历史报告引用缺失，不能降低 report_count；未写入。请在副本恢复 dna-reports 区块")
     all_paths = {path.resolve(): path for path in [*historical, *new_reports]}
     reports = load_reports(sorted(all_paths.values(), key=lambda path: str(path)))
     foreign_reports = [report["report_id"] for report in reports if report["dna_id"] != dna_id]
@@ -943,8 +1135,8 @@ def update_command(args: argparse.Namespace) -> None:
     validate_focus(args.focus, kind)
     statistics = build_statistics(reports, kind)
     user_inputs = list(args.user_input or [])
-    write_text(dna_path, dna_document_markdown(dna_id, kind, reports, statistics, user_inputs, previous_dna))
-    write_text(template_path, template_markdown(dna_id, kind, dna_path.name, previous_template))
+    updated = preserved_dna_update(previous_dna, reports, statistics, kind, user_inputs)
+    protected_update_files(dna_path, template_path, previous_dna, previous_template, updated)
     print(f"Updated DNA document and template ({KIND_LABELS[kind]}): {dna_path}")
 
 

@@ -61,6 +61,8 @@ export function publicationResult(platform, data, { state, raw, user, midToBid, 
       result.kind = 'video';
     }
   } else {
+    Object.assign(publication, { ownership_verified: false, ownership_status: 'ownership_unverified',
+      id_resolved: false, public: null, playable: null });
     const id = fullId(result.id);
     const publishId = decimalId(raw?.publishId);
     const workId = fullId(raw?.workId) || fullId(raw?.photoId) || fullId(raw?.photoIdStr);
@@ -77,6 +79,7 @@ export function publicationResult(platform, data, { state, raw, user, midToBid, 
     }
   }
   publication.id_pending = !result.id;
+  publication.id_resolved = !!result.id;
   return { ...result, publication };
 }
 
@@ -97,9 +100,20 @@ export function completePublication(platform, item, user, converters = {}) {
     if (!confirmed) return null;
     result.url = null;
     result.publication = { ...item.publication, id_pending: false, public_url_available: false };
-    return result;
+    return withKuaishouState(result);
   }
+  if (platform === 'kuaishou' && typeof result.url === 'string' && result.url) return withKuaishouState(result);
   return typeof result.url === 'string' && result.url ? result : null;
+}
+
+function withKuaishouState(result) {
+  // Creator userIdStr and www eid have no verified namespace mapping. Keep
+  // submission evidence without asserting account ownership or playability.
+  return { ...result, publication: { ...result.publication, id_resolved: true,
+    ownership_verified: false, ownership_status: 'ownership_unverified',
+    private: result.status === 'private' ? true : null,
+    public: result.status === 'private' ? false : null, playable: null,
+    review_pending: result.status === 'reviewing' ? true : null } };
 }
 
 export function matchWeiboVideo(items, mediaId, userId, submittedAt) {

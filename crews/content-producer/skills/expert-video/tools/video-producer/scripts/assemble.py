@@ -454,6 +454,18 @@ def main() -> None:
         die(f"{source_dir}/ 下无任何段（render/ 走 shot-NN/gen*.mp4；其他目录走 *.mp4；"
             f"非常规命名产物走 --manifest 显式清单），先跑 render-shot 或 timeline-compose")
 
+    # Known avatar segments retain their provenance gate even in the generic assembler.
+    for _, segment in segments:
+        for suffix in ('.avatar.json', '.liveportrait.json'):
+            avatar_job = segment.with_suffix(suffix)
+            if avatar_job.is_file():
+                sys.path.insert(0, str(Path(__file__).resolve().parents[7] / 'skills/_shared'))
+                from avatar_job import load_avatar_job
+                try:
+                    load_avatar_job(avatar_job)
+                except (ValueError, OSError, KeyError) as exc:
+                    die(f'数字人片段未通过合成闸门：{segment.name}: {exc}')
+
     # 逐段时长守卫（fail-fast：拼接前对源段校验，重跑命中 checkpoint 时同样生效）
     if args.expect_durations:
         plan_path = Path(args.expect_durations)

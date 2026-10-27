@@ -198,6 +198,8 @@ export async function publish(platform, input) {
   const confirm = toggle(args, '--confirm');
   const sourceFolder = take(args, '--source-folder', undefined);
   const recordTitle = take(args, '--record-title', undefined);
+  const distributeStatus = take(args, '--distribute-status', undefined);
+  if (distributeStatus !== undefined && !['0', '1', '2'].includes(distributeStatus)) throw new PlatformError('USAGE', '--distribute-status 使用 0/1/2');
   const article = toggle(args, '--article');
   const account = take(args, '--account', take(args, '-a', undefined));
   const command = article ? 'article publish' : 'item publish';
@@ -242,7 +244,10 @@ export async function publish(platform, input) {
     args[index + 1] = '@' + resolve(rawText.slice(1));
   }
   if (!text && !images && !hasVideo) throw new PlatformError('USAGE', '没有待发布内容');
-  if (!confirm) return { ok: true, preview: true, platform, command, args, source_folder: resolve(sourceFolder), text, ...(platform === 'x' && !article ? await xTextPreview(text, parsed.options.thread) : {}), ...(weiboVideo ? { video_transport: { upload_timeout_seconds: weiboVideo.upload_timeout_seconds, process_timeout_seconds: weiboVideo.process_timeout_ms / 1000 } } : {}), message: '核对正文、媒体、可见范围和平台声明；已有发布授权时加 --confirm' };
+  const recordDistribution = distributeStatus ?? (platform === 'kuaishou' && hasVideo && parsed.options.visibility === 'private' ? '1' : undefined);
+  if (!confirm) return { ok: true, preview: true, platform, command, args, source_folder: resolve(sourceFolder), text,
+    ...(recordDistribution !== undefined ? { distribute_status: Number(recordDistribution) } : {}),
+    ...(platform === 'x' && !article ? await xTextPreview(text, parsed.options.thread) : {}), ...(weiboVideo ? { video_transport: { upload_timeout_seconds: weiboVideo.upload_timeout_seconds, process_timeout_seconds: weiboVideo.process_timeout_ms / 1000 } } : {}), message: '核对正文、媒体、可见范围和平台声明；已有发布授权时加 --confirm' };
   const alias = await activeAccount(platform, account);
   args.push('--account', alias);
   const folder = resolve(sourceFolder);
@@ -280,7 +285,7 @@ export async function publish(platform, input) {
         throw new PlatformError('PUBLISH_UNKNOWN', `发布结果未知，结果文件已保存；核查本人作品或原平台，禁止重发。${message}`, 1, diagnostic);
       }
     }
-    if (receipt.state === 'accepted') {
+    if (receipt.state === 'accepted' || platform === 'kuaishou' && receipt.state === 'published') {
       receipt = await resolvePublication(platform, receipt);
       await atomicJson(receiptPath, receipt);
       if (receipt.state === 'accepted') return { ok: true, platform, accepted: true, published: false, recorded: false, resolution_pending: true, result: receipt.result, receipt: receiptPath, message: platform === 'weibo' ? '平台已明确接受提交，作品 ID 尚待确认；保留收据，稍后重跑同一目录只查询本人作品，不会再次发布。不要删除收据或改目录重发' : '平台已明确接受提交，尚未取得创作者作品 ID；请用 kuaishou-engagement list 或原平台核查。保留 accepted 收据，重跑不会再次发布，不拿上传 fileId 拼造作品链接' };
@@ -288,7 +293,7 @@ export async function publish(platform, input) {
     if (!receipt.recorded) {
       try {
         const reference = receipt.result.publication;
-        const record = await tracked(['record', '--platform', platforms[platform].workspace, '--title', recordTitle || receipt.result.title || receipt.result.text || text || receipt.result.id, '--content-type', article ? 'article' : receipt.result.kind === 'video' ? 'video' : 'post', '--source-folder', folder, ...(receipt.result.url ? ['--publish-url', receipt.result.url] : []), ...(platform === 'kuaishou' && reference?.id_kind ? ['--notes', JSON.stringify({ platform_runtime: { id: receipt.result.id, id_kind: reference.id_kind, status: receipt.result.status } })] : []), '--account', alias, '--publish-date', receipt.publish_date]);
+        const record = await tracked(['record', '--platform', platforms[platform].workspace, '--title', recordTitle || receipt.result.title || receipt.result.text || text || receipt.result.id, '--content-type', article ? 'article' : receipt.result.kind === 'video' ? 'video' : 'post', '--source-folder', folder, ...(receipt.result.url ? ['--publish-url', receipt.result.url] : []), ...(platform === 'kuaishou' && reference?.id_kind ? ['--notes', JSON.stringify({ platform_runtime: { id: receipt.result.id, id_kind: reference.id_kind, status: receipt.result.status, ownership_status: reference.ownership_status } })] : []), ...(recordDistribution !== undefined ? ['--distribute-status', recordDistribution] : []), '--account', alias, '--publish-date', receipt.publish_date]);
         receipt = { ...receipt, recorded: true, record };
         await atomicJson(receiptPath, receipt);
       } catch (error) {
@@ -347,7 +352,8 @@ export async function engagement(platform, action, input) {
     const id = itemId(platform, row.publish_url) || (platform === 'kuaishou' ? creatorRecordId(row) : null);
     const item = result.data.find(item => id && item.id === id);
     if (!item) { skipped.push({ id: row.id, reason: 'NOT_IN_FETCHED_PAGE' }); continue; }
-    if (item.author?.id && !ownIds.has(item.author.id)) throw new PlatformError('ACCOUNT_MISMATCH', '作品作者不属于当前账号，停止指标回填');
+    if (item.author?.id && !ownIds.has(item.author.id)) throw new PlatformError(platform === 'kuaishou' ? 'ACCOUNT_UNVERIFIED' : 'ACCOUNT_MISMATCH',
+      platform === 'kuaishou' ? '主站与创作者作者 ID 尚无已验证映射，停止指标回填并核实归属' : '作品作者不属于当前账号，停止指标回填');
     if (platform === 'x' && !item.author?.id) throw new PlatformError('ACCOUNT_UNVERIFIED', 'X 作品缺少作者，停止回填');
     const metrics = metricsOf(platform, item);
     if (!Object.keys(metrics).length) { skipped.push({ id: row.id, reason: 'METRICS_UNAVAILABLE' }); continue; }

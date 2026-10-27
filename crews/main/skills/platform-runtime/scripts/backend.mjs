@@ -71,7 +71,8 @@ export async function networkProxy(platform) {
   if (!['http:', 'https:', 'socks4:', 'socks5:', 'socks5h:'].includes(url.protocol)) throw new PlatformError('PROXY_INVALID', '平台代理协议不支持');
   return value;
 }
-export async function runBackend(platform, args, { home = stateHome, identityFile, stream = false, timeout } = {}) {
+export async function runBackend(platform, args, { home = stateHome, identityFile, stream = false, timeout, signal, loginJob, onSpawn } = {}) {
+  if (signal?.aborted) throw new PlatformError('CANCELLED', '平台任务已取消');
   let budget = timeout ?? 360000;
   if (platform === 'weibo' && isVideoPublish(args)) {
     const policy = videoTransportPolicy(platforms.weibo.video_transport);
@@ -86,20 +87,35 @@ export async function runBackend(platform, args, { home = stateHome, identityFil
   const argv = process.env.PLATFORM_API_CLI ? [platform, ...args] : [join(runtimeDir, 'scripts/api-runner.mjs'), platform, ...args];
   const env = { ...process.env, CATBUS_HOME: home };
   if (identityFile) env.PLATFORM_API_IDENTITY_FILE = identityFile;
+  if (loginJob) {
+    env.PLATFORM_API_LOGIN_JOB = loginJob;
+    env.PLATFORM_API_LOGIN_OWNER_PID = String(process.pid);
+  }
   return new Promise((done, reject) => {
     const child = spawn(command, argv, { env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, budget);
+    if (child.pid) onSpawn?.(child.pid);
+    let stdout = '', stderr = '', timedOut = false, killTimer;
+    const stop = () => {
+      child.kill('SIGTERM');
+      killTimer ||= setTimeout(() => child.kill('SIGKILL'), 2000);
+    };
+    const cancel = () => stop();
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) stop();
+    const timer = setTimeout(() => { timedOut = true; stop(); }, budget);
+    const cleanup = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener('abort', cancel); };
     child.stdout.on('data', chunk => {
       if (stream) process.stdout.write(chunk);
       else stdout += chunk;
       if (stdout.length > 32 * 1024 * 1024) child.kill('SIGTERM');
     });
     child.stderr.on('data', chunk => { if (stderr.length < 1024 * 1024) stderr += chunk; });
-    child.on('error', error => { clearTimeout(timer); reject(new PlatformError('BACKEND_UNAVAILABLE', error.code || '无法启动平台进程')); });
-    child.on('close', async code => {
-      clearTimeout(timer);
+    child.on('error', error => { cleanup(); reject(new PlatformError('BACKEND_UNAVAILABLE', error.code || '无法启动平台进程')); });
+    child.on('close', async (code, exitSignal) => {
+      cleanup();
+      if (signal?.aborted) return reject(new PlatformError('CANCELLED', '平台任务已取消'));
       if (timedOut) return reject(new PlatformError('TIMEOUT', '平台请求超时；写入结果可能未知，先核查结果，禁止直接重发'));
+      if (exitSignal) return reject(new PlatformError('BACKEND_EXITED', '平台子进程退出：' + exitSignal));
       if (stream) {
         if (code !== 0) return reject(new PlatformError('STREAM_FAILED', '平台监听异常结束，不能把本次结果当作完整样本', code || 1));
         return done({ ok: true });

@@ -83,7 +83,7 @@ def finish(job_path, *, timeout=900, interval=5):
         status = output.get('task_status', 'UNKNOWN')
         job['status'] = status
         save_json(job_path, job)
-        print(f'[info] LivePortrait status={status}', flush=True)
+        print(f'[info] {job.get("model", "liveportrait")} status={status}', flush=True)
         if status == 'SUCCEEDED':
             video_url = (output.get('results') or {}).get('video_url') or output.get('video_url')
             if not video_url:
@@ -111,40 +111,7 @@ def finish(job_path, *, timeout=900, interval=5):
 
 
 def generate(args):
-    base, key = workspace()
-    target = args.output.resolve()
-    job_path = target.with_suffix('.liveportrait.json')
-    if target.suffix.lower() != '.mp4':
-        raise ValueError('输出须为 .mp4')
-    if target.exists() or job_path.exists():
-        raise ValueError(f'输出或任务记录已存在；用 liveportrait resume --job {job_path}，不要重复生成')
-    folder = target.parent / ('.' + target.stem + '-inputs')
-    folder.mkdir(parents=True, exist_ok=True)
-    image = local_source(args.image, folder, 'image')
-    audio = local_source(args.audio, folder, 'audio')
-    if target in (image, audio):
-        raise ValueError('输出不得覆盖源文件')
-    seconds = validate_media(image, audio)
-    detect_id = detect(base, key, image)
-    # Upload again for liveportrait: temporary URLs are bound to their model.
-    body = {'model': 'liveportrait', 'input': {
-        'image_url': upload(base, key, image, 'liveportrait'),
-        'audio_url': upload(base, key, audio, 'liveportrait'),
-    }, 'parameters': {'template_id': args.template, 'video_fps': args.fps, 'paste_back': True,
-                       'head_move_strength': args.head_move, 'mouth_move_strength': 1, 'eye_move_freq': .5}}
-    job = {'schema_version': 1, 'base_url': base, 'model': 'liveportrait',
-           'status': 'SUBMITTING', 'image_file': str(image), 'audio_file': str(audio),
-           'image_sha256': fingerprint(image), 'audio_sha256': fingerprint(audio),
-           'audio_duration': seconds, 'video_file': str(target), 'detect_request_id': detect_id,
-           'parameters': body['parameters']}
-    save_json(job_path, job)
-    result = request(base, key, SYNTHESIS, body, async_task=True)
-    task_id = (result.get('output') or {}).get('task_id')
-    if not task_id:
-        raise ValueError('提交响应缺少 task_id，请先检查控制台任务')
-    job.update(task_id=task_id, status='PENDING')
-    save_json(job_path, job)
-    finish(job_path, timeout=args.timeout)
+    raise ValueError('旧模型入口已停止提交；请用 avatar generate，新任务写 .avatar.json')
 
 
 def main():

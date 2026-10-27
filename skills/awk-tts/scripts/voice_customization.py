@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / '_shared'))
 from bailian_media import APIError, download, fingerprint, media_info, request, save_json, upload, workspace
 
-MODELS = ['qwen-audio-3.0-tts-plus', 'qwen-audio-3.1-tts-flash', 'qwen-audio-3.0-tts-flash']
+MODELS = ['qwen-audio-3.1-tts-plus', 'qwen-audio-3.1-tts-flash', 'qwen-audio-3.0-tts-plus', 'qwen-audio-3.0-tts-flash']
 CUSTOMIZATION = '/services/audio/tts/customization'
 
 
@@ -129,7 +129,7 @@ def create(args):
         if args.command == 'voice-design':
             volc_voice.build_payload(args)
     else:
-        args.target_model = args.target_model or MODELS[0]
+        args.target_model = args.target_model or ('qwen-audio-3.0-tts-plus' if selected[3] == 'agent-plan' else MODELS[0])
         if args.target_model not in MODELS:
             raise ValueError('百炼只支持 Qwen-Audio 语音合成模型')
         body = payload(args, 'placeholder' if args.command == 'voice-clone' else None)

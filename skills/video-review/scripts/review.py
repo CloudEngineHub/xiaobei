@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -118,67 +119,57 @@ def ffprobe(path: str) -> dict:
 # ── Frame extraction & black detection ─────────────────────────────────────
 
 def extract_frames(video: str, duration: float, out_dir: Path) -> list[dict]:
-    """Extract 5 frames at FRAME_POSITIONS_PCT. Returns list of {position_pct, path, mean_luma, is_black}."""
+    """Sample five positions; 100% means the last decoded frame, never EOF seek."""
     out_dir.mkdir(parents=True, exist_ok=True)
     frames: list[dict] = []
 
     for pct in FRAME_POSITIONS_PCT:
-        # timestamp in seconds
         ts = duration * pct / 100.0
-        # 端 0% 时 ts=0，ffmpeg trim 起会拒；用 -ss 段定位 + -frames:v 1
         frame_path = out_dir / f"frame_{int(pct):03d}.jpg"
-        cmd = [
-            "ffmpeg", "-y", "-v", "quiet",
-            "-ss", f"{ts:.3f}", "-i", video,
-            "-frames:v", "1", "-q:v", "2",
-            str(frame_path),
-        ]
-        rc, _, _ = run(cmd, timeout=30)
-        if rc != 0 or not frame_path.exists():
-            frames.append({"position_pct": pct, "path": None, "mean_luma": None, "is_black": None})
+        item = {"position_pct": pct, "requested_timestamp_seconds": ts,
+                "path": None, "mean_luma": None, "is_black": None,
+                "status": "coverage_missing", "error": "frame extraction failed"}
+        # A container can outlive its video track. Expand a bounded tail window,
+        # then decode from the start if both windows contain no video frames.
+        seeks = [max(0.0, duration - 2), max(0.0, duration - 8), 0.0] if pct == 100 else [ts]
+        for seek in dict.fromkeys(seeks):
+            frame_path.unlink(missing_ok=True)  # never reuse an earlier review's JPEG
+            cmd = ["ffmpeg", "-nostdin", "-y", "-v", "info", "-xerror", "-copyts",
+                   "-ss", f"{seek:.6f}", "-i", video, "-map", "0:v:0", "-an",
+                   "-vf", "showinfo", "-vsync", "0", "-q:v", "2"]
+            cmd += ["-update", "1"] if pct == 100 else ["-frames:v", "1"]
+            try:
+                proc = subprocess.run(cmd + [str(frame_path)], capture_output=True, text=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                item["error"] = "frame decode timeout"
+                break
+            if proc.returncode == 0 and frame_path.is_file() and frame_path.stat().st_size:
+                stamps = re.findall(r"pts_time:([-+\d.eE]+)", proc.stderr)
+                item.update(path=str(frame_path), extraction="last_decoded" if pct == 100 else "seek",
+                            decoded_timestamp_seconds=float(stamps[-1 if pct == 100 else 0]) if stamps else None)
+                break
+            item["error"] = f"ffmpeg exit={proc.returncode}; no usable frame"
+        if not item["path"]:
+            frame_path.unlink(missing_ok=True)
+            frames.append(item)
             continue
 
-        # Use ffmpeg signalstats to get mean luma. signalstats gives YAVG.
-        rc, out, _ = run([
-            "ffmpeg", "-v", "quiet", "-i", str(frame_path),
-            "-vf", "signalstats", "-f", "null", "-",
+        rc, out, err = run([
+            "ffmpeg", "-v", "info", "-i", str(frame_path),
+            "-vf", "signalstats,metadata=print:key=lavfi.signalstats.YAVG",
+            "-f", "null", "-",
         ], timeout=15)
         mean_luma: float | None = None
-        # signalstats prints to stderr normally; with quiet we get nothing.
-        # Fallback: use ffmpeg with stderr passthrough to catch YAVG=N.
         if rc == 0:
-            rc2, out2, err2 = run([
-                "ffmpeg", "-v", "info", "-i", str(frame_path),
-                "-vf", "signalstats", "-f", "null", "-",
-            ], timeout=15)
-            for line in (err2 + out2).splitlines():
-                # Example: "signalstats: YAVG=0.012300 ..."
-                if "YAVG=" in line:
-                    try:
-                        mean_luma = float(line.split("YAVG=")[1].split()[0])
-                    except (IndexError, ValueError):
-                        pass
-                    break
-
-        # If signalstats failed, try a Pillow-free fallback via ffmpeg lutyuv mean
+            match = re.search(r"lavfi.signalstats.YAVG=([\d.]+)", out + err)
+            if match:
+                mean_luma = float(match.group(1)) / 255.0  # JPEG full-range luma
         if mean_luma is None:
-            # Use ffmpeg blackframe filter — it logs frames below threshold
-            rc3, _, err3 = run([
-                "ffmpeg", "-v", "info", "-i", str(frame_path),
-                "-vf", f"blackframe=threshold={BLACK_LUMA_THRESHOLD}",
-                "-f", "null", "-",
-            ], timeout=15)
-            # If "black" appears in stderr, frame is black
-            is_black_log = "First black frame detected" in err3 or "black" in err3.lower()
-            mean_luma = 0.0 if is_black_log else 0.5  # placeholder; we trust is_black_log
-
-        is_black = mean_luma is not None and mean_luma < BLACK_LUMA_THRESHOLD
-        frames.append({
-            "position_pct": pct,
-            "path": str(frame_path),
-            "mean_luma": round(mean_luma, 4) if mean_luma is not None else None,
-            "is_black": is_black,
-        })
+            item["error"] = "luma analysis failed"
+        else:
+            item.update(mean_luma=round(mean_luma, 4), is_black=mean_luma < BLACK_LUMA_THRESHOLD,
+                        status="ok", error=None)
+        frames.append(item)
 
     return frames
 
@@ -321,6 +312,13 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
     # ── 2. Frame extraction & black detection ────────────────────────────
     frames = extract_frames(str(video), duration, frames_dir)
     verdict["frames"] = frames
+    missing = [f for f in frames if f["status"] != "ok"]
+    verdict["coverage_missing"] = [{"position_pct": f["position_pct"], "reason": f["error"]} for f in missing]
+    verdict["checks"].append({"name": "frame_coverage", "status": "warn" if missing else "pass",
+                              "expected": 5, "completed": len(frames) - len(missing)})
+    if missing:
+        verdict["warnings"].append("coverage_missing: incomplete frame review at " +
+                                    ", ".join(f"{f['position_pct']:g}% ({f['error']})" for f in missing))
     black_count = sum(1 for f in frames if f.get("is_black") is True)
     if black_count >= 2:        # ≥2 black frames out of 5 → critical
         verdict["critical"].append(

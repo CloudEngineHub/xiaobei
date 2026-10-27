@@ -68,7 +68,7 @@ metadata:
 | 视频类型 / 入口信号 | workflow | Brief `workflow` 值 | 它指导什么 |
 |--------------------|----------|---------------------|--------------|
 | 影视解说 / 剧情解说 + 突然反转插入品宣（"万万没想到"式） | Reversal Ad | `reversal-ad` | 三段结构占比、反转点落在 55%–76%、四种反转手法、反转幅度与接入丝滑度两轴（含二次反转 CTA）、素材三模式 sourcing（Blender 片库 / 用户直供三查 / AIGC）、意象桥与钩连句、植入段约束 |
-| PPT / 幻灯大画面 + 口播小窗，或用户音频+B-roll 讲解 | Deck Talk | `deck-talk` | 逐页或逐段脚本、音频同源翻页、HTML 动画/B-roll 与小窗合成；footage/avatar/audio 三模式，数字人用包内 LivePortrait；阶段产物与动效验收见 workflow |
+| PPT / 幻灯大画面 + 口播小窗，或用户音频+B-roll 讲解 | Deck Talk | `deck-talk` | 逐页或逐段脚本、音频同源翻页、HTML 动画/B-roll 与小窗合成；footage/avatar/audio 三模式，数字人用包内 Wan S2V avatar；阶段产物与动效验收见 workflow |
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 隐喻清单即 script；按通用阶段链完成分镜、纸片素材、GATE A/B、HyperFrames 渲染与逐层验收，具体产物见 workflow |
 
 - Brief 指定了 `workflow`：**先读对应文档，按它生产 script 并按它自检**（GATE A 质检标准同此），不得替换成自创流程；其制作与验收约定（阶段产物、素材 sourcing 等）在该类型视频上生效，不能跳过基线阶段。
@@ -207,10 +207,11 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 | `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `video-producer visual-render` | 通用 HTML/GSAP 片段的 scaffold、检查、预览与 HyperFrames 渲染；纸拼贴与产品动效共用 | `video-producer visual-render scaffold / check / preview / render` |
 | `deck-render` | Stage 10 第三条渲染路径：中文 HTML 幻灯、逐页动画、静帧联系表、确定性 MP4；随后用 video-producer pip-compose 合小窗/旁白 | `deck-render check-setup / scaffold / check / preview / render`；参数见工具说明 |
+| `avatar` | Wan S2V 肖像检测、按原声时间窗生成、恢复、人工口型审查记录、同源分段合并 | `avatar generate / resume / review / assemble`；读 `tools/avatar/SKILL.md` |
 
-HTML 视觉片段与 deck-talk 共用 Node ≥22、Playwright Chromium headless shell、系统适配的中文字体（Windows 微软雅黑；Linux/macOS Noto Sans CJK SC）和锁定 HyperFrames/GSAP/Playwright；安装和更新脚本预装。`visual-render`、`deck-render` 与 `deck-compose` 本地执行不需 API Key；LivePortrait 需要百炼业务空间凭据，TTS/ASR 仍使用下列凭据。数字人调用包内 `liveportrait` 工具。
+HTML 视觉片段与 deck-talk 共用 Node ≥22、Playwright Chromium headless shell、系统适配的中文字体（Windows 微软雅黑；Linux/macOS Noto Sans CJK SC）和锁定 HyperFrames/GSAP/Playwright；安装和更新脚本预装。`visual-render`、`deck-render` 与 `deck-compose` 本地执行不需 API Key；Wan S2V 需要百炼业务空间凭据，TTS/ASR 仍使用下列凭据。数字人调用包内 `avatar` 工具。
 
-跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`awk-img-gen`（静帧、角色三视图、封面，Stage 5/10/14）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；多供应商路由 火山→百炼，`--enable-subtitle` 两家都出字级时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
+跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`awk-img-gen`（静帧、角色三视图、封面，Stage 5/10/14）、`awk-tts`（旁白 TTS，Stage 11B；多供应商路由 火山→百炼，`--enable-subtitle` 请求字级时间戳；响应缺失时用 `video-producer narration-align` 对已生成音频执行公共 ASR）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
 
 env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKSPACE_ID`+`MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`（百炼业务空间，优先）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写的火山优先路由；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。ASR/TTS 凭据任一组在即可路由；全缺时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow` 仍由仓根 `requirements.txt` 统一安装（Pillow 还用于小窗遮罩、联系表和旧 JSON 动效）；新 HTML 片段不新增 pip 包。机器资源约束读本 workspace `MEMORY.md` 或 Brief；HyperFrames 渲染可用 `--workers 1` 控制低内存机器负载。
 
@@ -228,4 +229,4 @@ env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKS
 
 ### 数字人与 deck-talk 三模式
 
-`deck-talk` 支持 main 已剪的实拍口播、肖像+声音的数字人、仅音频+B-roll 三种模式；声音来源必须如实登记。数字人调用本包 `tools/liveportrait/SKILL.md`，最终合成用 `video-producer deck-compose`；不要寻找公共 avatar-gen 技能。声音复刻/设计使用公共 awk-tts 保存的音色档案。
+`deck-talk` 支持 main 已剪的实拍口播、肖像+声音的数字人、仅音频+B-roll 三种模式；声音来源必须如实登记。数字人调用本包 `tools/avatar/SKILL.md`，最终合成用 `video-producer deck-compose`；不要寻找公共 avatar-gen 技能。声音复刻/设计使用公共 awk-tts 保存的音色档案。

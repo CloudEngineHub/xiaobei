@@ -22,11 +22,12 @@ metadata:
 | 优先级 | 供应商 | 触发凭据 | 模型/资源 |
 |--------|--------|---------|-----------|
 | 1 | 火山豆包语音合成 2.0 | `VOLC_TTS_APP_ID`+`VOLC_TTS_ACCESS_KEY`（旧双头）或 `VOLC_TTS_APP_KEY`（新单头） | `seed-tts-2.0`（克隆音色 `S_xxx` 自动路由 `seed-icl-2.0`） |
-| 2 | 百炼业务空间 | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` | `qwen-audio-3.0-tts-plus` → `qwen-audio-3.1-tts-flash` → `qwen-audio-3.0-tts-flash` |
+| 2 | 百炼业务空间 | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY` | `qwen-audio-3.1-tts-plus` → `qwen-audio-3.1-tts-flash` → `qwen-audio-3.0-tts-plus` → `qwen-audio-3.0-tts-flash` |
 | 3 | 百炼 agent plan | `AWK_API_KEY`（token-plan 端点） | `qwen-audio-3.0-tts-plus` → `qwen-audio-3.0-tts-flash`，以账号模型权限为准 |
 
-- 百炼候选链在 HTTP 403/404 时切下一个模型；`--model` 显式指定关闭模型回退。供应商按凭据选定后，合成失败不自动切换供应商。
-- 百炼默认音色：3.0 模型用 `longanhuan_v3.6`，3.1 Flash 用 `longanhuan_v3.1`。未指定音色时随候选模型切换；显式音色和音色档案保持用户指定值。传了火山系音色 ID 会警告并换当前模型的默认音色。
+- 候选链仅在服务明确返回模型不存在/不可用时使用；`--model` 显式指定后锁定模型。`AllocationQuota.FreeTierOnly` 属额度/付费限制，401/InvalidApiKey 属认证，模型不支持、429限频、网络与服务错误分别报告；不因403盲重登或遍历模型。
+- 默认音色：3.1 Plus 为 `longanlingxin_v3.1`，3.1 Flash 为 `longanhuan_v3.1`，3.0 Plus 为 `longanlingxin`，3.0 Flash 为 `longanhuan_v3.6`。显式音色必须同时指定匹配的 `--model`；跨供应商音色直接拒绝，不自动换声。已有音色档案继续锁定原模型，不自动升级。
+- 日志打印当前 `route` 和 `fallback`。默认不跨通路回退；仅在用户已有授权时加 `--fallback-platform agent-plan`，workspace 额度错误后使用现有 AWK_API_KEY 尝试一次，须显式锁定 model/voice，保持语速等参数。绑定音色档案不允许跨通路。失败即停止，不充值、不修改计费；不确定授权时先报告分类与可选通路。
 - 格式映射：火山 `ogg_opus` 在百炼自动转 `opus`；百炼不支持 32000 采样率。
 - 语速 `--speech-rate [-50,100]` 在百炼线性映射为 rate [0.5,2.0]；响度 `--loudness` 映射为 volume [0,100]。
 - 三组凭据都缺 → exit 1 并列出配置方式。应该 spawn IT engineer subagent 写入实例环境变量，**不要自己写环境变量文件**。
@@ -67,8 +68,10 @@ awk-tts --text "..." --enable-subtitle --output ./assets/audio/narration.mp3
 | `fragment_dir` | — | Optional fragment directory under `fragments/`; when set, reads `tts_requirement.md` and defaults output to `artifacts/speech.<format>` |
 | `--text` | — | Text to synthesize. Required unless `--text-file` or `fragment_dir` is set |
 | `--text-file` | — | UTF-8 text file to synthesize. Must be relative and under `scripts`, `assets`, `tmp`, `output_videos`, `fragments`, or `<platform>/outputs/` |
-| `--voice` | 火山 `zh_female_shuangkuaisisi_uranus_bigtts` / 百炼 `longanhuan_v3.6` | 音色 ID（按路由到的供应商选默认） |
+| `--voice` | 火山 `zh_female_shuangkuaisisi_uranus_bigtts` / 业务空间 `longanlingxin_v3.1` / Plan `longanlingxin` | 音色 ID（按路由到的供应商选默认） |
 | `--model` | — | 百炼模型 ID（显式指定关闭候选链 fallback；火山模式忽略） |
+| `--fallback-platform agent-plan` | off | 明确授权 workspace 额度错误后转现有 Plan 一次；必须显式锁定模型和音色 |
+| `--diagnostics` | — | 脱敏事件摘要路径：记录状态、事件类型、request_id、字节数，不含密钥/正文/URL/音频内容 |
 | `--format` | `mp3` | Audio format: `mp3`, `pcm`, `wav`, `opus`（火山另收 `ogg_opus`，百炼自动映射为 `opus`） |
 | `--sample-rate` | 火山不设 / 百炼 24000 | 8000/16000/22050/24000/44100/48000（火山另收 32000） |
 | `--speech-rate` | — | Speech rate `-50`–`100`（0=默认, 100=2x, -50=0.5x；百炼线性映射 rate） |
@@ -101,11 +104,13 @@ awk-tts --text "..." --enable-subtitle --output ./assets/audio/narration.mp3
 
 百炼 Qwen-Audio-TTS 系统音色（路由到百炼时可用）。**音色与模型绑定**：显式指定音色时同时指定匹配的 `--model`，不要跨模型混用音色。
 
+`qwen-audio-3.1-tts-plus`（业务空间默认）使用 `longanlingxin_v3.1`（龙安灵心_v3.1）。
+
 `qwen-audio-3.1-tts-flash` 系统音色（百炼业务空间）：
 
 | voice 参数 | 名称 | 性别 |
 |-----------|------|------|
-| `longanhuan_v3.1` | 龙安欢_v3.1（3.1 默认） | 女 |
+| `longanhuan_v3.1` | 龙安欢_v3.1（3.1 Flash 默认） | 女 |
 | `longanlingxin_v3.1` | 龙安灵心_v3.1 | 女 |
 | `longanfengyue_v3.1` | 龙安风悦_v3.1 | 女 |
 | `xunanchuan_v3.1` | 许南川 | 男 |
@@ -121,11 +126,11 @@ awk-tts --platform workspace --model qwen-audio-3.1-tts-flash --text "大家好�
 | `longanlingxin` | 龙安灵心 | 知心温暖音（女/25） | 社交陪伴·旗舰 |
 | `longanlufeng` | 龙安鲁风 | 明亮开朗音（男/25） | 社交陪伴·旗舰 |
 
-`qwen-audio-3.0-tts-flash` 系统音色（默认音色在此模型）：
+`qwen-audio-3.0-tts-flash` 系统音色（该模型默认 longanhuan_v3.6）：
 
 | voice 参数 | 名称 | 特质（性别/年龄） | 场景 |
 |-----------|------|-----------------|------|
-| `longanhuan_v3.6` | 龙安欢 | ⭐百炼默认（女/25） | 通用 |
+| `longanhuan_v3.6` | 龙安欢 | 3.0 Flash 默认（女/25） | 通用 |
 | `longanfengyue` | 龙安风悦 | 自然亲切音（女/30） | 社交陪伴 |
 | `longanlingxi` | 龙安灵希 | 可爱甜美音（女/25） | 社交陪伴 |
 | `longanxiaoxin` | 龙安小昕 | 亲切活泼音（女/22） | 社交陪伴 |
@@ -139,10 +144,12 @@ awk-tts --platform workspace --model qwen-audio-3.1-tts-flash --text "大家好�
 | `loongjohn` | loongJohn | 沉稳亲切美音（男/28） | 精品英文（仅英文） |
 
 > 语言范围：除 `loong*` 三款纯英文外均为中文（普通话）+英文；`text` 超出音色语言范围会发音错误或语音不自然。
-> 3.0 默认音色为 `longanhuan_v3.6`；其他音色须按模型对齐。遇到 `InvalidParameter` 时核对 `--voice` 与 `--model`，不要将音色错误当成模型未开通。
+> 3.0 Plus 默认音色为 `longanlingxin`，3.0 Flash 默认音色为 `longanhuan_v3.6`；其他音色须按模型对齐。遇到 `InvalidParameter` 时核对 `--voice` 与 `--model`，不要将音色错误当成模型未开通。
 > 两模型另各有 500+ 声音复刻基础音色，命名 `qwen-audio-3.0-tts-{plus|flash}-{后缀}`，`--voice` 直传即可，完整列表见[官方音色列表页](https://docs.bailian.console.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list) Excel；也可用声音复刻免费定制专属音色。
 
 ## Output
+
+音频先在临时文件中验证非空、音轨可完整解码、时长大于0，再替换目标文件；验证失败不会发布假成功音频或覆盖原产物。百炼 SSE 优先下载同次请求末尾的完整音频 URL，亦支持完成事件后的 audio.data 分片及网关返回 JSON 的情况；不重新提交合成。缺少字级时间码时明确 `subtitle_unavailable`，不生成空字幕文件；用 expert-video 的 `video-producer narration-align` 对已生成音频做公共 ASR。不要通过换音色恢复。
 
 - Audio file: `speech.<format>` 或 `--output` 指定路径
 - Metadata file: `speech.json`（同目录），含：
@@ -205,10 +212,10 @@ awk-tts --voice-profile /absolute/voices/clone/voice.json --text-file /absolute/
 
 - 火山复刻/设计使用现有 `VOLC_TTS_APP_ID` + `VOLC_TTS_ACCESS_KEY` 或 `VOLC_TTS_APP_KEY`，不是 `VOLC_SEEDANCE_API_KEY`。旧鉴权在音色接口用 `X-Api-App-Key`，在合成接口用 `X-Api-App-Id`。`--speaker-id` 也可由 `VOLC_TTS_SPEAKER_ID` 配置。使用确认可覆盖的音色槽位；工具不购买槽位、不自动启用后付费自定义 ID。
 - 火山文本设计描述最多200字，试听文本最多300字；当前 CLI 提供文本设计。设计/复刻通过后用 `seed-icl-2.0` 合成，新版训练返回的 model_type=5 会保存在档案并在合成时使用。
-- 百炼使用 `voice-enrollment`，默认绑定 `qwen-audio-3.0-tts-plus`；业务空间也可用 `--target-model qwen-audio-3.1-tts-flash` 或 `qwen-audio-3.0-tts-flash`。`--name` 1–10位英文字母/数字；描述1–500字符，试听文本15–200字符。
+- 百炼使用 `voice-enrollment`，业务空间默认绑定 `qwen-audio-3.1-tts-plus`，Plan 默认仍为 `qwen-audio-3.0-tts-plus`；也可显式指定支持的 `--target-model`。`--name` 1–10位英文字母/数字；描述1–500字符，试听文本15–200字符。
 - 复刻 CLI 接收10–20秒、<10MB的 WAV/MP3/M4A 清晰单人音频，样本使用本人或有授权的声音；提供文件或 HTTP(S) URL 均可。火山直接传 Base64；百炼使用模型绑定的临时上传。URL 会先下载校验，确保上传的是已核验样本。
 - `voice-design` 保存试听文件，`voice-clone` 保存音色档案；火山返回试听 URL 时立即下载。只有远端状态可用才将档案标为 OK；创建状态不确定时保留记录，先查询，勿自动重复消耗创建/训练次数。
 - 试听确认清晰度、音色、语气后再用于全稿。复刻声与设计声均是合成声音，不能承诺等同真人原录音或保证通过平台检测。deck-talk 已有用户原录音时优先原声，不主动替换。
 - 输出文件已存在即停止，换目录创建新音色；不会覆盖现有档案。程序不修改 `~/.openclaw/.env`。
 
-接口：[百炼设计](https://help.aliyun.com/zh/model-studio/voice-design-api-references)、[百炼复刻](https://help.aliyun.com/zh/model-studio/voice-clone-design-http-api)、[火山设计](https://docs.volcengine.com/docs/DoubaoVoice/SoundDesignAPI?lang=zh)、[火山复刻](https://docs.volcengine.com/docs/DoubaoVoice/tone-training-http?lang=zh)。
+接口：[百炼非实时合成 HTTP](https://help.aliyun.com/en/model-studio/qwen-audio-tts-http-api)、[百炼音色列表](https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list)、[百炼设计](https://help.aliyun.com/zh/model-studio/voice-design-api-references)、[百炼复刻](https://help.aliyun.com/zh/model-studio/voice-clone-design-http-api)、[火山设计](https://docs.volcengine.com/docs/DoubaoVoice/SoundDesignAPI?lang=zh)、[火山复刻](https://docs.volcengine.com/docs/DoubaoVoice/tone-training-http?lang=zh)。

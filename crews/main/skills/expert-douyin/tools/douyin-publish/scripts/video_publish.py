@@ -682,7 +682,13 @@ def cover_preview_ready(session):
           const file=await selectedPixels();
           if(image.naturalWidth!==file.width || image.naturalHeight!==file.height){watch.pixelMatches.set(src,false);return false}
           const canvas=document.createElement('canvas');canvas.width=file.width;canvas.height=file.height;
-          const context=canvas.getContext('2d');context.drawImage(image,0,0);
+          const context=canvas.getContext('2d');
+          // The editor re-encodes the selected image with browser JPEG quality
+          // 0.92. Exact encoded bytes prove content without loosening pixel
+          // tolerances for cached previews or changed text patches.
+          context.drawImage(file.image,0,0);
+          if(src===canvas.toDataURL('image/jpeg',0.92)){watch.pixelMatches.set(src,true);return true}
+          context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0);
           const preview=context.getImageData(0,0,canvas.width,canvas.height).data;
           let total=0;
           // Allow only small JPEG encoding noise: a single large pixel change
@@ -748,8 +754,8 @@ def cover_preview_ready(session):
         }
         // Cached editor previews may re-encode JPEGs. Exact bytes or a strict
         // pixel match prove the selected content; ratio alone cannot prove it.
-        if(!sameFile && watch.beforeSources.has(src))sameFile=await samePixels(image);
-        if(!sameFile && (!ratioMatches || watch.beforeSources.has(src)))continue;
+        if(!sameFile)sameFile=await samePixels(image);
+        if(!sameFile || !ratioMatches)continue;
         return {ready:true};
       }
       if(targetRatio)for(const canvas of dialog.querySelectorAll('canvas:not(.upper-canvas)')){
@@ -931,8 +937,12 @@ def matching_work(state, items):
     accepted = {title}
     if state.get('caption'):
         accepted.update({title+'\n'+state['caption'], title+' '+state['caption']})
+    def normalized(text):
+        # Preserve meaningful spaces, width and format characters when linking
+        # a submitted work. Editor input normalization is deliberately broader.
+        return unicodedata.normalize('NFC', text).replace('\r\n', '\n').replace('\r', '\n').replace('\u00a0', ' ').strip()
     candidates = [it for it in items if it['id'] not in old and it['ct'] >= state['submitted_at']-5
-                  and it['title'] in accepted]
+                  and any(normalized(it['title']) == normalized(expected) for expected in accepted)]
     if len(candidates) > 1:
         raise PublishError('PUBLISH_RESULT_AMBIGUOUS', RESULT_HINT, 3)
     return candidates[0] if candidates else None
@@ -1007,17 +1017,35 @@ def verification_state(session):
     return state
 
 
+def sms_scope(session):
+    scope = evaluate(session, r'''(() => {
+      const visible=e=>!!(e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+      const roots=Array.from(document.querySelectorAll('article.uc-ui-verify_sms-verify,[role="dialog"]')).filter(e=>
+        visible(e) && /接收短信验证码|请输入当前手机号收到的短信验证码|请输入验证码/.test(e.innerText||'') ||
+        visible(e) && !!e.querySelector('input[placeholder*="验证码"],input[autocomplete="one-time-code"]'));
+      const candidates=roots.filter(e=>!roots.some(child=>child!==e && e.contains(child)));
+      if(candidates.length!==1)return '';
+      document.querySelectorAll('[data-xiaobei-sms-scope]').forEach(e=>e.removeAttribute('data-xiaobei-sms-scope'));
+      candidates[0].setAttribute('data-xiaobei-sms-scope','1');return '[data-xiaobei-sms-scope="1"]';
+    })()''')
+    if not scope:
+        raise PublishError('SMS_DIALOG_NOT_UNIQUE', '保留当前验证页；不猜短信弹窗', 4)
+    return scope
+
+
 def cmd_verify_send(*, session):
     state = verification_state(session)
     if state.get('sms_requested'):
         raise PublishError('SMS_ALREADY_REQUESTED', '等待当前验证码；不自动重发')
+    scope = sms_scope(session)
     state.update(state='awaiting_verification', sms_requested=True)
     save_state(state)
     # Persist the send intent before clicking, including ambiguous transport outcomes.
-    click_text(session, '获取验证码')
+    click_text(session, '获取验证码', scope=scope)
     deadline = time.monotonic()+10
     while time.monotonic()<deadline:
-        if evaluate(session, r"Array.from(document.querySelectorAll('[role=\"dialog\"]')).some(d=>/接收短信验证码|请输入当前手机号收到的短信验证码/.test(d.innerText) && /\d+\s*(?:s|秒)|重新获取/.test(d.innerText))"):
+        if evaluate(session, '(() => { const root=document.querySelector('+json.dumps(scope)+r''');
+          return !!root && /\d+\s*(?:s|秒)|重新获取/.test(root.innerText||''); })()'''):
             return {'ok': False, 'state': 'awaiting_verification', 'sms_requested': True, 'session': session}
         time.sleep(1)
     raise PublishError('SMS_SEND_UNCONFIRMED', '点击结果未确认；检查页面倒计时，不自动重复发送', 4)
@@ -1042,10 +1070,24 @@ def read_code_file(file):
 def cmd_verify_code(*, session, code_file):
     code = read_code_file(code_file)
     verification_state(session)
-    selector = '[role="dialog"] input:not([type="hidden"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([readonly]):not([disabled])'
+    scope = sms_scope(session)
+    selected = evaluate(session, '(() => {' + f'''
+      const root=document.querySelector({json.dumps(scope)});
+      if(!root)return false;
+    ''' + r'''
+      const visible=e=>!!(e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+      const inputs=Array.from(root.querySelectorAll('input[placeholder*="验证码"],input[autocomplete="one-time-code"]'))
+        .filter(e=>visible(e)&&e.type!=='hidden'&&!e.disabled&&!e.readOnly);
+      if(inputs.length!==1)return false;
+      document.querySelectorAll('[data-xiaobei-sms-code]').forEach(e=>e.removeAttribute('data-xiaobei-sms-code'));
+      inputs[0].setAttribute('data-xiaobei-sms-code','1');return true;
+    })()''')
+    if not selected:
+        raise PublishError('SMS_DIALOG_NOT_UNIQUE', '保留当前验证页；不猜输入框', 4)
+    selector = scope + ' input[data-xiaobei-sms-code="1"]'
     if not camoufox_type(session, selector, code):
         raise PublishError('CODE_WRITE_FAILED', '验证码未写入当前弹窗；勿重发作品', 4)
-    click_text(session, '验证', scope='[role="dialog"]')
+    click_text(session, '验证', scope=scope)
     # Give the validation response a chance to dismiss the SMS dialog.
     deadline = time.monotonic()+15
     while time.monotonic()<deadline:

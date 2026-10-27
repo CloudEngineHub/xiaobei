@@ -41,7 +41,7 @@ wx-mp-publisher <markdown_file> [theme] [--account ALIAS]
   2. **本地 `.css` 文件路径**——脚本读出文件内容，作为 `custom_theme` 字段随 multipart 上传 relay
   3. **wx_mp/wenyan-theme/index.json 登记的自定义 id**--从工作区主题注册表解析出对应 CSS 路径，同 (2)
 
-  可选，缺省由 relay 默认渲染。
+  可选，省略时脚本明确使用内置 `default`。
 - `--account ALIAS`：多账号时指定目标公众号；缺省用 `accounts.json` 的 `default`
 
 > **自定义主题不持久化到 relay**：relay 是无状态多租户中转，**不存任何用户主题**。CSS 随请求上传，relay 写到 per-request 临时目录、用后即清理，天然按用户隔离。
@@ -117,13 +117,13 @@ image_list:
 
 ### 本地图片准备规则
 
-发布前把本地图片复制到 Markdown 同目录，并按以下规则引用：
+本地图片以 Markdown 所在目录为基准解析：
 
 1. 正文图片写 `![说明](filename.jpg)`
 2. `cover` 写 `cover: cover.jpg`
 3. `image_list` 写 `- 1.jpg`
-4. 只写纯文件名；不要写 `./filename.jpg`、目录路径或绝对路径
-5. 所有本地图片文件名必须唯一；重名时先重命名再更新 Markdown
+4. 支持 `./cover/00.png`、子目录和绝对路径；带空格的 Markdown 路径用 `<...>` 包裹，YAML 路径用引号
+5. 不同目录可以有同名图片；脚本仅在请求内改写图片引用，并为上传文件分配唯一名称，不修改原稿和素材
 6. `http://` / `https://` 图片保留原 URL，不需要复制到本地
 
 Agent 不需要手动上传图片；脚本会自动收集并上传上述本地图片。
@@ -148,7 +148,8 @@ Agent 不需要手动上传图片；脚本会自动收集并上传上述本地�
 | `MISSING_APP_ID` / `MISSING_APP_SECRET`（relay 400） | accounts.json 中该账号凭据为空，补全 |
 | `MISSING_MARKDOWN`（relay 400） | 检查 markdown 文件内容非空 |
 | `45110: author size out of limit` | frontmatter `author` 超 8 汉字 / 24 字节，缩短后再发 |
-| 图片 `ENOENT` | 将对应图片复制到 Markdown 同目录，改为纯文件名引用，并确认文件存在、文件名唯一 |
+| 本地图片不存在 / 图片 `ENOENT` | 按 Markdown 所在目录核对图片路径，确认源文件存在 |
+| `INVALID_THEME`（relay 400） | 改用主题表中的内置 ID，或传已登记的自定义 ID / CSS 文件 |
 | relay 502 | relay 调微信失败，检查 AppSecret / IP 白名单（见 `REFERENCE.md`） |
 
 ---
@@ -163,6 +164,6 @@ Agent 不需要手动上传图片；脚本会自动收集并上传上述本地�
 ## 微信平台硬限制（发布链路通用）
 
 - 标题长度：最多 64 字节（约 21 个中文字符）
-- 本地图片：与 Markdown 放同目录，用唯一纯文件名引用；脚本会自动上传
+- 本地图片：相对 Markdown 所在目录或使用绝对路径，脚本自动收集、重写并上传
 - 样式：必须内联（`style="..."`），`<style>` 标签会被过滤
 - access_token 有效期 2 小时，relay 侧自动刷新，client 侧无需处理

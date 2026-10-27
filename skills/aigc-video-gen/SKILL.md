@@ -12,7 +12,7 @@ metadata:
 ---
 # AIGC Video Gen — 百炼 Wan3.0 / HappyHorse、火山 Seedance、MiniMax Hailuo
 
-直连阿里云百炼业务空间 Wan3.0、百炼 Agent Plan HappyHorse、火山方舟 Seedance 或 MiniMax Hailuo 端点生成视频片段（声画同出）。同模型声画同步出，无需单独 TTS。百炼业务空间 Fun-Music 与 MiniMax 提供独立音乐生成能力（`music` 子命令）。
+直连阿里云百炼业务空间 / Token Plan Wan3.0、火山方舟 Seedance 或 MiniMax Hailuo 端点生成视频片段（声画同出）。同模型声画同步出，无需单独 TTS。百炼业务空间 Fun-Music 与 MiniMax 提供独立音乐生成能力（`music` 子命令）。
 
 > 本 skill 是公共能力，供 main agent（`video-edit` 素材补充环节的"为组装目的 AIGC 补充"）和 content-producer 共同调用。
 
@@ -21,7 +21,7 @@ metadata:
 | 平台 | 环境变量 | 视频模型 | 音乐模型 |
 |------|---------|---------|---------|
 | 百炼业务空间 | `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`（或 `DASHSCOPE_API_KEY`） | `wan3.0-video-prime` → `wan3.0-video` | `fun-music-v1` |
-| 百炼 Agent Plan | `AWK_API_KEY` | `happyhorse-1.1-i2v`、`happyhorse-1.1-t2v`、`happyhorse-1.1-r2v` | — |
+| 百炼 Token Plan | `AWK_API_KEY` | `wan3.0-video` | — |
 | 火山引擎方舟 | `VOLC_SEEDANCE_API_KEY` | `doubao-seedance-2-5-260628`、`doubao-seedance-2-0-fast-260128` | — |
 | MiniMax Hailuo | `MINIMAX_API_KEY` | `MiniMax-H3` | `music-3.0` |
 
@@ -30,7 +30,7 @@ metadata:
 - **三供应商脚本拆分**（共享逻辑在 `scripts/aigc_common.py`，与三脚本同目录）：
   - `scripts/gen_minimax.py` — MiniMax Hailuo 视频生成（含 `--ref-audio` 多模态参考）+ `music` 子命令
   - `scripts/gen_volc.py` — 火山引擎 Seedance 视频生成
-  - `scripts/gen_dashscope.py` — 百炼业务空间 Wan3.0 视频与 Fun-Music 音乐 / Agent Plan HappyHorse 视频
+  - `scripts/gen_dashscope.py` — 百炼业务空间 / Token Plan Wan3.0 视频与业务空间 Fun-Music 音乐
 - **音乐单独选路**：`music --platform dashscope` 固定百炼业务空间，`music --platform minimax` 固定 MiniMax。自动模式优先已配置的 MiniMax，否则选完整百炼业务空间凭据；火山视频凭据和 `AWK_API_KEY` 不触发音乐生成。缺音乐凭据时退出码2。
 
 ### ⚠️ MINIMAX_API_KEY 缺失处理
@@ -49,16 +49,16 @@ Agent 读到此报错后的处理流程：
 
 ### 百炼模型选择规则
 
-先按凭据确定端点模式，再选择模型。业务空间默认使用统一模型 `wan3.0-video`，无需按任务拼接模型名称；Agent Plan 和 legacy 端点保留原有按模式候选链。
+先按凭据确定端点模式，再选择模型。业务空间默认使用统一模型 `wan3.0-video-prime`，无需按任务拼接模型名称；Token Plan 使用 `wan3.0-video`，legacy 端点保留原有按模式候选链。
 
-| 模式 | 业务空间首选模型 | Agent Plan 首选模型 | 输入 |
+| 模式 | 业务空间首选模型 | Token Plan 首选模型 | 输入 |
 |------|----------------|-------------------|------|
-| **t2v** | `wan3.0-video` | `happyhorse-1.1-t2v` | 仅提示词 |
-| **i2v** | `wan3.0-video` | `happyhorse-1.1-i2v` | `--image` 首帧；Wan3.0 还可配 `--last-frame` 尾帧 |
-| **r2v** | `wan3.0-video` | `happyhorse-1.1-r2v` | Wan3.0 图片/视频/音频参考；Agent Plan 仅单张参考图 |
+| **t2v** | `wan3.0-video-prime` | `wan3.0-video` | 仅提示词 |
+| **i2v** | `wan3.0-video-prime` | `wan3.0-video` | `--image` 首帧；Wan3.0 还可配 `--last-frame` 尾帧 |
+| **r2v** | `wan3.0-video-prime` | `wan3.0-video` | Wan3.0 图片/视频/音频参考 |
 
 - 业务空间候选链：`wan3.0-video-prime` → `wan3.0-video`，所有模式共用；不回退 HappyHorse。
-- Agent Plan / legacy 候选链：`happyhorse-1.1-{mode}` → `happyhorse-1.0-{mode}` → `wan2.7-{mode}`。
+- Token Plan 默认仅 `wan3.0-video`，不尝试未登记的 prime；显式指定 HappyHorse 时仍校验其旧能力。legacy 候选链：`happyhorse-1.1-{mode}` → `happyhorse-1.0-{mode}` → `wan2.7-{mode}`。
 - `gen_dashscope.py` 自动沿当前端点的候选链回退，不切换端点或凭据。
 - **`--model <id>` 可显式覆盖**（关闭候选链 fallback，只用该模型）；非必要不覆盖。
 - 显式模型也执行素材与参数校验；Wan3.0 必须使用业务空间凭据。
@@ -126,7 +126,7 @@ Agent 读到此报错后的处理流程：
 
 ### 模式与时长上限
 
-| 模式 | 触发条件 | 百炼业务空间 Wan3.0 | 百炼 Agent Plan | 火山 Seedance | MiniMax Hailuo |
+| 模式 | 触发条件 | 百炼 Wan3.0（业务空间/Token Plan） | 百炼显式 HappyHorse | 火山 Seedance | MiniMax Hailuo |
 |------|---------|-------------------|----------------|-------------|---------------|
 | t2v | 无媒体输入 | 2–30s 或 -1 | 3–15s | 2.5：4–30s；fast：4–15s | 4–15s |
 | i2v | `--image` 首帧 | 2–30s 或 -1，支持尾帧 | 3–15s，仅首帧 | 2.5：4–30s；fast：4–15s | 4–15s |
@@ -206,7 +206,7 @@ aigc-video-gen music \
 
 百炼音乐规则：
 
-- 需要 `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`，北京业务空间须已开通 `fun-music-v1` 权限。仅有 Agent Plan / legacy key 时停止，不切换端点。
+- 需要 `WORKSPACE_ID` + `MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`，且已开通 `fun-music-v1` 权限。仅有 Token Plan / legacy key 时停止，不切换端点。
 - 非流式同步生成，返回音频 URL 后立即下载；有效期24小时。默认生成歌曲；背景音乐应显式加 `--instrumental`。
 - `--prompt` 与 `--lyrics` 至少提供一项；同时提供时歌词优先，prompt 不生效。prompt 为1–2000字符，歌词中文5–350字符、英文5–2000字符。
 - `--instrumental` 需要 prompt，歌词和演唱性别将被忽略。歌曲可用 `--gender male|female`，不传时服务默认女声。
@@ -223,11 +223,11 @@ aigc-video-gen music \
 | `--prompt` | 按模型 | 声画描述：旁白文案 + BGM + 音效；Wan3.0 传媒体时可省略 |
 | `--duration` | 8 | 视频时长（秒），范围见模式表；Wan3.0 / Seedance 支持 -1 智能时长 |
 | `--ratio` | `9:16` | 画面比例 |
-| `--resolution` | `720P` | Wan3.0 `480P` / `720P` / `1080P`；Agent Plan `720P` / `1080P`；火山 `480P` / `720P` |
+| `--resolution` | `720P` | Wan3.0 `480P` / `720P` / `1080P`；HappyHorse `720P` / `1080P`；火山 `480P` / `720P` |
 | `--image` | — | 首帧图像路径（i2v 模式） |
-| `--last-frame` | — | 尾帧图像路径；Wan3.0 / Seedance 支持，百炼 Agent Plan 不支持 |
+| `--last-frame` | — | 尾帧图像路径；Wan3.0 / Seedance 支持，HappyHorse 不支持 |
 | `--prev-segment` | — | 上一段视频本地路径：脚本自动抽取其末帧作为本段首帧（人物故事首尾帧对齐，与 `--image` 互斥） |
-| `--ref-image` | — | 用户参考图；Wan3.0 可重复传入最多10张，Agent Plan 仅一张 |
+| `--ref-image` | — | 用户参考图；Wan3.0 可重复传入最多10张，HappyHorse 仅一张 |
 | `--ref-video` | — | Wan3.0 / Seedance / MiniMax 参考视频 URL；Wan3.0 可重复传入最多5段 |
 | `--ref-audio` | — | Wan3.0 / Seedance / MiniMax 参考音频 URL；Wan3.0 可重复传入最多5段，Wan3.0 / Seedance 2.5 支持仅音频参考 |
 | `--no-audio` | off | Wan3.0 / Seedance 关闭输出声音；默认为有声视频 |

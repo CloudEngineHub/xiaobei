@@ -19,6 +19,7 @@ metadata:
 
 - ffprobe 全字段校验（codec / 分辨率 / fps / pix_fmt / 音频配置）
 - 5 位抽帧黑帧扫（0% / 25% / 50% / 75% / 100%）—— ≥2 黑帧判 critical
+- 100% 定位最后可解码帧，尾部先取2秒、再8秒窗口，仍无帧才从头解码（每次最多60秒）。缺帧或亮度分析失败写入 `coverage_missing[]`、`frame_coverage` 和 warning，不能以4帧无黑帧判 pass。
 - 音频电平分析（volumedetect）—— 静音 / 削波 / 无音轨
 - 时长 vs 目标（`--target-duration`，默认 ±5% 容差）
 - 分辨率 floor（9:16 竖屏最低 720x1280）+ 目标比对 + 段一致性
@@ -57,7 +58,8 @@ video-review <final.mp4> --output review.json
   "verdict": "pass" | "fail" | "warn",
   "file": "<video.mp4 absolute path>",
   "ffprobe": { "codec", "width", "height", "fps", "pix_fmt", "duration", "size_bytes", "audio": {...} },
-  "frames": [ { "position_pct", "path", "mean_luma", "is_black" } ],
+  "frames": [ { "position_pct", "path", "mean_luma", "is_black", "status", "error", "requested_timestamp_seconds", "decoded_timestamp_seconds" } ],
+  "coverage_missing": [ { "position_pct", "reason" } ],
   "audio_level": { "mean_db", "max_db", "silent", "clipping", "absent" },
   "checks": [
     { "name": "duration_match",   "status": "pass",    "detail": "actual 30.2s vs target 30s, gap 0.2s" },
@@ -72,6 +74,8 @@ video-review <final.mp4> --output review.json
 ## 抽帧产物
 
 5 帧静图落 `<project-dir>/review/frames/frame_NNN.jpg`，verdict JSON 落 `<project-dir>/review/verdict.json`。**不进 `artifacts/`、不进 `previews/`**，与 keyframes/ 子目录同级，互不混淆。
+
+人工或制作方另行补查的图片与结论单独保存，不修改公共报告里的缺失状态；需要公共检查完整时重跑本工具。尾帧的实际时间见 `decoded_timestamp_seconds`，不要把容器 duration 当作可解码时间点。
 
 ## 段一致性检查
 

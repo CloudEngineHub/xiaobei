@@ -30,12 +30,14 @@ import os
 import re
 import sqlite3
 import subprocess
-import shutil
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared"))
+import channel_login
 
 # ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -67,22 +69,6 @@ UPDATE_METRICS_SH = PUBLISHED_TRACK_SCRIPTS / "update-metrics.sh"
 CAMOUFOX_BIN = os.environ.get("CAMOUFOX_CLI", "camoufox-cli")
 FETCH_TIMEOUT_S = 30
 SESSION_CLEANUP_ON_EXIT = True  # 仅 close camoufox session，不动中央存储
-
-# 视频号助手后台真路径（登录成功后 redirect 落点）；裸 /platform/ 是入口 URL，不算就位
-BACKEND_PATHS = (
-    "/platform/home", "/platform/post", "/platform/data",
-    "/platform/interaction", "/platform/live",
-)
-# 持久化 profile 目录（登录态落盘位置）
-PROFILE_DIR = Path.home() / ".camoufox-cli" / "profiles" / SESSION_NAME
-
-# 登录流程常量（本工具自管 wechat-channel session 的扫码登录）
-QR_FILE = "/tmp/qr-wx-channel.png"
-# Stop-and-wait 模式（对齐 login-manager）：agent 在对话里等用户「已扫码/已完成」
-# 信号后才调 login-confirm；confirm 只做短窗口 settle 验证（吸收扫码确认后
-# 可能经一两个中间页才稳定的尾巴），不承担「等用户」职责；不就位 → exit 2 交回对话。
-LOGIN_CONFIRM_SETTLE_MAX_S = 30
-LOGIN_CONFIRM_POLL_INTERVAL_S = 3
 
 # probe dump 输出目录
 PROBE_OUT_DIR = Path(
@@ -227,194 +213,28 @@ def camoufox_close(session: str) -> None:
 # 与 wechat-channels-publish 共 session——任一技能登录后另一个不需重登。
 
 def cmd_login(args) -> None:
-    """camoufox 无头打开视频号助手后台首页 → 截 QR PNG。
-
-    agent 拿 QR_FILE 发用户扫码，用户回复「已扫码」后调 login-confirm。
-
-    --reset：先 close session + 删 profile 目录再 open，用于上一次扫码污染了
-    cookie（如用错账户扫码）后强制从干净状态重来。不加 --reset 时不碰已有
-    登录态，避免把还有效的 session 清掉。
-
-    open 后先等 redirect 落点：落到后台路径 = 已登录，直接报 already_logged_in
-    不出 QR；落到登录页 = 正常出 QR。
-    """
-    # --reset：清掉污染的 profile（close daemon + 删磁盘 profile 目录）
-    if getattr(args, "reset", False):
-        camoufox_close(SESSION_NAME)
-        if PROFILE_DIR.exists():
-            shutil.rmtree(PROFILE_DIR, ignore_errors=True)
-
-    # camoufox-cli open 视频号助手后台首页
-    camoufox_open(SESSION_NAME, CREATOR_CENTER_URL)
-
-    # 等 redirect 落点（最多 8s），区分「已登录」vs「需扫码」
-    deadline = time.time() + 8
-    current_url = ""
-    while time.time() < deadline:
-        current_url = camoufox_get_url(SESSION_NAME)
-        if current_url and (
-            any(p in current_url for p in BACKEND_PATHS)
-            or "login" in current_url
-            or "scanloginqrcode" in current_url
-        ):
-            break
-        time.sleep(0.5)
-
-    # 已落到后台路径 = 登录态有效，不出 QR
-    if current_url and any(p in current_url for p in BACKEND_PATHS):
-        camoufox_close(SESSION_NAME)
-        sys.stdout.write(json.dumps({
-            "ok": True,
-            "already_logged_in": True,
-            "message": "登录态有效，无需扫码，可直接执行后续命令",
-        }, ensure_ascii=False, indent=2))
-        sys.stdout.write("\n")
-        return
-
-    # 落到登录页 → 等二维码 <img> 出现再截图
-    deadline = time.time() + 10
-    qr_ready = False
-    while time.time() < deadline:
-        raw = camoufox_eval(
-            SESSION_NAME,
-            "(() => { const imgs = document.querySelectorAll('img'); "
-            "for (const i of imgs) { if (i.src && i.src.startsWith('data:image')) return '1'; } "
-            "return String(imgs.length); })()",
-        )
-        if raw == "1":
-            qr_ready = True
-            break
-        time.sleep(0.5)
-    if not qr_ready:
-        # 兜底等固定时间（onload + JS 注入完成），即使 eval 没拿到 QR img
-        camoufox_run(
-            ["--session", SESSION_NAME, "wait", "3000"],
-            timeout=10,
-        )
-
-    # screenshot 截 QR PNG
-    r = camoufox_run(
-        ["--session", SESSION_NAME, "screenshot", QR_FILE],
-        timeout=FETCH_TIMEOUT_S,
-    )
-    if r.returncode != 0:
-        sys.stderr.write(f"error: camoufox screenshot failed: {r.stderr.strip()}\n")
-        sys.exit(1)
-
-    sys.stdout.write(json.dumps({
-        "ok": True,
-        "qr_path": QR_FILE,
-        "message": "二维码已截，请用微信扫码确认，完成后回复「已扫码」",
-    }, ensure_ascii=False, indent=2))
-    sys.stdout.write("\n")
+    """与发布共用标准入口、截图解码与受管会话续接。"""
+    argv = ["login"] + (["--reset"] if args.reset else []) + (["--refresh"] if args.refresh else [])
+    raise SystemExit(channel_login.main(argv))
 
 
 def cmd_login_confirm(args) -> None:
-    """验登录就位（用户在对话里给信号后调用）→ close session。Stop-and-wait 模式，对齐 login-manager。
+    """只续接原扫码页，核验实际后台内容后收尾。"""
+    argv = ["login-confirm"] + (["--keep-open"] if args.keep_open else [])
+    raise SystemExit(channel_login.main(argv))
 
-    对话层 stop-and-wait：agent 发二维码 PNG 给用户后**停下等用户信号**（「已扫码」/
-    「已完成」），收到信号才调本命令。本命令不承担「等用户」职责，只做短窗口
-    settle 验证（LOGIN_CONFIRM_SETTLE_MAX_S，吸收扫码确认后可能先跳一两个中间页
-    如 /platform/index、/platform/main 才稳定的尾巴），不就位即 exit 2 交回对话，
-    不长时间阻塞：
-    - 用户只扫了码、还没在手机上点「确认登录」→ 提示用户点确认，再重跑本命令
-      （二维码页还活着，无需重新扫码）
-    - 已确认仍未就位 / 二维码过期 → 重新调 login 生成新二维码
-
-    不导出 cookie/UA/token——登录态在 wechat-channel session profile 里就位即可。
-
-    就位判定走 url_at_backend（与 _ensure_login 同源）：URL 含真后台路径
-    （BACKEND_PATHS）且不含 login；登录页 login.html 也含 /platform/ 段，
-    login 检查优先。
-
-    历史：旧实现不读当前页直接轮询 240s，期间 daemon 若被 6 并发上限驱逐或
-    手动 close，ensureDaemon 新起 fresh daemon，page 停在 about:blank，
-    轮询必超时 → 误判「未就位」（与 wx-mp-engagement 2026-08-16 同根因）。
-    现先读 url 分支：仅空/about:blank（fresh daemon）才 ``open`` 后台首页
-    触发 redirect；活着的登录页绝不导航走——导航走用户手里的二维码 PNG 作废。
-    """
-    # 先读当前 url 决定是否 open-first——不盲目导航：
-    # - 在登录页 → daemon 活着，二维码页正等用户扫码/确认 → 只轮询不导航
-    # - 已就位（真后台路径 / wujie 已渲染）→ 轮询第一轮即判定，不导航
-    # - 其余（空/about:blank —— daemon 被驱逐/close，ensureDaemon 新起，
-    #   page 没执行过 open）→ 先 open 后台首页触发 redirect 再轮询
-    current_url = camoufox_get_url(SESSION_NAME)
-    on_login_page = "login" in current_url or "scanloginqrcode" in current_url
-    if not on_login_page and not url_at_backend(SESSION_NAME, current_url):
-        try:
-            camoufox_open(SESSION_NAME, CREATOR_CENTER_URL)
-        except RuntimeError as e:
-            sys.stderr.write(f"error: camoufox 打开后台首页失败: {e}\n")
-            sys.exit(2)
-
-    deadline = time.time() + LOGIN_CONFIRM_SETTLE_MAX_S
-    logged_in = False
-    stable_url = ""
-
-    while time.time() < deadline:
-        current_url = camoufox_get_url(SESSION_NAME)
-        if current_url:
-            # 显式还在登录页 → 继续等
-            if "login" in current_url or "scanloginqrcode" in current_url:
-                time.sleep(LOGIN_CONFIRM_POLL_INTERVAL_S)
-                continue
-            # 跳到后台真路径 = 登录就位（login 检查已在上面 continue 掉）
-            if url_at_backend(SESSION_NAME, current_url):
-                logged_in = True
-                stable_url = current_url
-                break
-        time.sleep(LOGIN_CONFIRM_POLL_INTERVAL_S)
-
-    if not logged_in:
-        # 失败不 close（对齐 login-manager「失败时保留 session」）：daemon + 二维码页
-        # 留着，用户在手机上补点「确认登录」后，agent 直接重跑 login-confirm 即可，
-        # 无需重新扫码。最后 URL 给调用方诊断信息。
-        last_url = camoufox_get_url(SESSION_NAME)
-        sys.stderr.write(
-            f"error: 登录态未就位（最后 URL: {last_url[:120]}）\n"
-            f"  - 若用户只扫了码、还没在手机上点「确认登录」→ 提示用户点确认后"
-            f"重跑 login-confirm（二维码页还活着，无需重新生成）\n"
-            f"  - 若已确认仍未就位 / 二维码已过期 → 重新调 login 生成新二维码\n"
-        )
-        sys.exit(2)
-
-    # 已从轮询 URL 拿到登录就位信号，证明登录态已就位。
-    # 登录态在 profile 里就位，close session 不影响 profile 持久化
-    camoufox_close(SESSION_NAME)
-
-    sys.stdout.write(json.dumps({
-        "ok": True,
-        "message": "登录成功，登录态已在 wechat-channel session profile 就位",
-    }, ensure_ascii=False, indent=2))
-    sys.stdout.write("\n")
-
-
-# ── 登录态校验 ──────────────────────────────────────────────────────────────
 
 def url_at_backend(session: str, url: str) -> bool:
-    """判 URL 是否已到视频号助手真后台（_ensure_login / cmd_login_confirm 共用）。
-
-    - 空 url / 登录页（login.html、scanloginqrcode）→ False
-    - 真后台路径 BACKEND_PATHS（/platform/home、/platform/post、...）→ True
-    - 其余（含根路径 /platform/：入口 URL 本身含 /platform/，登录成功后页面
-      也可能停在根路径「wujie 已加载但 URL 未跳转」）→ fallback 探
-      wujie-app shadow 容器是否渲染。
-    """
-    if not url or "login" in url or "scanloginqrcode" in url:
+    """准确后台 URL 与已渲染业务内容同时成立，避免导航后尚未重定向。"""
+    if not channel_login.backend_url(url):
         return False
-    if any(p in url for p in BACKEND_PATHS):
-        return True
-    probe = camoufox_eval(
-        session,
-        '(() => { try { return !!document.querySelector("wujie-app"); } catch(e) { return false; } })()',
-    )
-    return probe in (True, "true", "True")
+    return channel_login.backend_ready(camoufox_eval(session, channel_login.PAGE_PROBE))
 
 
 def _ensure_login() -> None:
     """判登录态：camoufox 打开视频号助手后台首页，轮询 redirect URL。
 
-    - 跳 /platform/home 或 /platform/post/list 等后台路径 = 就位，return
+    - 后台路径与真实后台内容同时出现 = 就位，return
     - 跳 login / 扫码页 / 超时仍无后台路径 = 失效，exit 2
 
     关键：camoufox-cli ``open`` 是「打开 + 立刻返回」，不等页面 redirect 完成。
@@ -432,9 +252,8 @@ def _ensure_login() -> None:
         sys.exit(2)
 
     # 轮询 redirect URL，等后台路径出现（最多 15s）
-    # 就位判定走 url_at_backend：真后台路径是 BACKEND_PATHS（/platform/home 等）；
-    # 登录页 login.html 也含 /platform/ 段（域名段 channels.weixin.qq.com/platform/login.html），
-    # login 检查优先；初始 URL 本身含 /platform/，不能拿 "/platform/" in url 判就位。
+    # url_at_backend 同时核对准确 origin/path 与 wujie 中的业务内容，
+    # 初始 URL 或尚未重定向的空壳不算登录就位。
     deadline = time.time() + 15
     current_url = ""
     while time.time() < deadline:
@@ -442,7 +261,7 @@ def _ensure_login() -> None:
         # 显式跳登录页 → 真失效，不等
         if "login" in current_url or "scanloginqrcode" in current_url:
             break
-        # 就位判定（BACKEND_PATHS 真路径 + 根路径 wujie 渲染 fallback）
+        # 就位判定与共享登录脚本一致。
         if url_at_backend(session, current_url):
             return
         time.sleep(0.5)
@@ -895,9 +714,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("list", help="列出后台所有视频 + 行内 metrics").set_defaults(func=cmd_list)
 
     p_login = sub.add_parser("login", help="camoufox 无头截 QR PNG")
-    p_login.add_argument("--reset", action="store_true", help="先删 profile 目录再 open（上一次扫码污染 cookie 后强制重来）")
+    mode = p_login.add_mutually_exclusive_group()
+    mode.add_argument("--reset", action="store_true", help="显式清除 profile 后重新登录")
+    mode.add_argument("--refresh", action="store_true", help="显式换码，保留同一 profile")
     p_login.set_defaults(func=cmd_login)
-    sub.add_parser("login-confirm", help="确认登录 + close session").set_defaults(func=cmd_login_confirm)
+    p_confirm = sub.add_parser("login-confirm", help="核验后台登录；默认 close session")
+    p_confirm.add_argument("--keep-open", action="store_true", help="确认成功后保留原标签，供发布续作")
+    p_confirm.set_defaults(func=cmd_login_confirm)
 
     p_fetch = sub.add_parser("fetch", help="抓单篇 engagement（按 title 在作品管理页匹配）")
     p_fetch.add_argument("--row-id", type=int, required=True)

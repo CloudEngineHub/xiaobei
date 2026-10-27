@@ -35,23 +35,29 @@ description: 微信视频号已发布作品数据抓取，写入 published-track
 
 camoufox-cli 命令统一 `--session wechat-channel --persistent`，登录态在 session profile 里已就位即可。
 
-**登录态判断**：camoufox 打开 `channels.weixin.qq.com/platform/` 看 redirect URL：
-- 跳到 `/platform/home` 或 `/platform/post/list` 等后台路径 = 登录就位
+**登录态判断**：准确的视频号后台 URL 与已渲染的后台业务内容必须同时成立：
+- `/platform/home`、`/platform/post/create`、`/platform/post/list` 等后台路径配合实际后台内容 = 登录就位；不能在导航尚未重定向时只凭 URL 判成功
 - 跳到 `login` / 扫码页 = 失效，需重登
 
 **失效重登流程**（走本工具自己）：
 ```bash
-wx-channel-engagement login           # camoufox 无头截 QR PNG 落 /tmp/qr-wx-channel.png
+wx-channel-engagement login           # 验证标准页面截图中的二维码，返回 qr_verified 与 qr_path
 # 发 QR PNG 给用户 → **Stop and wait**：等用户回复"已扫码/已完成"再往下走，不盲轮询、不催促
 wx-channel-engagement login-confirm   # 短窗口 settle 验证（30s）+ close session（不导出 cookie/UA/token）
 # exit 2 = 未就位：用户只扫码没在手机上点"确认登录" → 提示用户点确认后重跑本命令
 # （二维码页还活着，无需重新扫码）；已确认仍未就位 → 重跑 login 生成新二维码
 ```
 
-`login` 返回 `already_logged_in: true` 时无需扫码，直接执行后续命令。扫码失败 / 用错账户后，**不要直接重跑 `login`**——旧 cookie 污染 profile，重跑拿到的 QR 扫了也不生效。先带 `--reset` 清 profile 再重登：
+`login` 与 `wechat-channels-publish login` 共用同一实现。只有返回 `ok: true`、`qr_verified: true` 与 `qr_path` 时才发送图片本身；二维码位于跨域 iframe 时仍在标准父页面截图验证，不直开 iframe。主文档没有 `data:image` 不代表没出码；错误文字需结合截图及祖先裁剪后的可见区域，不能仅匹配 `innerText`。
+
+`already_logged_in: true` 时无需扫码。`QR_NOT_READY` 返回的 `diagnostic_path` 仅供排查，不发送为二维码。`LOGIN_PENDING` 先用 `login-confirm` 续接，需换码时显式刷新同一 profile：
 ```bash
-wx-channel-engagement login --reset   # 删 profile 目录 + 重新 open，从干净状态拿 QR
+wx-channel-engagement login --refresh
 ```
+
+等待扫码时脚本保存自己的会话 lease，`login-confirm` 只续接原 session/标签。原页面丢失（`LOGIN_SESSION_LOST`）时重新执行 `login`，不要把旧二维码当成仍有效。调用前释放自己持有的交互 lease；其他任务占用时等待，不关闭其窗口。
+
+仅用户明确要求清除错误账号的登录态时，才使用 `wx-channel-engagement login --reset`；普通加载失败、扫码未确认或过期不删除 profile。
 
 退出码：
 - `0` 成功

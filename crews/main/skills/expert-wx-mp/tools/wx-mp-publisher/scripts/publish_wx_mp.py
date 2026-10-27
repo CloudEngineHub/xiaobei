@@ -15,6 +15,7 @@ relay 端点：POST {RELAY_BASE_URL}/api/v1/wx-mp/publish
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -22,6 +23,8 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # 凭据放在源仓之外（实例态目录），避免软链模式下密钥落进源仓工作树
@@ -188,17 +191,17 @@ def _resolve_registered_theme_path(theme_id: str) -> Path | None:
     return None
 
 
-def resolve_theme(theme_arg: str | None) -> tuple[str, str] | None:
+def resolve_theme(theme_arg: str | None) -> tuple[str, str]:
     """返回 ('theme', id) / ('custom_theme', css_text) / None。
 
     解析顺序：
-      1. theme_arg 为空 → None
+      1. theme_arg 为空 → 内置 default
       2. 以 .css 结尾且是本地文件 → custom_theme（CSS 文本）
       3. wx_mp/wenyan-theme/index.json 登记的自定义 id → 解析 CSS 路径 → custom_theme
       4. 其它 → 内置主题 id，原样作为 theme
     """
     if not theme_arg:
-        return None
+        return ('theme', 'default')
     p = Path(theme_arg)
     if theme_arg.endswith(".css") and p.is_file():
         return ("custom_theme", p.read_text(encoding="utf-8"))
@@ -210,7 +213,7 @@ def resolve_theme(theme_arg: str | None) -> tuple[str, str] | None:
 
 # ── multipart 构建 ───────────────────────────────────────────────────────────
 
-def build_multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tuple[bytes, str]:
+def build_multipart(fields: dict[str, str], files: list[tuple]) -> tuple[bytes, str]:
     """手动构造 multipart/form-data，返回 (body, content_type)。文本字段按 utf-8 原样写入（不 base64）。"""
     import mimetypes
     import uuid
@@ -222,14 +225,16 @@ def build_multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tu
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n".encode("utf-8")
             + value.encode("utf-8") + b"\r\n"
         )
-    for name, path in files:
+    for entry in files:
+        name, path = entry[:2]
+        filename = entry[2] if len(entry) == 3 else path.name
         ctype, _ = mimetypes.guess_type(str(path))
         if ctype is None:
             ctype = "application/octet-stream"
         with open(path, "rb") as f:
             file_data = f.read()
         parts.append(
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{path.name}\"\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\n"
             f"Content-Type: {ctype}\r\n\r\n".encode("utf-8")
             + file_data + b"\r\n"
         )
@@ -238,34 +243,133 @@ def build_multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tu
     return body, content_type
 
 
+def _frontmatter(md_text: str):
+    match = re.match(r'\A---[ \t]*\r?\n(.*?)^---[ \t]*\r?$', md_text, re.S | re.M)
+    if not match:
+        return None, 0, 0
+    try:
+        node = yaml.compose(match.group(1), Loader=yaml.SafeLoader)
+    except yaml.YAMLError as exc:
+        raise ValueError('frontmatter 不是有效 YAML') from exc
+    if node is not None and not isinstance(node, yaml.MappingNode):
+        raise ValueError('frontmatter 须为 YAML 对象')
+    return node, match.start(1), match.end()
+
+
+def _frontmatter_image_tokens(md_text: str):
+    node, offset, _ = _frontmatter(md_text)
+    for key, value in node.value if node else []:
+        if key.value not in ('cover', 'image_list'):
+            continue
+        values = value.value if isinstance(value, yaml.SequenceNode) else [value]
+        for item in values:
+            if not isinstance(item, yaml.ScalarNode) or item.tag != 'tag:yaml.org,2002:str':
+                raise ValueError(f'{key.value} 图片路径须为字符串')
+            yield offset + item.start_mark.index, offset + item.end_mark.index, item.value
+
+
+def _markdown_image_tokens(md_text: str):
+    """Yield exact inline image destination spans; leave prose, titles and code intact."""
+    _, _, i = _frontmatter(md_text)
+    fence = None
+    while i < len(md_text):
+        if i == 0 or md_text[i - 1] == '\n':
+            line_end = md_text.find('\n', i)
+            line_end = len(md_text) if line_end < 0 else line_end
+            line = md_text[i:line_end]
+            mark = re.match(r' {0,3}(`{3,}|~{3,})', line)
+            if mark:
+                run = mark.group(1)
+                if fence is None:
+                    fence = run
+                elif run[0] == fence[0] and len(run) >= len(fence):
+                    fence = None
+                i = line_end + 1
+                continue
+            if fence or line.startswith(('    ', '\t')):
+                i = line_end + 1
+                continue
+        if md_text[i] == '\\':
+            i += 2
+            continue
+        if md_text[i] == '`':
+            end = i + 1
+            while end < len(md_text) and md_text[end] == '`':
+                end += 1
+            closing = md_text.find(md_text[i:end], end)
+            i = closing + end - i if closing >= 0 else end
+            continue
+        if not md_text.startswith('![', i):
+            i += 1
+            continue
+        cursor, depth = i + 2, 1
+        while cursor < len(md_text) and depth:
+            if md_text[cursor] == '\\':
+                cursor += 2
+                continue
+            depth += (md_text[cursor] == '[') - (md_text[cursor] == ']')
+            cursor += 1
+        if depth or cursor >= len(md_text) or md_text[cursor] != '(':
+            i += 2
+            continue
+        cursor += 1
+        while cursor < len(md_text) and md_text[cursor].isspace():
+            cursor += 1
+        angled = cursor < len(md_text) and md_text[cursor] == '<'
+        start = cursor + int(angled)
+        cursor, depth = start, 0
+        while cursor < len(md_text):
+            char = md_text[cursor]
+            if char == '\\':
+                cursor += 2
+                continue
+            if angled and char == '>' or not angled and depth == 0 and (char == ')' or char.isspace()):
+                break
+            if not angled:
+                depth += (char == '(') - (char == ')')
+            cursor += 1
+        end = cursor
+        after = cursor + int(angled)
+        while after < len(md_text) and md_text[after].isspace():
+            after += 1
+        if after < len(md_text) and md_text[after] in ('"', "'", '('):
+            closing = ')' if md_text[after] == '(' else md_text[after]
+            after += 1
+            while after < len(md_text) and md_text[after] != closing:
+                after += 2 if md_text[after] == '\\' else 1
+            after += 1
+            while after < len(md_text) and md_text[after].isspace():
+                after += 1
+        if end > start and after < len(md_text) and md_text[after] == ')':
+            src = re.sub(r'\\([!"#$%&\'()*+,\-./:;<=>?@\[\]\\^_`{|}~])', r'\1', md_text[start:cursor])
+            yield start, end, src
+            i = after + 1
+        else:
+            i = max(end + 1, i + 2)
+
+
+def _image_tokens(md_text: str):
+    yield from _frontmatter_image_tokens(md_text)
+    yield from _markdown_image_tokens(md_text)
+
+
 def _frontmatter_local_refs(md_text: str) -> list[str]:
-    """从 YAML frontmatter 提取 cover / image_list 里的本地图片引用（原始字符串）。"""
-    if not md_text.startswith("---"):
-        return []
-    end = md_text.find("\n---", 3)
-    if end < 0:
-        return []
-    refs: list[str] = []
-    in_image_list = False
-    for line in md_text[3:end].splitlines():
-        m = re.match(r"^\s*cover:\s*(\S+)", line)
-        if m:
-            refs.append(m.group(1))
-            in_image_list = False
-            continue
-        if re.match(r"^\s*image_list:\s*$", line):
-            in_image_list = True
-            continue
-        if re.match(r"^\s*image_list:\s*\S", line):
-            in_image_list = False
-            continue
-        if in_image_list:
-            m = re.match(r"^\s*-\s+(\S+)", line)
-            if m:
-                refs.append(m.group(1))
-            elif re.match(r"^\S", line):
-                in_image_list = False
-    return refs
+    return [src for _, _, src in _frontmatter_image_tokens(md_text)]
+
+
+def _remote_image(src: str) -> bool:
+    return src.lower().startswith(('http://', 'https://', 'data:'))
+
+
+def _local_image(src: str, md_dir: Path) -> Path:
+    return (md_dir / src).resolve()
+
+
+def image_upload_name(path: Path) -> str:
+    # One canonical file, one safe multipart filename, independent of reference spelling.
+    digest = hashlib.sha256(str(path.resolve()).encode('utf-8')).hexdigest()[:20]
+    suffix = path.suffix.lower()
+    return 'image-' + digest + (suffix if re.fullmatch(r'\.[a-z0-9]{1,10}', suffix) else '.bin')
 
 
 def extract_local_images(md_text: str, md_dir: Path) -> list[Path]:
@@ -277,39 +381,28 @@ def extract_local_images(md_text: str, md_dir: Path) -> list[Path]:
     seen: set[Path] = set()
 
     def add(src: str) -> None:
-        if src.startswith(("http://", "https://", "data:")):
+        if _remote_image(src):
             return
-        p = Path(src) if Path(src).is_absolute() else (md_dir / src).resolve()
-        if p.is_file() and p not in seen:
+        p = _local_image(src, md_dir)
+        if not p.is_file():
+            raise ValueError(f'本地图片不存在：{p}')
+        if p not in seen:
             seen.add(p)
             out.append(p)
 
-    for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", md_text):
-        add(m.group(1).split()[0])  # 去掉可选 title
-    for ref in _frontmatter_local_refs(md_text):
-        add(ref)
+    for _, _, src in _image_tokens(md_text):
+        add(src)
     return out
 
 
 def rewrite_image_refs(md_text: str, local_images: list[Path], md_dir: Path) -> str:
-    """把本地图片引用重写为 basename，与 images multipart 文件名对齐。
-
-    relay 端 @wenyan-md/core 渲染时按文件名匹配上传的 images，带目录前缀或绝对路径
-    会让 relay 去自己磁盘 stat 报 ENOENT。覆盖 markdown / frontmatter 里可能出现的
-    所有形式：绝对路径、`./name`、`name`、以及相对 md_dir 的子目录路径（如 `images/x.jpg`）。
-    """
-    if not local_images:
-        return md_text
-    for img in local_images:
-        name = img.name
-        candidates = {str(img), f"./{name}", name}
-        try:
-            candidates.add(str(img.relative_to(md_dir)))
-        except ValueError:
-            pass
-        for original in candidates:
-            if original != name:
-                md_text = md_text.replace(original, name)
+    """Rewrite only image tokens, using the same unique names as multipart uploads."""
+    mapping = {p.resolve(): image_upload_name(p) for p in local_images}
+    replacements = [(start, end, mapping[_local_image(src, md_dir)])
+                    for start, end, src in _image_tokens(md_text)
+                    if not _remote_image(src) and _local_image(src, md_dir) in mapping]
+    for start, end, name in sorted(replacements, reverse=True):
+        md_text = md_text[:start] + name + md_text[end:]
     return md_text
 
 
@@ -345,10 +438,7 @@ def validate_for_publish(md_text: str) -> None:
     2. frontmatter author 字段 ≤ 24 字节（8 个汉字）。
     """
     # 1. 图片引用：正文 ![]() + frontmatter cover/image_list
-    local_refs = [
-        m.group(1).split()[0] for m in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", md_text)
-    ]
-    local_refs += _frontmatter_local_refs(md_text)
+    local_refs = [src for _, _, src in _image_tokens(md_text)]
     bad_imgs = [
         ref
         for ref in local_refs
@@ -386,7 +476,7 @@ def main() -> None:
     parser.add_argument("--account", default=None, help="指定公众号 alias（缺省用 accounts.json 的 default）")
     args = parser.parse_args()
 
-    md_path = Path(args.markdown_file)
+    md_path = Path(args.markdown_file).resolve()
     if not md_path.is_file():
         die(f"文件不存在: {md_path}")
 
@@ -406,7 +496,7 @@ def main() -> None:
     theme_field = resolve_theme(args.theme)
     if theme_field is not None:
         fields[theme_field[0]] = theme_field[1]
-    files = [("images", p) for p in images]
+    files = [("images", p, image_upload_name(p)) for p in images]
 
     log(f"账号: {alias}")
     if theme_field is None:
@@ -450,4 +540,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, OSError) as exc:
+        die(str(exc))

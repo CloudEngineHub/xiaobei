@@ -38,6 +38,8 @@ xhs-publish --mode video --title "标题" --body @/绝对路径/body.txt --video
 
 发布 Workflow 负责判断内容是否需要 AI 声明，并在调用发布命令时传入 `--ai-declaration`。
 
+视频转码与笔记提交分别判断：`readiness.state:ready` 表示查询返回就绪证据；Creator 会话缺少 www 查询认证时允许服务端异步转码提交，但返回 `readiness_unknown/auth_unavailable`。网络、服务错误、空数据和持续 pending 不按 ready 处理，提交前停止并返回 `VIDEO_READINESS_UNCONFIRMED`、`submission_attempted:false`。`accepted:true` 与作品 ID 只证明平台接受，`public`/`playable:null` 仍需核实；不要因可播放未知自动重发。
+
 ## 提交结果不确定时
 
 `SUBMISSION_UNKNOWN`（包括 `curl: (28) Operation timed out`）表示无法确认结果；`SUBMISSION_UNCONFIRMED` 表示平台返回成功但缺少作品 ID。两者都不能当作发布失败，**不要自动重发**，也不要因创作者列表未出现目标笔记就重发。

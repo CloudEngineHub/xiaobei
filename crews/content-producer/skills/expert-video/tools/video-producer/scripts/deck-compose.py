@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[7] / 'skills' / '_shared'))
 from bailian_media import fingerprint, save_json
+from avatar_job import load_avatar_job
 
 
 def run(command):
@@ -33,7 +34,7 @@ def resolve_inputs(args):
     if args.mode == 'avatar':
         if not args.avatar_job or args.presenter or args.audio:
             raise ValueError('avatar 只接收 --avatar-job，自动使用任务对应的视频与同源音频')
-        job = json.loads(args.avatar_job.read_text())
+        job = load_avatar_job(args.avatar_job)
         if job.get('status') != 'SUCCEEDED' or job.get('timing_pass') is not True:
             raise ValueError('数字人任务未完成或时长核验未通过')
         presenter, audio = Path(job['video_file']), Path(job['audio_file'])
@@ -58,15 +59,18 @@ def main():
     parser.add_argument('--mode', required=True, choices=['footage', 'avatar', 'audio', 'none'])
     parser.add_argument('--base', required=True, type=Path, help='已按音频时长排好的幻灯 / B-roll / 混合画面')
     parser.add_argument('--presenter', type=Path, help='main 已剪好的口播视频，仅 footage')
-    parser.add_argument('--avatar-job', type=Path, help='LivePortrait .liveportrait.json，仅 avatar')
+    parser.add_argument('--avatar-job', type=Path, help='.avatar.json；兼容旧 .liveportrait.json，仅 avatar')
     parser.add_argument('--audio', type=Path, help='用户/main 提供的音频，仅 audio')
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--corner', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], default='bottom-right')
     parser.add_argument('--subtitle-safe', type=int, default=160)
     parser.add_argument('--size', type=float, default=.22)
+    parser.add_argument('--aspect', type=float, default=1)
+    parser.add_argument('--crop-anchor', choices=['top', 'center', 'bottom'], help='默认 avatar 保留顶部，footage 居中')
     args = parser.parse_args()
     if args.mode == 'none':
         args.mode = 'audio'
+    args.crop_anchor = args.crop_anchor or ('top' if args.mode == 'avatar' else 'center')
     args.output = args.output.resolve()
     metadata = args.output.with_suffix('.deck-talk.json')
     if args.output.suffix.lower() != '.mp4' or args.output.exists() or metadata.exists():
@@ -82,7 +86,8 @@ def main():
                  '-vn', '-c:a', 'pcm_s16le', audio])
         command = [sys.executable, Path(__file__).with_name('pip-compose.py'), '--base', args.base,
                    '--audio', audio, '--output', args.output, '--corner', args.corner,
-                   '--subtitle-safe', args.subtitle_safe, '--size', args.size]
+                   '--subtitle-safe', args.subtitle_safe, '--size', args.size,
+                   '--aspect', args.aspect, '--crop-anchor', args.crop_anchor]
         if presenter:
             command += ['--presenter', presenter]
         run(command)
@@ -94,6 +99,7 @@ def main():
                          'presenter': str(presenter) if presenter else None,
                          'audio': str(audio), 'audio_sha256': fingerprint(audio),
                          'avatar_job': str(args.avatar_job.resolve()) if args.avatar_job else None,
+                         'crop_anchor': args.crop_anchor, 'aspect': args.aspect,
                          'file': str(args.output)})
     print(json.dumps({'video': str(args.output), 'metadata': str(metadata)}, ensure_ascii=False))
 

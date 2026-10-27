@@ -23,13 +23,18 @@ description: 通过 camoufox-cli 持久化 session wechat-channel 发布视频�
 ## 前置条件
 
 1. 持久化 session `wechat-channel` 已登录（登录态存 session profile 里）。本工具自管探活 + 登录，**不导出 cookie/UA 落中央存储**。登录和发布**全部走无头模式**（camoufox-cli 默认即 headless）。
-2. 首次使用 / 登录态失效时，走**无头截图扫码**登录流：
-   - `camoufox-cli --session wechat-channel --persistent --json open "https://channels.weixin.qq.com/platform/home"`
-   - 等登录页 QR 二维码 `<img>` 注入完成（轮询 `eval` 检查 `document.querySelectorAll('img')` 有 `src` 以 `data:image` 开头的元素，最多等 10s）
-   - `camoufox-cli --session wechat-channel --persistent --json screenshot /tmp/qr-wechat-channel.png` 截 QR PNG
-   - 发 QR PNG 给用户，告知「**微信视频号** 登录已失效，请用微信扫码确认，完成后回复"已扫码"」
-   - **Stop and wait**，用户回复后轮询当前 URL（`camoufox-cli --session wechat-channel --json url`），确认已跳走登录页（URL 含 `platform/home` 且不含 `login`）即登录就位
-   - 登录后**close session**——登录态落磁盘 profile，不留进程占内存；下次 `--session wechat-channel --persistent` 重起无头即恢复，用完再 close。
+2. 首次使用 / 登录态失效时，调用 **`wechat-channels-publish login`**。调用前释放自己持有的交互 lease；其他任务占用时等待，不借用其 token。登录与 `wx-channel-engagement` 共用脚本：
+   - 脚本沿用 `wechat-channel`，从视频号标准入口打开，在实际截图中的登录区域验证可解码的微信二维码，兼容跨域授权 iframe；最多等待 15 秒，不直开 iframe。
+   - 返回 `already_logged_in: true` → 无需扫码，重新从 Step 1 进入发布页。
+   - 只有 `ok: true`、`qr_verified: true` 且包含 `qr_path` 时才发送该路径的图片本身。输出图片位于当前 Workspace 的 `wx_channel/login/`，按本次返回值取图，不复用旧文件。
+   - 告知用户「**微信视频号** 登录已失效，请用微信扫码确认，完成后回复“已扫码”」。**Stop and wait**。脚本保存自有 lease 的续接信息并保持原页，不轮询催促用户。
+   - 用户回复后运行 **`wechat-channels-publish login-confirm --keep-open`**。它只检查原标签，允许返回 `/platform/home`、`/platform/post/create`、`/platform/post/list` 等实际后台路径，并要求后台业务内容已经渲染。成功后释放登录 lease，重新从 Step 1 续作。未就位时保留原页，提示用户在微信补点确认后重跑 `login-confirm`。
+   - 单独登录、不继续发布时，`wechat-channels-publish login-confirm` 默认确认成功后关闭 session，登录态仍在原 profile。
+3. 登录失败按返回状态处理：
+   - `QR_NOT_READY` 的 `diagnostic_path` 是诊断图，不发送为登录二维码；不得用固定等待后截图冒充成功。
+   - `LOGIN_PENDING` 表示原二维码仍在等待，先用 `login-confirm` 续接；需要换码时用 **`wechat-channels-publish login --refresh`**，保留同一 profile。
+   - `LOGIN_SESSION_LOST` 表示原页面已丢失，重新运行 `login`；`SESSION_BUSY` 等占用方完成。不要自动删除 profile 或改 session 名。
+   - 主文档没有 `data:image` 不代表没出码；二维码可以位于跨域 iframe。`innerText` 含“加载失败”也不足以判失败，必须核对截图与父容器裁剪后的实际可见区域。二维码过期、空白或真正显示错误时不能报告登录已就位。
 
 > **不导出 cookie/UA**——登录态只在 session profile 里闭环，不落 `~/.openclaw/logins/`。本工具不调用 `cookies export` / `identity export`。
 
@@ -51,7 +56,7 @@ camoufox-cli --session wechat-channel --persistent --json open "https://channels
 camoufox-cli --session wechat-channel --json url
 ```
 
-URL 含 `login` → 走前置条件的无头截图扫码登录流。需要看页面内容时：登录页可整页 `snapshot`；发布页（wujie 已加载）必须 `snapshot -s "wujie-app"`。
+URL 含 `login` → 走前置条件的 `wechat-channels-publish login/login-confirm` 登录流。URL 仍是刚打开的后台地址时，要继续等待后台表单实际出现，不能仅凭 URL 判登录成功。需要看页面内容时：登录页可整页 `snapshot`；发布页（wujie 已加载）必须 `snapshot -s "wujie-app"`。
 
 ### Step 3: 上传视频
 

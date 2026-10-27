@@ -20,8 +20,72 @@ export class RefRegistry {
     const root = await target.elementHandle();
     if (!root) throw new RuntimeError("STALE_REF", "Snapshot scope disappeared; refresh the snapshot");
     const observer = await root.evaluateHandle(root => {
-      const state = { changed: false, observer: new MutationObserver(() => { state.changed = true; }) };
-      state.observer.observe(root.ownerDocument, { subtree: true, childList: true, attributes: true, characterData: true });
+      // A scoped capture must not be invalidated by an unrelated live counter.
+      // Keep ancestor changes and external accessible-name dependencies guarded.
+      const ancestors: Node[] = [];
+      for (let node = root.parentNode; node; node = node.parentNode) ancestors.push(node);
+      const document = root.ownerDocument;
+      const dependencies = new Set<Element>();
+      const referencedIds = new Set<string>();
+      const controlIds = new Set<string>();
+      const visited = new Set<Element>();
+      const inspect = (element: Element): void => {
+        if (visited.has(element)) return;
+        visited.add(element);
+        for (const attribute of ['aria-labelledby', 'aria-describedby']) {
+          for (const id of (element.getAttribute(attribute) || '').split(/\s+/).filter(Boolean)) {
+            referencedIds.add(id);
+            const dependency = document.getElementById(id);
+            if (dependency) {
+              dependencies.add(dependency);
+              inspect(dependency);
+              dependency.querySelectorAll('[aria-labelledby],[aria-describedby]').forEach(inspect);
+            }
+          }
+        }
+        const hasAriaName = (element.getAttribute('aria-labelledby') || '').split(/\s+/).some(id => document.getElementById(id));
+        if (!element.hasAttribute('aria-label') && !hasAriaName && 'labels' in element) {
+          if (element.id) controlIds.add(element.id);
+          for (const label of Array.from((element as HTMLInputElement).labels || [])) {
+            dependencies.add(label);
+            inspect(label);
+          }
+        }
+      };
+      if (root instanceof Element) inspect(root);
+      root.querySelectorAll('[aria-labelledby],[aria-describedby],input,select,textarea,button,meter,progress,output').forEach(inspect);
+      const affectsName = (node: Node): boolean => {
+        if (!(node instanceof Element)) return false;
+        const relevant = (element: Element) => referencedIds.has(element.id) ||
+          (element.matches('label[for]') && controlIds.has(element.getAttribute('for') || ''));
+        return relevant(node) || Array.from(node.querySelectorAll('[id],label[for]')).some(relevant);
+      };
+      const affectsStyle = (node: Node): boolean => {
+        const element = node instanceof Element ? node : node.parentElement;
+        return !!element?.closest('style,link[rel~="stylesheet"]');
+      };
+      const containsStyle = (node: Node): boolean => affectsStyle(node) ||
+        node instanceof Element && !!node.querySelector('style,link[rel~="stylesheet"]');
+      const state = { changed: false, observer: new MutationObserver(records => {
+        if (!root.isConnected || records.some(record =>
+          root.contains(record.target) ||
+          (ancestors.includes(record.target) && record.type === 'attributes') ||
+          (record.type === 'childList' && Array.from(record.removedNodes).some(node => node === root || node.contains(root))) ||
+          Array.from(dependencies).some(node => node.contains(record.target) ||
+            (record.type === 'attributes' && record.target.contains(node)) ||
+            (record.type === 'childList' && Array.from(record.removedNodes).some(removed => removed.contains(node)))) ||
+          (record.type === 'attributes' && record.target instanceof Element && (
+            record.attributeName === 'id' && (referencedIds.has(record.oldValue || '') || referencedIds.has(record.target.id)) ||
+            record.attributeName === 'for' && record.target.matches('label') &&
+              (controlIds.has(record.oldValue || '') || controlIds.has(record.target.getAttribute('for') || '')))) ||
+          (record.type === 'childList' && Array.from(record.addedNodes).some(affectsName)) ||
+          affectsStyle(record.target) ||
+          (record.type === 'attributes' && record.target instanceof Element && record.target.tagName === 'LINK' &&
+            record.attributeName === 'rel' && (record.oldValue || '').split(/\s+/).includes('stylesheet')) ||
+          (record.type === 'childList' && [...record.addedNodes, ...record.removedNodes].some(containsStyle))
+        )) state.changed = true;
+      }) };
+      state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true });
       return state;
     });
     const acquired: NodeHandle[] = [];

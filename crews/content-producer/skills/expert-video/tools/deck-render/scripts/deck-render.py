@@ -15,6 +15,8 @@ import time
 from html.parser import HTMLParser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from font_policy import font_available, font_css, font_family
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'video-producer/scripts'))
+from _visual_plan import visual_timeline
 
 TOOL = Path(__file__).resolve().parents[1]
 FONT = font_family()
@@ -82,6 +84,7 @@ def validate_spec(spec):
     scenes = spec.get('scenes')
     if not isinstance(scenes, list) or not scenes:
         raise ValueError('scenes 必须是非空数组')
+    visual_timeline(spec)
     for scene in scenes:
         if not isinstance(scene, dict):
             raise ValueError('scene 必须是 JSON 对象')
