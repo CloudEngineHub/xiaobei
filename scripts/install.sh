@@ -1078,7 +1078,7 @@ Options:
   --root <dir>       Program install directory (default: ~/xiaobei; runtime data stays in ~/.openclaw)
   --force            Overwrite existing runtime data (~/.openclaw); default preserves it on re-install
   --skip-bind        Skip the WeChat QR binding at the end (CI/automation)
-  --skip-browser     Skip Camoufox Firefox and deck-render Chromium downloads (smoke/CI)
+  --skip-browser     Skip Camoufox Firefox and shared Chromium downloads (smoke/CI)
   --verbose          Print debug output
   --no-prompt        Disable prompts (CI/automation)
   --help, -h         Show this help
@@ -1230,13 +1230,13 @@ main() {
     ui_stage "Installing awada plugin deps"
     install_awada_plugin
 
-    # ─── Step 6: HyperFrames + Playwright Chromium + CJK 字体 ──
+    # ─── Step 6: shared Playwright/Chromium + Camoufox ───────
+    ui_stage "Installing shared browser runtime"
+    install_camoufox_cli
+
+    # ─── Step 7: HyperFrames + CJK 字体 ─────────────────────
     ui_stage "Installing deck-render runtime"
     install_deck_render
-
-    # ─── Step 7: camoufox-cli + Firefox binary（幂等）────────
-    ui_stage "Installing camoufox-cli browser"
-    install_camoufox_cli
 
     # ─── Step 8: openclaw-weixin 插件（幂等）─────────────────
     ui_stage "Installing WeChat plugin"

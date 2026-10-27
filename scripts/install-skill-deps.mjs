@@ -45,6 +45,10 @@ function main(argv) {
     const raw = fs.readFileSync(path.join(dir, "package.json"));
     digest.update(path.relative(root, dir).split(path.sep).join("/") + "\0").update(raw).update("\0");
     const pkg = JSON.parse(raw);
+    for (const name of ["playwright", "playwright-core", "@playwright/test"]) {
+      if ([pkg.dependencies, pkg.devDependencies, pkg.optionalDependencies, pkg.peerDependencies].some(deps => deps?.[name]))
+        throw new Error(`${dir}: use browser/scripts/shared-playwright.mjs instead of a private ${name} dependency`);
+    }
     const installer = pkg.xiaobei?.dependencyInstaller;
     let script;
     if (installer) {

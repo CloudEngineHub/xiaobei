@@ -117,7 +117,7 @@ jobs:
           cp -a /tmp/pnpm-pkg/package "$STAGE/tools/pnpm"
 
           # 3. xiaobei-browser（dist + bridge + fixed assets, dependencies installed on target）
-          rsync -a --exclude='node_modules' --exclude='.git' \
+          rsync -a --exclude='node_modules' --exclude='.git' --exclude='.browsers' \
             "$REPO/browser/" "$STAGE/browser/"
 
           # 4. xiaobei 模板与脚本

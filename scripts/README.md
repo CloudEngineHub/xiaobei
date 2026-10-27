@@ -64,7 +64,7 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 |------|------|------|
 | `--force` | `XIAOBEI_FORCE=1` | 强覆盖已有运行数据（`~/.openclaw`）；默认已装机器重跑只更新 program，不碰运行数据 |
 | `--skip-bind` | `XIAOBEI_SKIP_BIND=1` | 跳过末尾微信扫码绑定（CI / 自动化） |
-| `--skip-browser` | `XIAOBEI_SKIP_BROWSER=1` | 跳过 Camoufox Firefox 与 deck-render Chromium 下载（冒烟 / CI） |
+| `--skip-browser` | `XIAOBEI_SKIP_BROWSER=1` | 跳过 Camoufox Firefox 与共享 Chromium 下载（冒烟 / CI） |
 | `--no-prompt` | `XIAOBEI_NO_PROMPT=1` | 关闭交互提示（CI / 自动化，隐含 `--skip-bind`） |
 | `--root <dir>` | `XIAOBEI_HOME=<dir>` | 程序目录覆盖（默认 `~/xiaobei`） |
 | — | `XIAOBEI_TAG=<tag>` | 指定版本 tag（默认拉最新 release；sh 也认 `XIAOBEI_TAG` env） |
@@ -117,8 +117,8 @@ bash scripts/update.sh --atomgit
 4. `pnpm install --prod --frozen-lockfile`（用自带的 portable Node + pnpm，在 `openclaw/` 下）
 5. `pip install --user`（skills 的 Python 依赖）
 6. awada 本地插件 deps（`awada/` 下 `npm install --omit=dev` 装 ws+zod）
-7. `install-deck-render.sh`（Windows 为 `.ps1`）：安装或校验 FFmpeg/FFprobe、锁定 HyperFrames/GSAP/Playwright、Chromium headless shell 与中文字体（Linux/macOS 为 Noto Sans CJK SC，Windows 为系统微软雅黑）；重跑会复用已有依赖
-8. 安装锁定的 Camoufox 浏览器资源（当前 Linux x64 压缩包约 1.29 GB，已有安装会复用）
+7. `install-browser.mjs`：先安装 `browser/package.json` 锁定的 Playwright，再调用 `install-playwright.mjs` 预装配套 Chromium headless shell，并准备 Camoufox 固定资产。驱动仅在 `browser/node_modules`，唯一 Chromium 缓存为 `browser/.browsers`；`--skip-assets` 同时跳过 Chromium 下载。已有浏览器资源会复用。
+8. `install-deck-render.sh`（Windows 为 `.ps1`）：安装或校验 FFmpeg/FFprobe、锁定 HyperFrames/GSAP、实例共享 Playwright/Chromium 与中文字体（Linux/macOS 为 Noto Sans CJK SC，Windows 为系统微软雅黑）；重跑会复用已有依赖。
 9. `openclaw plugins install @tencent-weixin/openclaw-weixin@<pin> --pin`（微信插件，走 npmmirror）
 10. 首装：放 `config-templates/openclaw.json` → `~/.openclaw/` + 预填微信 binding + `setup-crew.sh` + 交互收 `AWK_API_KEY` + `openclaw daemon install` + restart
 11. 首装末尾：自动出微信绑定二维码（已绑过则跳过），手机扫码确认即用

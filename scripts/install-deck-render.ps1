@@ -7,8 +7,6 @@ $ErrorActionPreference = 'Stop'
 $tool = Join-Path $Root 'crews\content-producer\skills\expert-video\tools\deck-render'
 $node = Join-Path $Root 'tools\node\node.exe'
 $npm = Join-Path $Root 'tools\node\npm.cmd'
-$browserDir = Join-Path $tool '.browsers'
-$marker = Join-Path $tool '.deck-render-browser'
 foreach ($path in @($node, $npm, (Join-Path $tool 'package.json'))) {
     if (-not (Test-Path $path)) { throw "deck-render dependency missing: $path" }
 }
@@ -66,37 +64,11 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'deck-render npm install failed' }
         } finally { Pop-Location }
     }
-    if ($SkipBrowser) { Write-Host 'deck-render packages/Microsoft YaHei ready; browser skipped by request'; return }
-
-    $browser = $null
-    if (Test-Path $marker) {
-        $parts = (Get-Content $marker -Raw).Trim() -split "`t", 2
-        if ($parts.Count -eq 2 -and $parts[0] -eq '1.61.1') {
-            $candidate = Join-Path $tool $parts[1]
-            if (Test-Path $candidate) { $browser = $candidate }
-        }
-    }
-    if (-not $browser) {
-        Write-Host 'Installing pinned Playwright Chromium headless shell...'
-        New-Item -ItemType Directory -Force -Path $browserDir | Out-Null
-        $oldBrowsersPath = $env:PLAYWRIGHT_BROWSERS_PATH
-        $env:PLAYWRIGHT_BROWSERS_PATH = $browserDir
-        try {
-            $cli = Join-Path $tool 'node_modules\.bin\playwright-core.cmd'
-            & $cli install chromium-headless-shell
-            if ($LASTEXITCODE -ne 0) { throw 'Playwright Chromium install failed' }
-        } finally { $env:PLAYWRIGHT_BROWSERS_PATH = $oldBrowsersPath }
-        $binary = Get-ChildItem $browserDir -Recurse -File | Where-Object {
-            $_.Name -in @('chrome-headless-shell.exe', 'headless_shell.exe')
-        } | Select-Object -First 1
-        if (-not $binary) { throw 'Playwright browser install produced no executable' }
-        $browser = $binary.FullName
-        $relative = $browser.Substring($tool.Length + 1)
-        [System.IO.File]::WriteAllText($marker, "1.61.1`t$relative`n", (New-Object System.Text.UTF8Encoding($false)))
-    }
-    & $browser --version | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Chromium headless shell cannot start: $browser" }
-    Write-Host 'deck-render ready: HyperFrames 0.8.50, Playwright Chromium, Microsoft YaHei'
+    $sharedArgs = @((Join-Path $Root 'scripts\install-playwright.mjs'), '--root', $Root)
+    if ($SkipBrowser) { $sharedArgs += '--skip-browser' }
+    & $node @sharedArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Shared Playwright/Chromium installation failed' }
+    Write-Host 'deck-render ready: HyperFrames 0.8.50, shared Playwright/Chromium, Microsoft YaHei'
 } finally {
     $env:PATH = $oldPath
 }

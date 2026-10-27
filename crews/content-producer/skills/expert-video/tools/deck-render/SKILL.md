@@ -67,4 +67,4 @@ deck-render render /absolute/project/composition --output /absolute/project/rend
 - ❌ 用 `/slideshow` 或 `present` 做可导航 deck 后直接 render；此路径可能只输出第一页。
 - `preview` 产物必须人工检查遮挡、中文、图表、翻页，GATE B 批准后再 render；工具 check 不代替内容审片与甲方闸门。
 
-依赖在本目录 package.json 精确锁定 hyperframes 0.8.50、gsap 3.14.2、playwright-core 1.61.1。安装/更新通过 `scripts/install-deck-render.sh`（Windows 为同名 `.ps1`）装 npm 包与 Chromium headless shell；Linux/macOS 安装 Noto，Windows 使用系统微软雅黑；容器构建时预装进镜像。不要运行 npx 临时下载或自动 upgrade。渲染 CLI 参考：[HyperFrames rendering](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/rendering.mdx)，具体参数以本包锁定版本为准。
+本目录 package.json 仅锁定 hyperframes 0.8.50、gsap 3.14.2。Playwright 版本统一跟随 `browser/package.json`，驱动共用 `browser/node_modules/playwright-core`，Chromium headless shell 仅放在 `browser/.browsers`；不要在技能内安装 Playwright 或下载浏览器。安装/更新通过 `scripts/install-deck-render.sh`（Windows 为同名 `.ps1`）复用共享安装器；Linux/macOS 安装 Noto，Windows 使用系统微软雅黑；容器构建时预装进镜像。不要运行 npx 临时下载或自动 upgrade。渲染 CLI 参考：[HyperFrames rendering](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/rendering.mdx)，具体参数以本包锁定版本为准。

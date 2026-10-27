@@ -833,6 +833,7 @@ function Main {
     if ($LASTEXITCODE -ne 0) { throw "skill Node.js dependency install failed (exit $LASTEXITCODE)" }
     Install-PythonDeps
     Install-AwadaPlugin
+    Install-CamoufoxCli
     Write-Stage "Installing deck-render runtime"
     $deckArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Root 'scripts\install-deck-render.ps1'), '-Root', $Root)
     if ($script:SkipBrowser) { $deckArgs += '-SkipBrowser' }
@@ -840,7 +841,6 @@ function Main {
     if ($LASTEXITCODE -ne 0) { throw "deck-render runtime install failed" }
     $env:PATH = @($env:PATH, [Environment]::GetEnvironmentVariable('Path', 'User'),
         [Environment]::GetEnvironmentVariable('Path', 'Machine')) -join ';'
-    Install-CamoufoxCli
     Install-WeixinPlugin
 
     if ($isUpdate) {

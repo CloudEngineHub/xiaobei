@@ -52,6 +52,7 @@ function run(argv) {
 }
 run([npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund", ...(build ? [] : ["--omit=dev"])]);
 if (build) run([npm, "run", "build"]);
+run([join(root, "scripts", "install-playwright.mjs"), "--root", root, ...(assets ? [] : ["--skip-browser"])]);
 if (!existsSync(join(browser, "dist", "client", "index.js")))
   throw new Error("Browser distribution has no built client");
 const bin = join(root, "bin");

@@ -97,3 +97,9 @@ SKILL.md 是写给**执行时的智能体**看的操作手册，不是开发日�
 **不要**把 skill 的 Node 依赖写进仓根 `package.json`——`apply-addons.sh` 的 per-skill 扫描不读仓根 `package.json` 的 deps，写进去也不会被装。仓根 `package.json` 只管 `packageManager` 字段。
 
 **判断 skill 是否需要 `package.json`**：扫 skill 下所有 `.ts`/`.js`/`.mjs` 的 `import ... from "X"`，过滤掉 `node:` 内置和相对路径，若还有残留（如 `cheerio`、`rss-parser`），就需要。只用 Node 内置模块或相对 import，不需要 `package.json`。
+
+### Playwright 与 Chromium 共用
+
+- 所有技能共用 `browser/package.json` 锁定的 `playwright-core`，仅安装到 `browser/node_modules`；技能不得另声明 `playwright` / `playwright-core` / `@playwright/test`，不得安装 Python Playwright。
+- Chromium headless shell 由 `scripts/install-playwright.mjs` 在安装/升级时预装，唯一缓存是 `browser/.browsers`；不要在技能内下载、回退系统 Chrome 或另建浏览器缓存。
+- Node 使用 `browser/scripts/shared-playwright.mjs`，Python 使用 `browser/bridge/shared_playwright.py`；缺依赖交统一安装器修复，技能执行时不临时下载。平台会话与网页浏览仍走 xiaobei-browser/Camoufox。

@@ -356,14 +356,12 @@ ADDON_ARGS=(--no-build --no-restart)
 "$PROJECT_ROOT/scripts/apply-addons.sh" "${ADDON_ARGS[@]}"
 echo ""
 
-# apply-addons installs npm packages but does not provision the pinned browser
-# or host font. Run the same idempotent step as tarball and Docker installs.
+# Build/provision the shared driver and browser before renderer checks.
+node "$PROJECT_ROOT/scripts/install-browser.mjs" --root "$PROJECT_ROOT" --build --global
+
 echo "🎞️  Ensuring deck-render runtime..."
 "$PROJECT_ROOT/scripts/install-deck-render.sh"
 echo ""
-
-# ─── 6.5. Build and install the shared browser runtime ──────────
-node "$PROJECT_ROOT/scripts/install-browser.mjs" --root "$PROJECT_ROOT" --build --global
 
 # ─── 7. 编译 openclaw dist ──────────────────────────────────────
 echo "🔨 Building openclaw..."

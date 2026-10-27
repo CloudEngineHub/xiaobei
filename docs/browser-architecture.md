@@ -59,6 +59,8 @@ flowchart TD
 | `browser/src/broker/` | 插件生命周期服务、本机认证入口、工具与 CLI 的统一启动所有权 |
 | `test/browser/` | 仓根 ignored 测试、夹具、样例和评测；不强制加入 Git，不塞进正式脚本/skill |
 
+所有技能的 Playwright 统一跟随 `browser/package.json`，驱动只安装在 `browser/node_modules/playwright-core`，Chromium headless shell 只缓存在 `browser/.browsers`。`scripts/install-browser.mjs` 在安装/升级时调用 `scripts/install-playwright.mjs` 预装；deck-render/visual-render、pitch-deck 与 native-ui-card 共用该运行库，Python 技能通过 `browser/bridge/shared_playwright.py` 调用 Node，不另装 Python Playwright。技能安装器拒绝私有 Playwright 声明；运行时缺依赖直接报修复入口，不临时下载或选择系统 Chrome。Camoufox 仍服务平台会话与通用浏览。
+
 `browser/` 是产品运行时，独立依赖树由统一安装器管理。SDK 负责身份生成/映射/启动配置，浏览器内核负责页面实际呈现，Playwright 负责操作；会话、任务所有权、稳定 tab、动作 ref 和结果语义属于我们。公共 `client` / `protocol` 是业务调用边界，直接启动浏览器的本地录制等任务使用受控 driver，不能复制一套 SDK/资产选择逻辑。
 
 `patches/camoufox-cli/` 暂留历史实现。

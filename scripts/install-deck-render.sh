@@ -6,8 +6,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/download-network.sh"
 xiaobei_configure_download_network "$ROOT"
 TOOL="$ROOT/crews/content-producer/skills/expert-video/tools/deck-render"
-BROWSER_DIR="$TOOL/.browsers"
-MARKER="$TOOL/.deck-render-browser"
 SKIP_BROWSER=false
 
 for arg in "$@"; do
@@ -91,27 +89,10 @@ then
 fi
 
 if [ "$SKIP_BROWSER" = true ]; then
+  node "$ROOT/scripts/install-playwright.mjs" --root "$ROOT" --skip-browser
   echo "deck-render packages/fonts ready; browser skipped by request"
   exit 0
 fi
 
-browser=""
-if [ -f "$MARKER" ]; then
-  IFS=$'\t' read -r version relative < "$MARKER" || true
-  if [ "$version" = "1.61.1" ] && [ -n "${relative:-}" ]; then
-    browser="$TOOL/$relative"
-    [ -x "$browser" ] || browser=""
-  fi
-fi
-
-if [ -z "$browser" ]; then
-  echo "Installing pinned Playwright Chromium headless shell..."
-  mkdir -p "$BROWSER_DIR"
-  PLAYWRIGHT_BROWSERS_PATH="$BROWSER_DIR" \
-    "$TOOL/node_modules/.bin/playwright-core" install chromium-headless-shell
-  browser="$(find "$BROWSER_DIR" -type f \( -name chrome-headless-shell -o -name headless_shell \) -print -quit)"
-  [ -n "$browser" ] && [ -x "$browser" ] || { echo "Playwright browser install produced no executable" >&2; exit 1; }
-  printf '1.61.1\t%s\n' "${browser#"$TOOL/"}" > "$MARKER"
-fi
-"$browser" --version >/dev/null || { echo "Chromium headless shell cannot start: $browser" >&2; exit 1; }
-echo "deck-render ready: HyperFrames 0.8.50, Playwright Chromium, Noto Sans CJK SC"
+node "$ROOT/scripts/install-playwright.mjs" --root "$ROOT"
+echo "deck-render ready: HyperFrames 0.8.50, shared Playwright/Chromium, Noto Sans CJK SC"

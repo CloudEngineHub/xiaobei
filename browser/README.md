@@ -48,4 +48,29 @@ The service tracks its own daemon generations. Stopping it drains admitted start
 
 Install/update runs `scripts/configure-browser-plugin.mjs` after the package is built. It registers the product's absolute plugin path, disables the native browser plugin, preserves explicit browser/plugin disables and existing browser options, and migrates exact browser tool policies to `xiaobei_browser`. The script validates staged configuration with the built host, backs up the original and refuses a concurrent config change. Browser source/summary patches are no longer shipped. Current snapshots remain public default ARIA snapshots plus DOM-bound action refs; extraction projections remain planned.
 
-Tests and fixtures live exclusively in ignored repository-root `test/browser/`; they must be transferred separately to other machines. Real E2E uses fresh profiles and local HTTP pages. Recording additionally needs the Playwright-version-specific FFmpeg executable; native Windows/macOS, actual platform logins, deployment, cancellation and special DOM coverage remain separate acceptance items. See the guide for evidence and limitations, including the observed varying `deBG` PNG ancillary chunk on FF156.
+Runtime tests and fixtures live in ignored repository-root `test/browser/`; shared renderer/installer regressions live in `test/shared-playwright/`; they must be transferred separately to other machines. Real E2E uses fresh profiles and local HTTP pages. Recording additionally needs the Playwright-version-specific FFmpeg executable; native Windows/macOS, actual platform logins, deployment, cancellation and special DOM coverage remain separate acceptance items. See the guide for evidence and limitations, including the observed varying `deBG` PNG ancillary chunk on FF156.
+
+## Shared Playwright and Chromium
+
+`browser/package.json` owns the Playwright version for all xiaobei skills. The
+single driver is `browser/node_modules/playwright-core`; the single Chromium
+headless shell cache is `browser/.browsers`, independent of cwd or an inherited
+`PLAYWRIGHT_BROWSERS_PATH`. Normal source, tarball and Docker installation
+preinstalls it through `scripts/install-browser.mjs`. To repair only this runtime:
+
+```bash
+node scripts/install-playwright.mjs
+```
+
+Node callers use `browser/scripts/shared-playwright.mjs` (`launchChromium`,
+`sharedPlaywrightInfo`, `requirePlaywright`); Python callers use
+`browser/bridge/shared_playwright.py`. Skills must not declare their own
+Playwright package or use Python Playwright/system Chrome as another driver.
+Missing assets fail with a repair instruction; skill execution never downloads.
+Camoufox remains the shared browser for platform sessions and browsing.
+
+The installer removes the retired deck-render browser cache and private
+Playwright copies in deck-render/ui-demo after the shared shell is ready. It does
+not remove system Chrome or the user's global Playwright cache, which may serve
+other applications. Chromium revisions follow the owner package and are managed
+in the same cache by Playwright ([browser installation](https://playwright.dev/docs/browsers)).

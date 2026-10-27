@@ -5,16 +5,17 @@ import argparse
 import hashlib
 import html
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 
 from PIL import Image, ImageOps
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / 'browser/bridge'))
+from shared_playwright import render_card, runtime_info
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -170,15 +171,8 @@ def qa_html(spec, avatars, page):
     return out + CHECK
 
 
-def inspect(chrome, html_file):
-    result = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--allow-file-access-from-files", "--virtual-time-budget=1500", "--window-size=1080,1440", "--dump-dom", html_file.as_uri()], capture_output=True, text=True, timeout=40)
-    if result.returncode:
-        raise RuntimeError(f"Chrome DOM 检查失败: {result.stderr[-600:]}")
-    match = re.search(r'<div id="card-check"[^>]*>(.*?)</div>', result.stdout)
-    if not match:
-        raise RuntimeError("Chrome 未返回版面检查结果")
-    check = json.loads(html.unescape(match.group(1)))
-    validate_layout(check)
+def inspect(html_file):
+    validate_layout(render_card(html_file))
 
 
 def validate_layout(check):
@@ -193,10 +187,8 @@ def validate_layout(check):
         raise ValueError("版面溢出：" + "；".join(problems))
 
 
-def screenshot(chrome, html_file, png):
-    result = subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files", "--virtual-time-budget=1500", "--window-size=1080,1440", "--force-device-scale-factor=2", f"--screenshot={png}", html_file.as_uri()], capture_output=True, text=True, timeout=40)
-    if result.returncode or not png.is_file():
-        raise RuntimeError(f"Chrome 截图失败: {result.stderr[-600:]}")
+def screenshot(html_file, png):
+    validate_layout(render_card(html_file, png))
     finish_png(png)
 
 
@@ -205,37 +197,6 @@ def finish_png(png):
         if image.width < SIZE[0] or image.height < SIZE[1]:
             raise ValueError(f"截图尺寸不足: {image.size}")
         image.convert("RGB").crop((0, 0, *SIZE)).save(png)
-
-
-def camoufox_call(session, *command):
-    proc = subprocess.run(["camoufox-cli", "--session", session, "--json", *command], capture_output=True, text=True, timeout=40)
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"camoufox-cli 无有效响应: {proc.stderr[-600:]}") from exc
-    if proc.returncode or not result.get("success"):
-        raise RuntimeError(f"camoufox-cli 失败: {result.get('error', result)}")
-    return result.get("data", {})
-
-
-def camoufox_render(session, html_file, png):
-    camoufox_call(session, "open", html_file.as_uri())
-    check = camoufox_call(session, "eval", "({body:document.body.scrollHeight,flow:document.querySelector('[data-flow]').scrollHeight,available:document.querySelector('[data-flow]').clientHeight,images:[...document.images].every(i=>i.complete&&i.naturalWidth>0)})")["result"]
-    validate_layout(check)
-    dimensions = camoufox_call(session, "eval", "(document.body.style.zoom='2',({width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight}))")["result"]
-    if dimensions["width"] < SIZE[0] or dimensions["height"] < SIZE[1]:
-        raise RuntimeError(f"camoufox-cli 无法生成 2x 截图: {dimensions}")
-    camoufox_call(session, "screenshot", "--full", str(png))
-    finish_png(png)
-
-
-def find_chrome(allow_camoufox=True):
-    system = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
-    if system:
-        return system
-    if allow_camoufox and shutil.which("camoufox-cli"):
-        return None
-    raise RuntimeError("缺少 Chrome/Chromium；请安装用于本地卡片渲染的 Chromium")
 
 
 def main():
@@ -274,40 +235,32 @@ def main():
     # 只有真正由本工具生成的产物存在时才需要 --force 覆盖。
     if not args.force and any(p.exists() for p in targets):
         raise ValueError("输出目录已有本工具生成的产物（page-*.png/html、note.md、body.txt、dna-meta.json 或 assets-manifest.json）；修订时显式加 --force")
-    chrome = find_chrome(allow_camoufox=platform != "douyin")
-    session = f"native-ui-card-{os.getpid()}-{uuid.uuid4().hex[:8]}" if chrome is None else None
+    runtime_info()
     output.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with tempfile.TemporaryDirectory(prefix=f".{output.name}-card-", dir=output.parent) as temporary:
-            stage = Path(temporary)
-            avatars = Avatars(spec_path, stage, spec.get("avatar_sources", {}))
-            for index, name in enumerate(names, 1):
-                content = group_html(spec, avatars) if form == "group" else qa_html(spec, avatars, index)
-                path = stage / f"{name}.html"
-                path.write_text(content)
-                if chrome:
-                    inspect(chrome, path)
-                    screenshot(chrome, path, stage / f"{name}.png")
-                else:
-                    camoufox_render(session, path, stage / f"{name}.png")
-            (stage / "body.txt").write_text(publish_body, encoding='utf-8')
-            (stage / "note.md").write_text(f'# {title}\n\n{publish_body}', encoding='utf-8')
-            (stage / "dna-meta.json").write_text(json.dumps({"platform": platform, "dna_id": required(spec, "dna_id"), "content_type": "post", "form": f"native-ui-{form}"}, ensure_ascii=False, indent=2) + "\n")
-            shutil.copyfile(spec_path, stage / "card.json")
-            (stage / "assets-manifest.json").write_text(json.dumps(avatars.manifest, ensure_ascii=False, indent=2) + "\n")
-            output.mkdir(parents=True, exist_ok=True)
-            if args.force:
-                for page in ("page-01", "page-02", "page-03"):
-                    if page not in names:
-                        for ext in ("html", "png"):
-                            (output / f"{page}.{ext}").unlink(missing_ok=True)
-            shutil.copytree(stage / "assets", output / "assets", dirs_exist_ok=True)
-            for item in stage.iterdir():
-                if item.is_file():
-                    item.replace(output / item.name)
-    finally:
-        if session:
-            subprocess.run(["camoufox-cli", "--session", session, "--json", "close"], capture_output=True, timeout=15)
+    with tempfile.TemporaryDirectory(prefix=f".{output.name}-card-", dir=output.parent) as temporary:
+        stage = Path(temporary)
+        avatars = Avatars(spec_path, stage, spec.get("avatar_sources", {}))
+        for index, name in enumerate(names, 1):
+            content = group_html(spec, avatars) if form == "group" else qa_html(spec, avatars, index)
+            path = stage / f"{name}.html"
+            path.write_text(content)
+            inspect(path)
+            screenshot(path, stage / f"{name}.png")
+        (stage / "body.txt").write_text(publish_body, encoding='utf-8')
+        (stage / "note.md").write_text(f'# {title}\n\n{publish_body}', encoding='utf-8')
+        (stage / "dna-meta.json").write_text(json.dumps({"platform": platform, "dna_id": required(spec, "dna_id"), "content_type": "post", "form": f"native-ui-{form}"}, ensure_ascii=False, indent=2) + "\n")
+        shutil.copyfile(spec_path, stage / "card.json")
+        (stage / "assets-manifest.json").write_text(json.dumps(avatars.manifest, ensure_ascii=False, indent=2) + "\n")
+        output.mkdir(parents=True, exist_ok=True)
+        if args.force:
+            for page in ("page-01", "page-02", "page-03"):
+                if page not in names:
+                    for ext in ("html", "png"):
+                        (output / f"{page}.{ext}").unlink(missing_ok=True)
+        shutil.copytree(stage / "assets", output / "assets", dirs_exist_ok=True)
+        for item in stage.iterdir():
+            if item.is_file():
+                item.replace(output / item.name)
     print(json.dumps({"ok": True, "form": form, "platform": platform, "images": [str(output / f"{n}.png") for n in names], "note": str(output / "note.md"), "body_file": str(output / "body.txt")}, ensure_ascii=False))
 
 
