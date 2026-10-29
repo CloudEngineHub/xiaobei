@@ -52,6 +52,7 @@ Verdict JSON schema (also pretty-printed to stdout):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -253,12 +254,21 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
         die(f"成片不存在: {video}")
 
     review_dir = project_dir / REVIEW_DIR_NAME
-    frames_dir = review_dir / FRAMES_SUBDIR
-    review_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir = review_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    source_hash = sha256(video)
+    # A verdict's evidence must survive other files, repeated reviews and parallel
+    # calls. --output names a report alias; it must never select a shared frame dir.
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{video.stem[:40]}-{source_hash[:12]}-", dir=runs_dir))
+    frames_dir = run_dir / FRAMES_SUBDIR
 
     verdict: dict = {
         "verdict": "pass",
         "file": str(video.resolve()),
+        "review_id": run_dir.name,
+        "report_path": str((run_dir / "verdict.json").resolve()),
+        "source_sha256": source_hash,
+        "source_size_bytes": video.stat().st_size,
         "ffprobe": {},
         "frames": [],
         "audio_level": {},
@@ -311,6 +321,9 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
 
     # ── 2. Frame extraction & black detection ────────────────────────────
     frames = extract_frames(str(video), duration, frames_dir)
+    for frame in frames:
+        if frame.get("path") and Path(frame["path"]).is_file():
+            frame["sha256"] = sha256(Path(frame["path"]))
     verdict["frames"] = frames
     missing = [f for f in frames if f["status"] != "ok"]
     verdict["coverage_missing"] = [{"position_pct": f["position_pct"], "reason": f["error"]} for f in missing]
@@ -420,6 +433,9 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
     if "420" not in pix_fmt:
         verdict["warnings"].append(f"pix_fmt_unusual: {pix_fmt} — 多平台发布建议 yuv420p")
 
+    if sha256(video) != source_hash:
+        verdict["critical"].append("source_changed: source video changed during review; review again")
+
     # ── Final verdict tally ──────────────────────────────────────────────
     if verdict["critical"]:
         verdict["verdict"] = "fail"
@@ -432,18 +448,35 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
     return verdict
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=".verdict-", delete=False) as handle:
+        temp = Path(handle.name)
+        try:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.flush()
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
+
+
 def _finalize(verdict: dict, output_path: Path | None) -> None:
     """Pretty-print verdict to stdout and write JSON."""
     print(json.dumps(verdict, indent=2, ensure_ascii=False))
 
-    if output_path is None:
-        # Default: write to <project-dir>/review/verdict.json
-        # output_path is None means caller didn't specify — we already have review_dir
-        # but we don't here. Simpler: caller always passes output_path.
-        return
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(verdict, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n[ok] verdict written to {output_path}", file=sys.stderr)
+    atomic_json(Path(verdict["report_path"]), verdict)
+    if output_path is not None:
+        atomic_json(output_path, verdict)
+        print(f"\n[ok] verdict written to {output_path}", file=sys.stderr)
 
 
 def main() -> None:

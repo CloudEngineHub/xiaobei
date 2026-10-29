@@ -6,14 +6,44 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from html.parser import HTMLParser
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import re
 
 DECK_TOOL = Path(__file__).resolve().parents[2] / 'deck-render'
 sys.path.insert(0, str(DECK_TOOL / 'scripts'))
 from font_policy import font_css, font_family
+
+
+def check_fonts(project):
+    """Catch replaced scaffold CSS before an expensive browser render."""
+    class VisibleText(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hidden = 0
+            self.text = []
+        def handle_starttag(self, tag, attrs):
+            if tag in ('script', 'style'):
+                self.hidden += 1
+        def handle_endtag(self, tag):
+            if tag in ('script', 'style'):
+                self.hidden = max(0, self.hidden-1)
+        def handle_data(self, data):
+            if not self.hidden:
+                self.text.append(data)
+    pages = [project/'index.html', *sorted((project/'compositions').glob('*.html'))]
+    css = '\n'.join(path.read_text(encoding='utf-8') for path in (project/'assets').rglob('*.css'))
+    for page in pages:
+        markup = page.read_text(encoding='utf-8')
+        parser = VisibleText()
+        parser.feed(markup)
+        if re.search(r'[\u3400-\u9fff]', ''.join(parser.text)):
+            styles = markup+'\n'+css
+            if font_family() not in styles or not re.search(r'@font-face\s*\{[^}]*\blocal\s*\(', styles, re.S):
+                raise ValueError(f'{page}: 中文文字缺少本机字体声明；保留 scaffold 的 @font-face/local() 与 font-family，勿整页覆盖后丢弃')
 
 
 def positive_int(raw):
@@ -90,6 +120,7 @@ def main():
         return
     if not (args.project / 'index.html').is_file():
         raise ValueError('缺少 composition/index.html')
+    check_fonts(args.project.resolve())
     wrapper = str(DECK_TOOL / 'deck-render.sh')
     command = [wrapper, args.command, str(args.project.resolve())]
     if args.command != 'check':

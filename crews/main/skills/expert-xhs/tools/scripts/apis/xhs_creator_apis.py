@@ -5,6 +5,7 @@ import time
 
 from loguru import logger
 from apis.xhs_readiness import VideoReadinessError, classify_transcode
+from apis.xhs_submission import NoteSubmissionError, new_submission
 
 from xhs_utils.http_util import REQUEST_TIMEOUT
 from xhs_utils.xhs_core.http import ordered_wire_headers
@@ -573,6 +574,21 @@ class XHS_Creator_Apis:
 
     def post_note(self, noteInfo, proxies=None):
         """发布图文或视频笔记；登录和签名参数由 ``self.auth`` 自动提供。"""
+        progress = new_submission()
+        try:
+            return self._post_note(noteInfo, proxies, progress)
+        except VideoReadinessError as exc:
+            exc.submission = dict(progress)
+            raise
+        except NoteSubmissionError:
+            raise
+        except Exception as exc:
+            # Only the note POST can create a publication. Uploads, signing,
+            # topic lookup and response parsing must not share one unknown flag.
+            code = 'SUBMISSION_UNKNOWN' if progress['submission_attempted'] else 'PRE_SUBMISSION_FAILED'
+            raise NoteSubmissionError(code, str(exc), progress) from exc
+
+    def _post_note(self, noteInfo, proxies, progress):
         post_api = "/web_api/sns/v2/note"
         title = noteInfo.get('title', '')
         desc = noteInfo.get('desc', '')
@@ -582,6 +598,27 @@ class XHS_Creator_Apis:
         media_type = noteInfo.get('media_type', 'image')
         readiness = None
 
+        # Resolve every topic before expensive uploads. Never silently drop a
+        # user's tag, and never classify a topic miss as a possible note POST.
+        progress['stage'] = 'topics'
+        resolved_topics = []
+        for topic in noteInfo.get('topics') or []:
+            success, msg, result = self.get_topic(topic, proxies=proxies)
+            if not success:
+                raise NoteSubmissionError('TOPIC_LOOKUP_FAILED', msg, progress)
+            candidates = (result.get('data') or {}).get('topic_info_dtos') if isinstance(result, dict) else None
+            if not isinstance(candidates, list):
+                raise NoteSubmissionError('TOPIC_LOOKUP_FAILED', '话题查询响应格式异常', progress)
+            # Search results are not an exact-match contract: never select a
+            # different topic just because it happens to rank first.
+            matches = [item for item in candidates if isinstance(item, dict) and item.get('name') == topic]
+            if not candidates or not matches:
+                raise NoteSubmissionError('TOPIC_NOT_FOUND', f'未找到话题{topic}', progress)
+            if len(matches) != 1 or not matches[0].get('id') or not matches[0].get('link'):
+                raise NoteSubmissionError('TOPIC_LOOKUP_FAILED', f'话题{topic}没有唯一有效结果', progress)
+            resolved_topics.append(matches[0])
+
+        progress['stage'] = 'location'
         if location is not None:
             success, msg, location_info = self.get_location_info(
                 location,
@@ -602,6 +639,7 @@ class XHS_Creator_Apis:
         else:
             post_loc = {}
 
+        progress['stage'] = 'upload'
         if media_type == 'video':
             video = noteInfo.get('video')
             if not video:
@@ -614,9 +652,11 @@ class XHS_Creator_Apis:
             success, msg, fileInfo = self.upload_media(video, media_type, proxies=proxies)
             if not success:
                 raise RuntimeError(msg)
+            progress['media_uploaded'] = True
             success, msg, coverInfo = self.upload_media(cover, 'image', proxies=proxies)
             if not success:
                 raise RuntimeError(msg)
+            progress['stage'] = 'readiness'
             for _ in range(TRANSCODE_MAX_RETRIES):
                 success, msg, res = self.query_transcode(
                     fileInfo['video_id'],
@@ -635,6 +675,7 @@ class XHS_Creator_Apis:
                 time.sleep(TRANSCODE_RETRY_DELAY)
             else:
                 raise VideoReadinessError(readiness or {'state': 'pending'})
+            progress['stage'] = 'payload'
             data = get_post_note_video_data(
                 title,
                 desc,
@@ -658,7 +699,9 @@ class XHS_Creator_Apis:
                 )
                 if not success:
                     raise RuntimeError(msg)
+                progress['media_uploaded'] = True
                 fileInfos.append(fileInfo)
+            progress['stage'] = 'payload'
             data = get_post_note_image_data(
                 title,
                 desc,
@@ -682,14 +725,7 @@ class XHS_Creator_Apis:
                 business_binds, ensure_ascii=False, separators=(',', ':'),
             )
 
-        topics = noteInfo.get('topics') or []
-        for topic in topics:
-            success, msg, res_json = self.get_topic(topic, proxies=proxies)
-            if not success:
-                raise RuntimeError(msg)
-            if len(res_json['data']['topic_info_dtos']) == 0:
-                raise RuntimeError(f'未找到话题{topic}')
-            topic_info = res_json['data']['topic_info_dtos'][0]
+        for topic_info in resolved_topics:
             insert_topic = {
                 "id": topic_info['id'],
                 "link": topic_info['link'],
@@ -704,6 +740,7 @@ class XHS_Creator_Apis:
         # 浏览器实抓（2026-07-25 reqid=5609）：post_note 的 referer 是站点根路径
         # "https://creator.xiaohongshu.com/"，不是发布页完整 URL（fetch 封装层
         # 默认行为）；permit 请求才带发布页 URL。
+        progress['stage'] = 'sign'
         headers, cookies, body = self._request_params(
             post_api,
             data,
@@ -720,6 +757,7 @@ class XHS_Creator_Apis:
         )
         # 本地接入只提交一次。code=-1 或响应丢失时，调用方先人工核对后台，
         # 避免在平台已经收单但回包异常时创建重复笔记。
+        progress.update(stage='submitting', submission_attempted=True)
         response = self.http.post(
             self.edith_url + post_api,
             headers=headers,
@@ -728,11 +766,19 @@ class XHS_Creator_Apis:
             proxies=self._proxies(proxies),
             timeout=REQUEST_TIMEOUT,
         )
+        progress['stage'] = 'response'
         res_json = response.json()
-        if readiness is not None:
-            res_json['_xiaobei_publication'] = {'readiness': readiness}
+        if not isinstance(res_json, dict) or type(res_json.get('success')) is not bool:
+            raise NoteSubmissionError('SUBMISSION_UNKNOWN', '发布响应缺少明确的接受/拒绝状态', progress)
         # 成功响应为 {"result":0,"success":true,"msg":"",...}，部分响应缺 msg 字段
         success = bool(res_json.get("success"))
+        if not success and (res_json.get('code') == -1 or res_json.get('result') == -1
+                            or type(response.status_code) is int and response.status_code >= 500):
+            raise NoteSubmissionError('SUBMISSION_UNKNOWN', '发布接口返回通用/服务端错误，收单结果待核实', progress)
+        progress['stage'] = 'accepted' if success else 'rejected'
+        res_json['_xiaobei_publication'] = dict(progress)
+        if readiness is not None:
+            res_json['_xiaobei_publication']['readiness'] = readiness
         msg = res_json.get("msg") or res_json.get("message") or (
             "成功" if success else "发布失败"
         )

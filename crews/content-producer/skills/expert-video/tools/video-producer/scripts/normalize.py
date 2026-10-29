@@ -32,11 +32,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from media_integrity import file_sha256, verify_track_copy
 
 # 平台通用标准——不动这套阈值除非平台规范变了
 DEFAULT_TARGET_LUFS = -14.0
@@ -97,7 +101,7 @@ def normalize(video: str, output: str, target_lufs: float,
     output_i = float(m.get("output_i", DEFAULT_TARGET_LUFS))
     output_tp = float(m.get("output_tp", DEFAULT_TRUE_PEAK_DB))
     output_lra = float(m.get("output_lra", DEFAULT_LRA))
-    normalization_i = float(m.get("normalization_i", 0))
+    normalization_i = float(m.get("target_offset", 0))
     normalization_tp = float(m.get("normalization_tp", 0))
     normalization_lra = float(m.get("normalization_lra", 0))
 
@@ -118,7 +122,7 @@ def normalize(video: str, output: str, target_lufs: float,
             f"measured_thresh={input_thresh}:offset={normalization_i}:"
             f"linear=true:print_format=summary"
         ),
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
         output,
@@ -157,11 +161,46 @@ def main() -> None:
                         help=f"loudness range 目标，默认 {DEFAULT_LRA}")
     parser.add_argument("--silent-ok", action="store_true",
                         help="明确批准无声交付时核验无音轨、原样输出并记录不适用；有音轨仍正常归一化")
+    parser.add_argument("--locked-audio", type=Path,
+                        help="锁定原混音的源文件：仅测量响度并逐包验证成片音轨，禁止重编码或生成媒体")
+    parser.add_argument("--report", type=Path,
+                        help="locked-audio 模式审核 JSON 路径（默认 <video>.normalization.json）")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
     if not video_path.is_file():
         die(f"输入视频不存在: {video_path}")
+
+    if args.locked_audio:
+        reference = args.locked_audio.resolve()
+        if args.output or args.silent_ok or not reference.is_file():
+            die("--locked-audio 需存在的原音源，且不能与 --output/--silent-ok 同用")
+        report = args.report.resolve() if args.report else video_path.with_suffix('.normalization.json')
+        if report in (video_path, reference):
+            die("报告不得覆盖输入")
+        hashes = {str(path): file_sha256(path) for path in (reference, video_path)}
+        try:
+            verification = verify_track_copy(reference, video_path, 'a')
+        except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            die(str(exc), 2)
+        measured = ffprobe_loudness(str(video_path), args.target_lufs, args.true_peak, args.lra)
+        if not measured or not all(math.isfinite(float(measured.get(k, 'nan'))) for k in ('input_i', 'input_tp')):
+            die("锁定音轨响度测量失败或音轨无有效声音", 2)
+        if any(file_sha256(Path(path)) != value for path, value in hashes.items()):
+            die("审核时音源或成片发生变化，重新审核", 2)
+        record = {'stage': '13c', 'status': 'preserved_locked_audio', 'input': str(video_path),
+                  'reference': str(reference), 'source_sha256': hashes,
+                  'audio_verification': verification, 'measurement': measured,
+                  'target_lufs': args.target_lufs, 'target_true_peak': args.true_peak,
+                  'at_target': abs(float(measured['input_i'])-args.target_lufs) < .3
+                               and float(measured['input_tp']) <= args.true_peak,
+                  'policy': '保留甲方锁定混音；偏离目标如实记录，禁止自动归一化'}
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps(record, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+        return
+    if args.report:
+        die("--report 仅用于 --locked-audio")
 
     if args.output:
         out_path = Path(args.output).resolve()

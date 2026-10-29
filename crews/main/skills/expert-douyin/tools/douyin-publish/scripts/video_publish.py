@@ -22,6 +22,7 @@ PERSISTENT_SESSION = SESSION
 UPLOAD_TIMEOUT_S = 300
 TRANSCODE_MAX_WAIT_S = 600
 POST_PUBLISH_MAX_WAIT_S = 60
+WORK_LIST_MAX_PAGES = 50
 TITLE_SELECTOR = 'input[placeholder*="填写作品标题"]'
 CAPTION_SELECTOR = '[contenteditable="true"][data-slate-editor="true"]'
 WORK_LIST_URL = ('https://creator.douyin.com/janus/douyin/creator/pc/work_list'
@@ -31,13 +32,19 @@ DRAFT_HINT = '保留当前页面；用 edit-draft 继续编辑并检查视频、
 RESULT_HINT = '用 resume/get-link 核查本次作品，勿重跑 run 或重复点发布；未确认成功时可检查原草稿'
 MODAL_DOM = r'''
   const modalVisible=e=>!!(e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+  const coverGuide=e=>/设置横封面获更多流量/.test(e.innerText||'') &&
+    !e.querySelector('input[type="file"]') &&
+    Array.from(e.querySelectorAll('button,[role="button"]')).some(b=>(b.innerText||'').trim()==='暂不设置') &&
+    Array.from(e.querySelectorAll('button,[role="button"]')).some(b=>(b.innerText||'').trim()==='设置横封面');
   const matchingModals=kind=>{
     const pattern=kind==='declaration' ? /对作品内容添加声明|内容由AI生成/ : /封面/;
     const roots=Array.from(document.querySelectorAll('[role="dialog"],[role="modal"],.semi-modal,.semi-modal-content'))
       .filter(e=>modalVisible(e) && pattern.test(e.innerText||''));
     // Semi wraps one modal in several matching nodes. Count the innermost
     // content roots, rather than treating its mask/header/footer as dialogs.
-    return roots.filter(e=>!roots.some(child=>child!==e && e.contains(child)));
+    const innermost=roots.filter(e=>!roots.some(child=>child!==e && e.contains(child)));
+    return kind==='cover-guide' ? innermost.filter(coverGuide) :
+      kind==='cover' ? innermost.filter(e=>!coverGuide(e)) : innermost;
   };
   const coverQualityReason=text=>/封面边框面积过大|边框面积过大/.test(text) ? 'COVER_BORDER_TOO_LARGE' :
     /封面存在文字展示不全/.test(text) ? 'COVER_TEXT_UNSAFE' : /封面不佳/.test(text) ? 'COVER_QUALITY_REJECTED' : '';
@@ -83,7 +90,7 @@ def evaluate(session, js):
 
 def modal_scope(session, kind, *, required=True):
     """Mark a unique visible modal of the required purpose, never a global button."""
-    prefix = {'declaration': 'AIGC', 'cover': 'COVER'}[kind]
+    prefix = {'declaration': 'AIGC', 'cover': 'COVER', 'cover-guide': 'COVER_GUIDE'}[kind]
     selector = f'[data-xiaobei-modal-target="{kind}"]'
     count = evaluate(session, '(() => {' + MODAL_DOM + f'''
       document.querySelectorAll({json.dumps(selector)}).forEach(e=>e.removeAttribute('data-xiaobei-modal-target'));
@@ -106,6 +113,19 @@ def complete_open_declaration(session):
     # A failed fill can leave the declaration overlay blocking the page inputs.
     if modal_scope(session, 'declaration', required=False) and not _select_ai_declaration(session):
         raise PublishError('AIGC_DECLARATION_MISSING', DRAFT_HINT)
+
+
+def dismiss_cover_guide(session):
+    """Close only the observed recommendation overlay, using a native click."""
+    scope = modal_scope(session, 'cover-guide', required=False)
+    if not scope:
+        return
+    click_text(session, '暂不设置', scope=scope)
+    deadline = time.monotonic() + 5
+    while modal_scope(session, 'cover-guide', required=False):
+        if time.monotonic() >= deadline:
+            raise PublishError('COVER_GUIDE_NOT_CLOSED', '横封面引导未关闭，保留当前草稿，不穿透遮罩操作')
+        time.sleep(.2)
 
 
 def state_path():
@@ -278,6 +298,7 @@ def page_status(session):
       const caption=document.querySelector('[contenteditable="true"][data-slate-editor="true"]');
       const declarationDialog=matchingModals('declaration').length>0;
       const coverDialog=matchingModals('cover').length>0;
+      const coverEditors=matchingModals('cover');
       const coverControls=Array.from(document.querySelectorAll('[class*="coverControl"]')).filter(visible);
       const hasPreview=e=>Array.from(e.querySelectorAll('img')).some(i=>
         i.complete && i.naturalWidth>=120 && i.naturalHeight>=120 && !!i.getAttribute('src')) ||
@@ -299,6 +320,8 @@ def page_status(session):
         caption:caption ? caption.innerText||'' : null,
         title:title ? title.value : '',dual_cover_ready:covers && !missing && !coverDialog,cover_missing:missing,
         cover_quality_error:!!qualityReason,cover_quality_reason:qualityReason,sms_required:sms,rejected:rejected,
+        cover_guide:matchingModals('cover-guide').length>0,
+        cover_editor_kind:coverEditors.length===1 ? coverEditorKind(coverEditors[0]) : '',
         aigc:text.includes('内容由AI生成') && !text.includes('请选择自主声明') && !declarationDialog};
     })()''')
     if not isinstance(result, dict):
@@ -405,13 +428,11 @@ def cmd_edit_draft(*, session=SESSION, confirm_unpublished=False):
         status = page_status(session)
         if status['sms_required']:
             raise PublishError('SMS_VERIFICATION_REQUIRED', '先完成当前短信验证，不清除验证任务', 4)
-        item = matching_work(state, work_items(session))
+        item = reconcile(state, session)
         if item:
-            state.update(state='published', aweme_id=item['id'])
-            save_state(state)
             return published_result(state)
         state['state'] = 'draft'
-        for field in ('submitted_at', 'baseline_ids', 'sms_requested', 'aweme_id'):
+        for field in ('submitted_at', 'baseline_ids', 'sms_requested', 'aweme_id', 'account_id', 'reconciliation'):
             state.pop(field, None)
         save_state(state)
         if '/content/manage' in status['url']:
@@ -481,6 +502,7 @@ def cover_editor_kind(session):
 
 def open_cover_editor(session, horizontal):
     """Enter a named cover slot and prove the editor kind before selecting a file."""
+    dismiss_cover_guide(session)
     kind, label = ('horizontal', '横封面') if horizontal else ('vertical', '竖封面')
     scope = modal_scope(session, 'cover', required=False)
     if not scope:
@@ -549,12 +571,14 @@ def open_cover_editor(session, horizontal):
             evaluate(session, "document.querySelectorAll('[data-xiaobei-cover-entry]').forEach(e=>e.removeAttribute('data-xiaobei-cover-entry'))")
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
+            dismiss_cover_guide(session)
             scope = modal_scope(session, 'cover', required=False)
             if scope:
                 break
             time.sleep(0.2)
         if not scope:
             raise PublishError('COVER_DIALOG_MISSING', DRAFT_HINT)
+    dismiss_cover_guide(session)
     if cover_editor_kind(session) != kind:
         # Some versions share one modal and expose the two cover types as tabs.
         # Only a tab IN this editor can switch it; page preview tabs are unrelated.
@@ -784,15 +808,24 @@ def cmd_cover(*, session, cover_vertical, cover_horizontal):
     vertical, horizontal = validate_cover(cover_vertical), validate_cover(cover_horizontal)
     check_no_pending()
     complete_open_declaration(session)
+    dismiss_cover_guide(session)
     initial = page_status(session)
     if not initial['video_ready']:
-        raise PublishError('VIDEO_NOT_UPLOADED', DRAFT_HINT)
+        initial = restore_video_preview(session, initial)
+        # An existing editor can temporarily unmount the player. Continue editing
+        # only the known draft; final preflight still requires a ready video.
+        if not initial['video_ready'] and not (known_draft(initial) and
+                initial.get('cover_editor_kind') in {'vertical', 'horizontal'}):
+            raise PublishError('VIDEO_NOT_UPLOADED', DRAFT_HINT)
     if not modal_scope(session, 'cover', required=False):
         browser(session).command('press', 'Escape')
     # Slate topic suggestions can remain after Tab and intercept cover clicks.
     evaluate(session, "Array.from(document.querySelectorAll('[class*=\"publish-mention-wrapper\"]')).forEach(w=>{w.style.display='none';w.style.visibility='hidden';})")
     with tempfile.TemporaryDirectory(prefix='douyin-covers-') as temporary:
-        for is_horizontal, source, ratio in ((False, vertical, (3, 4)), (True, horizontal, (4, 3))):
+        covers = [(False, vertical, (3, 4)), (True, horizontal, (4, 3))]
+        if initial.get('cover_editor_kind') == 'horizontal':
+            covers.reverse()  # Finish the existing editor before opening the other orientation.
+        for is_horizontal, source, ratio in covers:
             output = Path(temporary) / ('horizontal.jpg' if is_horizontal else 'vertical.jpg')
             size = prepare_cover(source, output, ratio)
             open_cover_editor(session, is_horizontal)
@@ -818,6 +851,7 @@ def cmd_cover(*, session, cover_vertical, cover_horizontal):
                 if time.monotonic() >= deadline:
                     raise PublishError('COVER_EDITOR_NOT_CLOSED', '封面编辑器保存后未关闭；保留草稿，先处理当前弹窗再续编')
                 time.sleep(0.3)
+            dismiss_cover_guide(session)
     def covers_ready(status):
         if status['cover_quality_error']:
             code = status.get('cover_quality_reason') or 'COVER_TEXT_UNSAFE'
@@ -841,12 +875,49 @@ def is_draft_url(url):
             and parsed.path in {'/creator-micro/content/upload', '/creator-micro/content/post/video'})
 
 
+def known_draft(status):
+    state = read_state()
+    return (state.get('state') == 'draft' and bool(state.get('video')) and bool(state.get('title'))
+            and is_draft_url(status['url']) and status['title'] == state['title']
+            and not status['busy'] and not status['sms_required'] and not status['rejected']
+            and (state.get('caption') is None or status.get('caption') is not None
+                 and editor_text_matches(status['caption'], state['caption'])))
+
+
+def restore_video_preview(session, status):
+    """Return from cover preview to video, without reloading or re-uploading."""
+    if (status['video_ready'] or status.get('video_sources') or not known_draft(status)
+            or status.get('cover_editor_kind') or status.get('cover_guide')):
+        return status
+    count = evaluate(session, '''(() => {
+      document.querySelectorAll('[data-xiaobei-video-preview]').forEach(e=>e.removeAttribute('data-xiaobei-video-preview'));
+      const tabs=Array.from(document.querySelectorAll('[class*="tabItem"],[role="tab"]')).filter(e=>
+        e.getClientRects().length && getComputedStyle(e).visibility!=='hidden' && (e.innerText||'').trim()==='预览视频');
+      if(tabs.length===1)tabs[0].setAttribute('data-xiaobei-video-preview','1');
+      return tabs.length;
+    })()''')
+    if count == 0:
+        return status
+    if type(count) is not int or count != 1:
+        raise PublishError('COVER_PREVIEW_TAB_AMBIGUOUS', DRAFT_HINT)
+    try:
+        click_selector(session, '[data-xiaobei-video-preview]')
+    finally:
+        evaluate(session, "document.querySelectorAll('[data-xiaobei-video-preview]').forEach(e=>e.removeAttribute('data-xiaobei-video-preview'))")
+    current = wait_for(session, lambda s: s['video_ready'], 15, 'VIDEO_NOT_UPLOADED')
+    if not known_draft(current):
+        raise PublishError('DRAFT_CHANGED_AFTER_COVER', DRAFT_HINT)
+    return current
+
+
 def restore_cover_video(session, status):
+    status = restore_video_preview(session, status)
     state = read_state()
     recovery = state.get('cover_recovery', {})
     # Only the observed cover-induced DOM removal warrants reopening a draft.
     # Never reload an uploading video, an SMS challenge, or a submitted task.
     if (status['video_ready'] or status.get('video_sources') or status['busy']
+            or status.get('cover_guide') or status.get('cover_editor_kind')
             or status['sms_required'] or state.get('state') != 'draft' or not recovery
             or recovery.get('attempted') or recovery.get('url') != status['url']
             or not is_draft_url(status['url']) or not status['dual_cover_ready']
@@ -880,6 +951,8 @@ def restore_cover_video(session, status):
 
 def preflight(session):
     status = restore_cover_video(session, page_status(session))
+    if status.get('cover_guide'):
+        raise PublishError('COVER_GUIDE_OPEN', '横封面引导仍在；用 video cover 处理当前草稿并核验双封面后继续')
     if not status['title'].strip():
         raise PublishError('TITLE_MISSING', DRAFT_HINT)
     validate_content(status['title'], read_state().get('caption', ''))
@@ -904,17 +977,55 @@ def preflight(session):
     return status
 
 
-def work_items(session):
+def work_items(session, *, since=None):
+    """Read the current account's list without navigating away from its draft.
+
+    A reconciliation scans every page in the submission time range, so a
+    matching item on page one cannot hide a second match on page two.
+    """
+    items, seen, cursor = [], set(), None
+    previous_oldest = None
+    for _ in range(WORK_LIST_MAX_PAGES if since is not None else 1):
+        result = work_page(session, cursor)
+        page = result['items']
+        if not isinstance(page, list):
+            raise PublishError('WORK_LIST_INVALID', RESULT_HINT, 3)
+        if since is not None:
+            times = [it.get('ct') for it in page]
+            if (any(type(ct) not in (int, float) or not math.isfinite(ct) or ct <= 0 for ct in times)
+                    or any(b > a for a,b in zip(times, times[1:]))
+                    or times and previous_oldest is not None and times[0] > previous_oldest):
+                raise PublishError('WORK_LIST_ORDER_UNCONFIRMED', '作品列表时间顺序异常；'+RESULT_HINT, 3)
+            if times:
+                previous_oldest = times[-1]
+        for item in page:
+            if item['id'] not in seen:
+                items.append(item)
+                seen.add(item['id'])
+        if since is None or not result.get('has_more') or page and page[-1]['ct'] < since:
+            return items
+        next_cursor = result.get('cursor')
+        if not page or next_cursor is None or str(next_cursor) == str(cursor):
+            raise PublishError('WORK_LIST_PAGINATION_INVALID', RESULT_HINT, 3)
+        cursor = next_cursor
+    raise PublishError('WORK_LIST_SCAN_LIMIT', '相关时间范围作品未遍历完整；'+RESULT_HINT, 3)
+
+
+def work_page(session, cursor=None):
     # Quote integer IDs before parsing in JS, preserving all 19 digits.
     js = f'''(async () => {{
-      const response=await fetch({json.dumps(WORK_LIST_URL)},{{credentials:'include'}});
+      const url=new URL({json.dumps(WORK_LIST_URL)});
+      if({json.dumps(cursor)}!==null)url.searchParams.set('max_cursor',String({json.dumps(cursor)}));
+      const response=await fetch(url.href,{{credentials:'include'}});
       if (!response.ok) return {{error:'WORK_LIST_HTTP_ERROR'}};
       const raw=await response.text();
-      const data=JSON.parse(raw.replace(/("(?:aweme_id|item_id)"\\s*:\\s*)(\\d+)(?=\\s*[,}}])/g,'$1"$2"'));
+      const data=JSON.parse(raw.replace(/("(?:aweme_id|item_id|uid)"\\s*:\\s*)(\\d+)(?=\\s*[,}}])/g,'$1"$2"'));
       if (data.status_code!==0) return {{error:data.status_code===8?'SESSION_EXPIRED':'WORK_LIST_REJECTED'}};
       if (!Array.isArray(data.aweme_list)) return {{error:'WORK_LIST_INVALID'}};
-      return {{items:data.aweme_list.map(it=>({{
+      return {{has_more:!!data.has_more,cursor:data.max_cursor,items:data.aweme_list.map(it=>({{
         id:String(it.aweme_id||it.item_id||''),ct:Number(it.create_time||0),
+        author_id:String(it.author?.uid||''),
+        description:String(it.desc||(it.aweme_desc && (it.aweme_desc.text||''))||''),
         title:String(it.title||it.aweme_title||(it.aweme_desc && (it.aweme_desc.title||it.aweme_desc.text))||it.desc||'')
       }})).filter(it=>/^\\d{{15,22}}$/.test(it.id))}};
     }})()'''
@@ -928,7 +1039,17 @@ def work_items(session):
     if not isinstance(result, dict) or 'items' not in result:
         code = result.get('error', 'WORK_LIST_INVALID') if isinstance(result, dict) else 'WORK_LIST_INVALID'
         raise PublishError(code, RESULT_HINT, 2 if code == 'SESSION_EXPIRED' else 3)
-    return result['items']
+    return result
+
+
+def publication_text(text):
+    """Normalize observed paragraph formatting, preserving words and spaces.
+
+    Creator transforms blank lines into space+newline. Keep intraline spaces,
+    width, punctuation and format characters: 'A B' must never match 'AB'.
+    """
+    text = unicodedata.normalize('NFC', text).replace('\r\n', '\n').replace('\r', '\n').replace('\u00a0', ' ')
+    return '\n'.join(line.strip(' \t') for line in text.split('\n') if line.strip(' \t')).strip()
 
 
 def matching_work(state, items):
@@ -937,19 +1058,35 @@ def matching_work(state, items):
     accepted = {title}
     if state.get('caption'):
         accepted.update({title+'\n'+state['caption'], title+' '+state['caption']})
-    def normalized(text):
-        # Preserve meaningful spaces, width and format characters when linking
-        # a submitted work. Editor input normalization is deliberately broader.
-        return unicodedata.normalize('NFC', text).replace('\r\n', '\n').replace('\r', '\n').replace('\u00a0', ' ').strip()
     candidates = [it for it in items if it['id'] not in old and it['ct'] >= state['submitted_at']-5
-                  and any(normalized(it['title']) == normalized(expected) for expected in accepted)]
+                  and any(publication_text(it['title']) == publication_text(expected) for expected in accepted)
+                  and (not state.get('caption') or not it.get('description') or
+                       any(publication_text(it['description']) == publication_text(expected)
+                           for expected in (state['caption'], title+'\n'+state['caption'], title+' '+state['caption'])))]
+    if state.get('account_id') and any(it.get('author_id') != state['account_id'] for it in candidates):
+        raise PublishError('PUBLISH_ACCOUNT_UNCONFIRMED', '候选作品作者与本次提交账号不一致或缺失；'+RESULT_HINT, 3)
     if len(candidates) > 1:
         raise PublishError('PUBLISH_RESULT_AMBIGUOUS', RESULT_HINT, 3)
     return candidates[0] if candidates else None
 
 
+def reconcile(state, session):
+    items = work_items(session, since=state['submitted_at']-5)
+    item = matching_work(state, items)
+    baseline = set(state['baseline_ids'])
+    state['reconciliation'] = {'checked_at': int(time.time()), 'items_scanned': len(items),
+                               'recent_new_items': sum(it['id'] not in baseline
+                                                       and it['ct'] >= state['submitted_at']-5 for it in items),
+                               'matched': bool(item)}
+    if item:
+        state.update(state='published', aweme_id=item['id'])
+    save_state(state)
+    return item
+
+
 def published_result(state):
     return {'ok': True, 'state': 'published', 'session': SESSION, 'aweme_id': state['aweme_id'],
+            'accepted': True, 'id_resolved': True, 'submission_attempted': True,
             'url': 'https://www.douyin.com/video/' + state['aweme_id']}
 
 
@@ -971,17 +1108,10 @@ def cmd_resume(*, session=SESSION, timeout=POST_PUBLISH_MAX_WAIT_S):
             state['state'] = 'unconfirmed'
             save_state(state)
             raise PublishError('PLATFORM_REJECTED', status['rejected']+'；'+RESULT_HINT, 3)
-        if '/creator-micro/content/manage' in status['url']:
-            item = matching_work(state, work_items(session))
-            if item:
-                state.update(state='published', aweme_id=item['id'])
-                save_state(state)
-                return published_result(state)
-        # Surface validation blockers immediately instead of waiting for an unrelated navigation.
-        elif time.monotonic()-started >= 6 and (not status['video_ready'] or not status['title'].strip() or not status['dual_cover_ready'] or status['cover_quality_error']):
-            state['state'] = 'unconfirmed'
-            save_state(state)
-            raise PublishError('PUBLISH_BLOCKED', DRAFT_HINT+'；'+RESULT_HINT, 3)
+        # The UI may retain the upload URL or unmount its form after a successful
+        # POST. Missing draft fields after clicking do not prove publish failure.
+        if reconcile(state, session):
+            return published_result(state)
         time.sleep(2)
     state['state'] = 'unconfirmed'
     save_state(state)
@@ -999,6 +1129,11 @@ def cmd_publish(*, session):
     state = read_state()
     state.update(state='submitted', title=current['title'], submitted_at=int(time.time()),
                  baseline_ids=[it['id'] for it in baseline])
+    account_ids = {it['author_id'] for it in baseline if it.get('author_id')}
+    state.pop('account_id', None)
+    if len(account_ids) == 1:
+        state['account_id'] = account_ids.pop()
+    state.pop('reconciliation', None)
     state.pop('aweme_id', None)
     state.pop('sms_requested', None)
     save_state(state)  # Persist before clicking: a transport failure must never cause automatic resubmit.
@@ -1144,6 +1279,9 @@ def execute(args):
             hint = '本次提交结果未知；验证页面已丢失或登录失效时用 douyin-publish login --resume-video 恢复同一 profile，登录后 resume 核查原作品，勿重发'
         print(json.dumps({'ok': False, 'error': exc.code, 'state': state.get('state', 'idle'),
                           'publish_attempted': state.get('state') in PENDING_STATES | {'published'},
+                          'submission_attempted': state.get('state') in PENDING_STATES | {'published'},
+                          'accepted': None, 'id_resolved': False,
+                          'reconciliation': state.get('reconciliation'),
                           'hint': hint, 'session': SESSION}, ensure_ascii=False))
         return exc.exit_code
     except Exception as exc:
@@ -1155,6 +1293,8 @@ def execute(args):
                                  for frame in traceback.extract_tb(exc.__traceback__)]}
         print(json.dumps({'ok': False, 'error': 'BROWSER_OPERATION_FAILED', 'state': state.get('state', 'idle'),
                           'publish_attempted': pending, 'hint': RESULT_HINT if pending else DRAFT_HINT,
+                          'submission_attempted': pending, 'accepted': None, 'id_resolved': False,
+                          'reconciliation': state.get('reconciliation'),
                           'diagnostic': diagnostic}, ensure_ascii=False))
         return 3 if pending else 1
 

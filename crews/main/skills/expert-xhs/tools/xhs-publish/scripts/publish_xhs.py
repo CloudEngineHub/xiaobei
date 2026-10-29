@@ -11,12 +11,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from creator_session import CreatorSessionMissing, creator_api, observe  # noqa: E402
 from apis.xhs_readiness import VideoReadinessError  # noqa: E402
+from apis.xhs_submission import NoteSubmissionError  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared"))
 from publish_text import PublishTextError, read_publish_text  # noqa: E402
 
 SUBMISSION_RECOVERY = (
     "先用 xhs-engagement list 核查；列表可能滞后，未查到也不要自动重发。"
-    "仍不确定时请用户在 App 或创作者后台确认并提供链接，确认成功后按实际发布日补录 published-track"
+    "仍不确定时请用户在 App 确认并提供链接，确认成功后按实际发布日补录 published-track"
 )
 
 
@@ -53,47 +54,64 @@ def publish(args, body: str, topics: list[dict]) -> dict:
     except CreatorSessionMissing:
         raise
     except VideoReadinessError as exc:
-        observe("publish", "not_submitted", reason=exc.readiness.get('reason', 'pending'))
+        progress = getattr(exc, 'submission', {'stage': 'readiness', 'submission_attempted': False,
+                                             'media_uploaded': True})
+        observe("publish", "not_submitted", reason=exc.readiness.get('reason', 'pending'), **progress)
         return {"ok": False, "error": "VIDEO_READINESS_UNCONFIRMED", "accepted": False,
-                "submission_attempted": False, "readiness": exc.readiness,
+                **progress, "readiness": exc.readiness,
                 "message": "媒体已上传，但转码状态未确认；尚未提交笔记，先处理查询错误或等待转码"}
+    except NoteSubmissionError as exc:
+        pending = exc.progress['submission_attempted']
+        observe('publish', 'unknown' if pending else 'not_submitted', error=exc.code, **exc.progress)
+        return {'ok': False, 'error': exc.code, **exc.progress,
+                'accepted': None if pending else False, 'id_resolved': False,
+                'message': (f'提交结果待核实；{SUBMISSION_RECOVERY}。' if pending
+                            else '尚未提交笔记；按错误修正后可在原发布授权内继续，无需用户重复固定口令。')
+                           + str(exc)[:160]}
     except Exception as exc:
         observe("publish", "unknown", error_type=type(exc).__name__)
         return {
             "ok": False,
             "error": "SUBMISSION_UNKNOWN",
+            "stage": "unknown", "submission_attempted": None, "accepted": None,
             "message": f"提交结果不确定，平台可能已收单。{SUBMISSION_RECOVERY}。错误：{str(exc)[:160]}",
         }
 
     code = response.get("code") if isinstance(response, dict) else None
+    progress = ((response.get('_xiaobei_publication') or {}) if isinstance(response, dict) else {})
     if not success:
-        observe("publish", "rejected", code=code)
+        observe("publish", "rejected", code=code, **progress)
         return {
             "ok": False,
             "error": "PUBLISH_REJECTED",
             "accepted": False,
+            "submission_attempted": True,
+            **progress,
             "code": code,
             "message": message,
         }
     note_id = _note_id(response if isinstance(response, dict) else {})
     if not note_id:
-        observe("publish", "unconfirmed")
+        observe("publish", "unconfirmed", **progress)
         return {
             "ok": False,
             "error": "SUBMISSION_UNCONFIRMED",
-            "accepted": True, "id_resolved": False, "public": None, "playable": None,
-            **((response.get('_xiaobei_publication') or {}) if isinstance(response, dict) else {}),
+            "accepted": True, "submission_attempted": True, "id_resolved": False, "public": None, "playable": None,
+            **progress,
             "message": f"平台返回成功但未给出笔记 ID。{SUBMISSION_RECOVERY}",
         }
-    observe("publish", "ok")
+    observe("publish", "ok", **progress)
     return {
         "ok": True,
         "accepted": True,
+        "submission_attempted": True,
+        "status": "submitted",
+        "message": "平台已接受并返回作品 ID；无需重发，公开与可播放状态按实际核实结果记录",
         "id_resolved": True,
         "visibility_requested": "private" if args.private else "public",
         "public": None,
         "playable": None,
-        **((response.get('_xiaobei_publication') or {}) if isinstance(response, dict) else {}),
+        **progress,
         "note_id": note_id,
         "url": f"https://www.xiaohongshu.com/explore/{note_id}",
     }

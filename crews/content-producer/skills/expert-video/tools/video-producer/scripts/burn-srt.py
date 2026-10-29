@@ -32,9 +32,11 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'deck-render' / 'scripts'))
 from font_policy import font_family
@@ -55,9 +57,9 @@ def die(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
-def run(cmd: list[str], timeout: int = 60) -> tuple[int, str, str]:
+def run(cmd: list[str], timeout: int = 60, cwd=None) -> tuple[int, str, str]:
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
         return r.returncode, r.stdout, r.stderr
     except FileNotFoundError:
         die(f"missing binary: {cmd[0]}")
@@ -87,30 +89,94 @@ def validate_srt(srt_path: str) -> None:
         die("SRT 不含任何 `-->` 时间戳分隔符，格式错")
 
 
+def validate_ass(path: str) -> None:
+    """Validate ASS structure/times without rewriting styles or drawing overrides."""
+    try:
+        content = Path(path).read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as e:
+        die(f"读 ASS 失败: {e}")
+    section = ""
+    sections = set()
+    fields = []
+    cues = 0
+
+    def timestamp(value: str) -> float:
+        if not re.fullmatch(r"[0-9]+:[0-9]{2}:[0-9]{2}[.][0-9]{2}", value.strip()):
+            die(f"ASS 时间戳格式错: {value}")
+        h, m, s = value.strip().split(":")
+        if int(m) >= 60 or float(s) >= 60:
+            die(f"ASS 时间戳越界: {value}")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line.lower()
+            sections.add(section)
+        elif section == "[events]" and line.lower().startswith("format:"):
+            fields = [x.strip().lower() for x in line.split(":", 1)[1].split(",")]
+            if not {"start", "end", "text"}.issubset(fields) or fields[-1] != "text":
+                die("ASS Events Format 缺少 Start/End/Text 或 Text 不在末尾")
+        elif section == "[events]" and line.lower().startswith("dialogue:"):
+            if not fields:
+                die("ASS Dialogue 前缺少 Events Format")
+            values = line.split(":", 1)[1].split(",", len(fields) - 1)
+            if len(values) != len(fields):
+                die("ASS Dialogue 字段数量错")
+            cue = dict(zip(fields, values))
+            if timestamp(cue["end"]) <= timestamp(cue["start"]):
+                die("ASS Dialogue 结束时间必须大于开始时间")
+            if not cue["text"].strip():
+                die("ASS Dialogue 文本为空")
+            cues += 1
+    if not {"[script info]", "[v4+ styles]", "[events]"}.issubset(sections) or not cues:
+        die("ASS 缺少 Script Info/V4+ Styles/Events 或有效 Dialogue")
+
+
+def validate_subtitles(path: str) -> None:
+    # Explicit extension dispatch: never accept malformed SRT as ASS.
+    if Path(path).suffix.lower() == ".ass":
+        validate_ass(path)
+    else:
+        validate_srt(path)
+
+
 def burn(video: str, srt: str, output: str, font_name: str,
          font_size: int, force_style: str | None) -> dict:
     """ffmpeg subtitles 滤镜烧 SRT. 返回渲染元数据."""
     style = (
         force_style if force_style is not None
-        else DEFAULT_FORCE_STYLE.format(font=font_name, size=font_size)
+        else ("" if Path(srt).suffix.lower() == ".ass"
+              else DEFAULT_FORCE_STYLE.format(font=font_name, size=font_size))
     )
-    # ffmpeg subtitles 滤镜里 filename 要单引号包裹，且整个 -vf 字串里单引号要转义
-    # 用 shlex.quote 处理路径，再包单引号
-    srt_escaped = shlex.quote(srt)
-    vf = f"subtitles=filename={srt_escaped}:force_style='{style}'"
-
-    cmd = [
-        "ffmpeg", "-hide_banner", "-nostats", "-y",
-        "-i", video,
+    # Keep source paths out of the filter expression: shell quoting is not
+    # libavfilter quoting. A local ASCII filename also handles quotes/colons.
+    with tempfile.TemporaryDirectory(prefix='.burn-', dir=Path(output).parent) as folder:
+        work = Path(folder)
+        subtitle_name = 'subtitles' + ('.ass' if Path(srt).suffix.lower() == '.ass' else '.srt')
+        shutil.copyfile(srt, work / subtitle_name)
+        style_value = style.replace('\\', '\\\\').replace("'", "'\\''")
+        vf = f"subtitles=filename={subtitle_name}"
+        if style:
+            vf += f":force_style='{style_value}'"
+        dest = work / 'burned.mp4'
+        cmd = [
+        "nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-y",
+        "-filter_threads", "2",
+        "-i", str(Path(video).resolve()),
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-threads", "2",
         "-c:a", "copy",                  # 音轨原样不动
         "-movflags", "+faststart",
-        output,
-    ]
-    rc, _, err = run(cmd, timeout=900)
-    if rc != 0:
-        die(f"ffmpeg subtitles 渲染失败: {err.strip()[:500]}", code=2)
+        str(dest),
+        ]
+        rc, _, err = run(cmd, timeout=900, cwd=work)
+        if rc != 0:
+            die(f"ffmpeg subtitles 渲染失败: {err.strip()[:500]}", code=2)
+        dest.replace(output)
 
     return {
         "input": video,
@@ -127,7 +193,7 @@ def main() -> None:
         description="Burn SRT subtitles into MP4 (optional, user-requested only)."
     )
     parser.add_argument("video", help="输入视频（合成产物，含声轨）")
-    parser.add_argument("srt", help="SRT 字幕文件路径")
+    parser.add_argument("srt", help="SRT 或 ASS 字幕文件路径（ASS 保留原生样式及绘图）")
     parser.add_argument("--output", default=None,
                         help="输出路径，默认在输入旁加 _burned 后缀")
     parser.add_argument("--font-name", default=DEFAULT_FONT_NAME,
@@ -151,10 +217,12 @@ def main() -> None:
     else:
         stem = video_path.stem
         out_path = video_path.with_name(f"{stem}_burned.mp4")
+    if out_path in (video_path, srt_path) or out_path.exists() and any(out_path.samefile(p) for p in (video_path, srt_path)):
+        die("输出不得覆盖输入视频或字幕")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     check_libass()
-    validate_srt(str(srt_path))
+    validate_subtitles(str(srt_path))
 
     print(f"[info] input:   {video_path}")
     print(f"[info] srt:     {srt_path}")

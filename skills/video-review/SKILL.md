@@ -73,7 +73,7 @@ video-review <final.mp4> --output review.json
 
 ## 抽帧产物
 
-5 帧静图落 `<project-dir>/review/frames/frame_NNN.jpg`，verdict JSON 落 `<project-dir>/review/verdict.json`。**不进 `artifacts/`、不进 `previews/`**，与 keyframes/ 子目录同级，互不混淆。
+每次检查的 5 帧与完整报告落独立的 `<project-dir>/review/runs/<review_id>/frames/frame_NNN.jpg` 和 `verdict.json`；报告记录源视频 SHA256、每帧 SHA256 及永久 `report_path`。同目录多素材、同名素材、重复或并行检查互不覆盖。`--output`（默认 `review/verdict.json`）仅是最新报告副本，复查或交接使用返回的 `report_path` 与帧路径。**不进 `artifacts/`、不进 `previews/`**。
 
 人工或制作方另行补查的图片与结论单独保存，不修改公共报告里的缺失状态；需要公共检查完整时重跑本工具。尾帧的实际时间见 `decoded_timestamp_seconds`，不要把容器 duration 当作可解码时间点。
 
@@ -85,4 +85,5 @@ video-review <final.mp4> --output review.json
 
 - **禁止跳过本脚本交付**：各视频生产技能的合成环节产出 `video.mp4` 后，必须先跑本脚本，verdict=pass 才能进交付/封面环节
 - **禁止肉眼看交代替本脚本**：本脚本是替代"裸拼完就交"脆弱闸门的强制自检
+- **技术通过后仍须审剪辑**：content producer制作的成片另跑 `video-producer edit-audit`，检查旁白干声空档、源时间窗复用并登记真实审片。技术 pass、动态图数量和 motion_ratio 不能证明节奏或镜头语义合格。
 - **warn 处置**：声画同出模式下 `audio_absent` warning 要对照看——AI 生成模式该出声没出声是 critical（退回重生成或补 TTS）；Stock Footage + `--no-audio` 模式下 `audio_absent` 是预期，warn 可放行

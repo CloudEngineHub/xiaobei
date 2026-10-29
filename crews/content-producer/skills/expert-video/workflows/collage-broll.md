@@ -43,7 +43,7 @@ Stage 3–10 调 `video-producer` 同名阶段命令，生成并填写纸拼贴�
 | 12 | `assemble --manifest` 逐条核验并交接单段成片，输出项目成片路径；无声片保持无音轨，不附加静音轨 |
 | 13a | 公共 `video-review` 必跑；无声版的 `audio_absent` warning 是预期，有声版缺音轨则失败 |
 | 13b | `motion-audit` 逐层核验 Stage 9 的组装承诺，单条默认落 `review/collage-motion-audit.json`，批量条目各自指定审核路径；整体淡入不能通过 |
-| 13c | `normalize` 必调用：有声片归一至 -14 LUFS；明确无声时传 `--silent-ok`，核验无音轨并记录不适用 |
+| 13c | `normalize` 必调用：新混音归一至 -14 LUFS；甲方锁定原混音时传 `--locked-audio <原音源>`，只测量与逐包验证；明确无声时传 `--silent-ok`，核验无音轨并记录不适用 |
 | 14–15 | 按 Brief 制作含主文案的封面；交成片、封面、`final-deliver.md` 的绝对路径 |
 
 ## 隐喻清单（Stage 1–2）
@@ -121,6 +121,8 @@ video-producer visual-render preview <project>/render/<item>/composition \
 ```
 
 `preview-v1/contact-sheet.jpg` 与 4.8 秒最终帧一起检查：隐喻是否一眼看懂、3–6 个大组是否清晰、黑白半调和点色是否形成层级、每层是否确实独立进入、无假字/水印/裁切越界。改版输出 `preview-v2` 等新目录，保留旧版比对。
+
+多段组成完整视频时，先听看带声样片，再对最终成片调用 `video-producer edit-audit`：用最终时间轴旁白干声检查无口播空档，按源素材内容和时间窗核对重复动作，并登记真实审片。不能以“七个素材ID”或 motion_ratio 代替七段画面各自推进信息的检查；字段见 `tools/video-producer/references/edit-audit.md`。甲方锁定原混音时只允许全轨 copy 与只读响度测量，不自动重新 normalize。
 
 ## GATE B：呈交素材与预览
 

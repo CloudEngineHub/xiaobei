@@ -50,7 +50,7 @@ Stage 3–10 仍逐阶段执行 `video-producer` 同名命令，生成对应脚�
 | 12 | deck-compose 按 footage/avatar/audio 合成 → burn-srt；需要 BGM 时在小窗合成后 ducking 混入，再做后续审片；有片头尾再 assemble，使用 hard 拼接，字幕与音频随主片一起平移 |
 | 13a | 公共 video-review，verdict=pass 才可交付 |
 | 13b | 调 `motion-audit` 按 Stage 9 承诺，对幻灯段做 HTML 动效验收、对 B-roll 段核验真实画面动作与口播对应，落 `review/deck-motion-audit.json`；不用通用 motion_led 的素材占比口径 |
-| 13c | normalize 必跑，-14 LUFS；最终交付文件取归一化后的版本 |
+| 13c | 新混音 normalize 至 -14 LUFS；甲方明确锁定音轨时用 `normalize <最终视频> --locked-audio <原音源>` 只测量与逐包验证，不重编码。最终声音处理后重跑技术审核与 `edit-audit`，检查干声留白和源动作复用并登记审片 |
 | 14–15 | 按 Brief 制作含主文案的封面；交成片、封面、final-deliver.md 的绝对路径 |
 
 ## 设计与声画对齐

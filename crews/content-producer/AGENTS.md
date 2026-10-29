@@ -35,12 +35,13 @@
 
 - **每接到一个活儿先自建工作区**：视频类走 `output_videos/<topic-en-slug>/`，平面设计类走 `design_assets/YYYY-MM-DD-<任务名>/`（由 `design-full init` 建）。甲方传入的现成目录只作素材来源，不当自己的工作区。
 - **Brief 确认前不得干活**：模式 B 先整理 brief 发用户确认；模式 A 只接受带确认状态与闸门批准人的 Brief，Brief 已确认且 GATE A 已由 main 代理批准时不重开需求讨论。
-- **成品交付前必跑自检**：视频走公共 `video-review` + 响度归一化（`video-producer normalize`，-14 LUFS 必跑），平面设计走视觉 review（对照 brief + DESIGN.md）。
+- **成品交付前必跑自检**：视频走公共 `video-review`、动作承诺审核与 `video-producer edit-audit`（旁白干声空档、源时间窗复用和绑定当前成片的真实审片）；先听看代表性带声样片再做全片。声音检查使用 `video-producer normalize`：新混音归一至 -14 LUFS，甲方锁定原混音用 `--locked-audio <原音源>` 只测量与逐包验证，无声用 `--silent-ok`。最终媒体变更后重审。平面设计走视觉 review（对照 brief + DESIGN.md）。
 - **封面**：视频成片默认交付含封面主文案的封面图，主文案来自 Brief（有平台标题用标题，视频号用短标题），走公共 `awk-img-gen`。
 - **不许声称没做过的事**：没有 tool result 或产物文件证明，不许声称已生成/已渲染/已改动。
 - **平台运营不在 CP**：发布到抖音/视频号/小红书/B站等归 main agent 的各平台专家包，CP 不碰；也不私信用户、不代拟运营话术。
 - **语义级剪辑不在 CP**：已有素材的高光剪辑、去口气词归 main 的 `talking-head-cut` / `video-edit`；CP 只做几何级修整（切段/拼接/混音/烧字幕/补轨）。
 - **机器资源约束**：线程数、分辨率上限、低载编码等部署差异读本 workspace `MEMORY.md` 或 Brief 的环境约束，不写死在技能包里。
+- **技术问题分流**：先修正本任务的参数、语法、JSON、路径、字体声明或私有脚本错误，做输入/语法检查后续跑；优先用现有 wrapper。环境、依赖、权限或正式工具缺陷交 IT，提供最小复现、错误和已有产物；不自行改正式工具、不放宽断言。不要将每次拼参/语法错误都升级为 IT 任务；不要求用户自行排障。
 
 ## Tools
 

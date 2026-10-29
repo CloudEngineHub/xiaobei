@@ -11,6 +11,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from media_integrity import verify_track_copy
+
 
 def run(cmd):
     result = subprocess.run([str(x) for x in cmd], capture_output=True, text=True, timeout=1200)
@@ -32,6 +35,11 @@ def duration(info, track):
     if not math.isfinite(value) or value <= 0:
         raise ValueError('无法确认输入时长')
     return value
+
+
+def verify_copy(base_path, audio_path, output):
+    return {kind: verify_track_copy(source, output, kind)
+            for kind, source in (('v', base_path), ('a', audio_path))}
 
 
 def geometry(w, h, args):
@@ -60,6 +68,8 @@ def main():
     parser.add_argument('--presenter', type=Path, help='省略时仅合入旁白')
     parser.add_argument('--audio', type=Path, help='唯一音轨；省略时仅保留底视频音轨')
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--audio-mode', choices=['aac', 'copy'], default='aac', help='copy: 无小窗，音视频全轨复制，不截断；逐包校验')
+    parser.add_argument('--verify-only', action='store_true', help='仅校验已有 copy 输出的音视频逐包哈希与时间戳，不写媒体')
     parser.add_argument('--corner', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], default='bottom-right')
     parser.add_argument('--size', type=float, default=.22, help='小窗宽 / 画布宽')
     parser.add_argument('--aspect', type=float, default=1, help='小窗宽高比；源视频居中裁切，不拉伸')
@@ -84,7 +94,11 @@ def main():
         raise ValueError('输出不得覆盖输入素材')
     if output.suffix.lower() != '.mp4':
         raise ValueError('输出必须为 .mp4')
-    if output.exists() and not args.force:
+    if args.verify_only and (args.audio_mode != 'copy' or args.dry_run):
+        raise ValueError('--verify-only 需 --audio-mode copy 且不能与 --dry-run 同用')
+    if args.audio_mode == 'copy' and args.presenter:
+        raise ValueError('audio-mode copy 仅支持无小窗全轨封装')
+    if output.exists() and not args.force and not args.verify_only:
         raise ValueError('输出已存在；检查后用 --force 重做')
     base = probe(args.base)
     video = stream(base, 'video')
@@ -124,6 +138,14 @@ def main():
     plan = {'output': str(output), 'duration': seconds, 'width': w, 'height': h, 'fps': fps,
             'audio_source': str((args.audio or args.base).resolve()), 'presenter': str(args.presenter.resolve()) if args.presenter else None,
             'pip': box, 'dry_run': args.dry_run}
+    if args.audio_mode == 'copy':
+        plan['audio_mode'] = 'copy'
+        plan['audio_duration'] = audio_seconds
+        plan['verification'] = 'all video/audio packets: SHA256, PTS, DTS, duration, size; stream timebase/start/duration'
+    if args.verify_only:
+        plan['copy_verification'] = verify_copy(args.base, args.audio or args.base, output)
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return
     if args.dry_run:
         print(json.dumps(plan, ensure_ascii=False, indent=2))
         return
@@ -165,14 +187,19 @@ def main():
                     '-threads', str(args.threads), '-r', str(fps)]
         else:
             cmd += ['-map', '0:v:0', '-c:v', 'copy']
-        cmd += ['-map', f'{audio_index}:a:0', '-af', 'asetpts=PTS-STARTPTS', '-c:a', 'aac', '-b:a', '192k',
-                '-t', str(seconds), '-movflags', '+faststart', dest]
+        if args.audio_mode == 'copy':
+            cmd += ['-map', f'{audio_index}:a:0', '-c:a', 'copy', '-movflags', '+faststart', dest]
+        else:
+            cmd += ['-map', f'{audio_index}:a:0', '-af', 'asetpts=PTS-STARTPTS', '-c:a', 'aac', '-b:a', '192k',
+                    '-t', str(seconds), '-movflags', '+faststart', dest]
         run(cmd)
         result = probe(dest)
         rv = stream(result, 'video')
         ra = stream(result, 'audio')
         if not rv or not ra or (rv['width'], rv['height']) != (w, h) or abs(float(Fraction(rv['r_frame_rate']))-fps) > .01 or abs(duration(result, rv)-seconds) > .12 or abs(duration(result, ra)-seconds) > .12:
             raise ValueError('输出音视频尺寸/帧率/时长校验失败')
+        if args.audio_mode == 'copy':
+            plan['copy_verification'] = verify_copy(args.base, args.audio or args.base, dest)
         if box:
             previews = []
             for index, position in enumerate((0, seconds/2, max(0, seconds-.1)), 1):

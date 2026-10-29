@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / '_shared'))
-from publish_browser import Browser, publish_lock
+from publish_browser import Browser, PublicationPending, publish_lock
 
 SOURCE = 'douyin:creator_item_list'
 BASIC_FIELDS = {'view_count': 'plays', 'like_count': 'likes', 'comment_count': 'comments',
@@ -380,6 +380,10 @@ def main():
 
 
 def error_result(exc):
+    if isinstance(exc, PublicationPending):
+        return {'ok': False, 'error': exc.code, 'stage': 'publication_reconciliation',
+                'submission_attempted': True, 'accepted': None,
+                'hint': str(exc)}
     code = str(exc) if isinstance(exc, CreatorError) else 'CREATOR_FETCH_FAILED'
     result = {'ok': False, 'error': code}
     if isinstance(exc, CreatorError):

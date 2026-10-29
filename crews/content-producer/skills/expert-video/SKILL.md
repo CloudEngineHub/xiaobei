@@ -47,7 +47,7 @@ metadata:
 
 | 我给甲方 | 位置 |
 |----------|------|
-| 成片 | `<project-dir>/video.mp4`（过 `video-review`，verdict=pass；响度已归一化） |
+| 成片 | `<project-dir>/video.mp4`（通过技术与剪辑审查；声音政策核验完成） |
 | 封面 | `<project-dir>/cover.jpg`（含封面主文案，主文案来自 Brief） |
 | 交付说明 | `<project-dir>/final-deliver.md`：素材来源与授权、各段实际时长、自检结果、弃用中间产物、fallback 决策、遗留问题 |
 
@@ -103,7 +103,7 @@ output_videos/<topic-en-slug>/      # <project-dir>
 ├── audio/                      # narration.mp3 / narration-segments.json / bgm.mp3 / subtitles.srt
 ├── artifacts/                  # (12) 按镜顺序的最终段 01_*.mp4 … NN_*.mp4
 ├── video.mp4                   # (12) 成片
-├── review/                     # verdict.json(13a) / frames/ / motion-audit.json(13b)
+├── review/                     # verdict.json / runs/<review_id>/frames/ / motion-audit.json / edit-audit.json
 ├── cover.jpg                   # (14)
 └── final-deliver.md            # (15)
 ```
@@ -140,13 +140,15 @@ Stage 11 mix-audio          配音配乐四场景分流（A 人物对话声画�
                             整段模式的时间戳对齐仍走 narration-align，两者互补
 Stage 12 assemble           按序拼接成片（原子工具箱，见下节，我按场景组合，不写死流程）
 Stage 13a video-review      公共 video-review 技术自检（强制闸门，verdict=pass 才继续）
-Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）
-Stage 13c normalize         响度归一化到 -14 LUFS（**必跑**：`video-producer normalize`）
+Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）；edit-audit 检查停顿/源窗口复用并登记真实审片
+Stage 13c normalize         新混音归一至 -14 LUFS；锁定原混音用 --locked-audio 只测量与逐包核验；无声用 --silent-ok
 Stage 14 make-cover        封面（awk-img-gen，必含封面主文案）
 Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对路径与关键参数
 ```
 
-- **产物文件存在性即 checkpoint**：子命令先查产物文件是否存在，存在则 load 不重生成（允许手改 JSON 后续跑）；要改哪段就重跑对应子命令，未改的不会重生成。
+- **复用前核对版本**：检查当前输入/参数与产物校验记录，文件存在不代表本版已完成。`assemble --video-only` 校验有序源内容与输出哈希；审片记录绑定当前素材和成片哈希。改输入后重做受影响步骤，保留旧版供对比。
+- **剪辑验收**：Stage 12 先听看 5–20 秒带声样片；Stage 13 在最终字幕/响度处理后跑 `video-producer edit-audit`，提交最终时间轴干声、源素材时间窗和实际审片记录。字段与命令见工具说明的 `references/edit-audit.md`。技术 pass、运动比例达标或换素材编号不能代替节奏与动作复用审核。
+- **声音政策**：新混音执行常规 normalize；甲方要求保留已认可音轨时，先锁定原音源，`pip-compose --audio-mode copy` 全轨封装，再 `normalize --locked-audio` 只测量与逐包验证，不因 -14 LUFS 目标重编码、裁切或改增益。明确无声用 `--silent-ok` 核验。最终媒体变更后重新做技术和剪辑审核。
 - 类型 workflow 附带的制作约定（阶段产物、素材 sourcing、验收清单）在该类型视频上生效；**不能裁掉基线阶段，闸门位置与"停下发甲方"的纪律不变**。甲方已在 Brief 中代理批准某道闸门时，把批准范围落 `gates/` 后继续。
 - 可选工具 `reference-concepts`：甲方给了参考视频拆解报告时，据报告出 2–3 个差异化概念落 `reference/concepts.md`。
 
@@ -204,7 +206,7 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 
 | 工具 | 用途 | 命令 |
 |------|------|------|
-| `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
+| `video-producer` | 剧本/分镜、素材、渲染、混音、合成、动作与剪辑审查、封面；`normalize` 按声音政策执行，锁定模式只读审核；`burn-srt` / `duck` / `denoise` / `interp` 按需使用，输出不覆盖输入 | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `video-producer visual-render` | 通用 HTML/GSAP 片段的 scaffold、检查、预览与 HyperFrames 渲染；纸拼贴与产品动效共用 | `video-producer visual-render scaffold / check / preview / render` |
 | `deck-render` | Stage 10 第三条渲染路径：中文 HTML 幻灯、逐页动画、静帧联系表、确定性 MP4；随后用 video-producer pip-compose 合小窗/旁白 | `deck-render check-setup / scaffold / check / preview / render`；参数见工具说明 |
 | `avatar` | Wan S2V 肖像检测、按原声时间窗生成、恢复、人工口型审查记录、同源分段合并 | `avatar generate / resume / review / assemble`；读 `tools/avatar/SKILL.md` |
@@ -218,7 +220,7 @@ env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKS
 ## 禁止事项（强制）
 
 - **禁止跳过 GATE A / GATE B 交付**：两闸门是流程的一部分，呈交摘要后必须结束本轮回复等甲方批。
-- **禁止跳过 `video-review` 与响度归一化交付**：Stage 13a verdict=pass、Stage 13c `normalize` 已跑，才进 Stage 14。
+- **交付审核齐全**：最终媒体的 `video-review`、动作承诺审核、`edit-audit` 和 Stage 13c 声音检查完成才进交付。声音检查按新混音归一化、锁定音轨逐包保留或无声核验三种实际政策执行；锁定音轨偏离响度目标要如实说明。
 - **禁止声称没做过的事**：没有 tool result 或产物文件证明，不许声称已渲染 / 已生成 / 已改动。
 - **禁止替甲方做需求决策**：选题方向、品牌事实、卖点承诺、业务植入与 CTA 口径、发布文案不由我定；Brief 没写就问。
 - **禁止让甲方建工作区**：工作区自建；也不要把中间产物写进甲方（main / 用户）的目录。
