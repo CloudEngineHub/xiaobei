@@ -77,6 +77,8 @@ BOOTSTRAP.md 只承担一次性用户信息采集。完成后将用户资料写�
 
 ## 系统运维与渠道归属
 
+IT Engineer 的日志审计、Automations、exec 审批、插件生效与会话维护手册在 `crews/it-engineer/skills/openclaw-maintenance/`。AGENTS.md 保留派工入口和必须生效的边界，具体步骤按该技能的参考表读取；MEMORY.md 不复制操作手册。该 crew 专属技能由现有 workspace 技能扫描加入可见列表，不放入只声明上游技能的 BUILTIN_SKILLS。
+
 新安装的 config template 将 `agents.defaults.systemAgent.agentId` 指向 it-engineer；IT 的模板与 BUILTIN_SKILLS 声明包含四个 Custodian 运维技能。setup 仅在 owner 未指定时补 IT，不覆盖实例已有明确选择。systemAgent 选择系统推理使用的模型/凭据及 Custodian 技能库归属，不替代聊天 binding、heartbeat.agentId 或 talk.agentId。
 
 该 pin 的 `tryResolveLegacyCompatibilityAgentId` 还会将显式 systemAgent 作为未匹配消息的兼容兜底；不能仅凭 ownership=explicit 就宣称所有未绑定请求都会拒绝。已有精确 binding 优先，工作渠道启用时必须明确账号归属。

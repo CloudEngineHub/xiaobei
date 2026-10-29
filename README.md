@@ -4,17 +4,19 @@
 
 - 微信公众号文章写作、排版与推送
 - 小红书/小绿书图文创作与发布
-- 图文海报生成
-- 视频生成与多平台分发（支持视频号、抖音、小红书、快手、tiktok）
+- 抖音图文音乐发布，支持多图上传与推荐配乐
+- 图文海报与原创配乐生成
+- 视频生成与多平台分发（支持视频号、抖音、小红书、快手、TikTok、微博……）
+- 低成本口播视频制作：幻灯片、剪纸动画、操作录屏 B-roll，支持自定义音色与数字人小窗
 - Twitter/X、微博、知乎等平台发文
 - 微信朋友圈内容发布（通过企业微信接口）
-- 爆款视频追爆分析、仿写与再创作（支持抖音、快手、小红书等平台视频链接）
+- 爆款视频下载分析、仿写与再创作（支持抖音、快手、小红书等平台视频链接）
 - 赛道头部账号DNA级复刻（目前支持小红书、微信视频号、抖音、微信公众号四个平台）
 - 已发布作品数据监控与每日定时复盘
-- 自媒体评论区获客
+- 自媒体评论区获客与站内私信联络（支持小红书、抖音等平台）
 - 7*24 小时智能客服（售前接待）
-- 通过社交媒体寻找潜在客户或市场调研
-- 信息搜集与情报：支持小红书、抖音、微博、知乎、快手、B站、Twitter、YouTube、视频号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等 18 类信源——无需配置任何 key、纯免费
+- 通过社交媒体寻找潜在客户，查询小红书蒲公英达人合作与千帆分销商资料
+- 信息搜集、竞对监控与市场调研：支持小红书、抖音、微博、知乎、快手、TikTok、B站、Twitter/X、YouTube、微信公众号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等信源，扩展商业、技术/AI、学术、招聘、口碑和设计六类站点
 - "四声分析"法战略研判与讨论
 - 产品deck、ppt制作，投资/IR 材料准备
 - 网站设计与制作、ICP 备案等材料辅助
@@ -32,28 +34,18 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ---
 
-## 🚀 **V5.7.3 更新**
+## 🚀 **V5.8.0 更新**
 
-- 新增带B-roll的口播视频制作能力，对比纯AIGC模式，单条成本由几十下降到几块，且更易获平台推荐：
-  - B-roll 支持 幻灯片生成\剪纸人动画\操作录屏，前两者基于hyperframes，后者基于xiaobei浏览器自动化能力，均无需调用aigc模型，用户有现成素材也可直接提供；
-  - 口播音频支持用户录制和TTS合成两种，TTS合成支持自定义音色，支持混入口音（降低ai味，避免被平台限流）；
-  - 支持屏幕小窗添加数字人同步画面，仅需提供一张照片（建议用真人）
-  - 上述流程均支持由xiaobei出方案并自主委托content-producer完成制作全流程，用户只需最终验收
-- 新增卡片内容生产能力：内置“群聊误发式单图”创意、“问答式连续讨论流三图”创意。均使用html代码生成，无需AIGC模型，无平台限流风险；
+- **OpenClaw 基座升级至 2026.10.4**，同步更新插件接入、配置与安装升级流程；
+- **全新小贝浏览器**：基于 Camoufox 构建独立的 `xiaobei-browser` 插件，接入 OpenClaw 原生插件体系，统一管理浏览器身份与持久会话；扫码、验证码等待期间保留窗口，大幅提升登录与自动化操作体验；
+- **视频制作与验收升级**：数字人改用 Wan S2V，支持按原声分段生成与口型审查；百炼业务空间 TTS 默认升级到 3.1 Plus。补齐画面方案校验、剪辑节奏与素材复用检查、字幕和尾帧检查，支持保留已认可的原音轨；
+- **多平台发布更稳**：优化抖音双封面、草稿续编与发布结果核对，小红书话题校验、转码状态与提交结果追踪；发布结果未知时先核查，防止重复提交；
+- **获客与客服完善**：小红书私信增加已读状态校验与自动回复去重；Awada Channel 增强语音转写、网盘文件发送与客户资料联动，过滤框架故障和模型回退提示，减少对客户的干扰；
+- **安装升级体验优化**：完善 AtomGit 国内线路、GitHub 下载代理、资源断点续传与失败重试，补齐 Windows 安装和日志排障指引；幻灯片、卡片、PPT 等工具共用一套 Playwright/Chromium 渲染环境，统一预装依赖。
 
-**成品展示见xiaobei的微信视频号和小红书号**：https://openclaw-for-business.com/media
+> **升级提示**：5.8.0 相对于 5.7.x、5.6.x 均为**破坏性升级**。建议老用户先将个性化配置和记忆数据备份到 `~/.openclaw` 目录之外，再删除本机的 `~/.openclaw` 目录并全新安装；也可在完成备份后，为安装脚本添加 `--force` 参数，强制覆盖原有配置（Windows PowerShell 安装请先设置 `$env:XIAOBEI_FORCE="1"`）。
 
-- 新增抖音平台图文音乐内容发布能力，支持多图上传、选择推荐配乐与发布链接回收;
-- 大幅优化小红书平台支持性能，并新增蒲公英达人合作和千帆分销商资料查询能力；
-- 新增对快手和tiktok平台的支持，优化 x（twitter）和weibo平台的支持；
-- 音乐生成新增支持百炼平台
-
-## 🚀 **V5.7.4 更新**
-
-- 重构expert-bd技能，专注对外联络，支持xhs、douyin等站内私信能力；
-- 将信息获取能力从expert-bd中分离为expert-osbi;
-- 优化smart-search技能，新增商业、技术/AI、学术、招聘、口碑和设计六类 36 个站点的支持；
-- 修复5.7.3中的bug
+**成品展示见小贝的微信视频号和小红书号**：[查看作品](https://openclaw-for-business.com/media)
 
 详见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -65,9 +57,9 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 推荐开通 [阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..)——一个套餐覆盖**思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成**全部大模型能力，无需为这些能力分别准备其他供应商账号或 Key。
 
-> 💡 **套餐选择**：前期熟悉安装可选 **Lite 版 39 元/月**；正常使用建议 **Standard 版 139 元/月**。想继续使用火山CodePlan见下方 "模型费用说明"
+> 💡 **套餐选择**：前期熟悉安装可选 **Lite 版 39 元/月**；正常使用建议 **Standard 版 139 元/月**。
 
-> 🎬 **想用视频生成能力？** 默认使用百炼Token Plan内的 HappyHorse1.1 额度；配置 `MODELSTUDIO_API_KEY` 和 `WORKSPACE_ID` 后，使用百炼业务空间的 Wan3.0（效果更佳）。
+> 🎬 **想用视频生成能力？** 默认使用百炼Token Plan内的 wan3.0 或者 happyhorse 1.1；配置 `MODELSTUDIO_API_KEY` 和 `WORKSPACE_ID` 后，使用百炼业务空间的 Wan3.0。
 
 > 视频生成还支持火山 Seedance 和 MiniMax H3，详见下方[视频生成模型配置](#-视频生成模型配置)。
 
@@ -114,7 +106,7 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 
 > **系统要求**：推荐 Ubuntu 22.04；支持 WSL2 / macOS（arm64 + x64）；Windows 10 1803+（x64，需 Git Bash 或 WSL）。WSL2 下脚本自动注入 GUI 显示变量。
 
-> 🖥️ **部署机器建议**：推荐用一台 **7×24 小时常开**的电脑部署，上面**不要放置个人隐私 / 机密文件**。若你希望在日常办公电脑上安装、且只在用时启动——可以期待我们即将推出的**官方 Docker 镜像**，具体可扫下方二维码咨询掌柜👇。
+> 🖥️ **部署机器建议**：推荐用一台 **7×24 小时常开**的电脑部署，上面**不要放置个人隐私 / 机密文件**。若你希望在日常办公电脑上安装、且只在用时启动,可以使用docker部署。
 
 > **调试模式**（前台单次启动，适合测试，不走 launchd/systemd 服务）：`~/xiaobei/bin/openclaw gateway run`
 
@@ -158,7 +150,7 @@ irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/instal
 irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 | iex
 ```
 
-> 已手动 `git clone` 仓做开发的用户仍可用 `scripts/update.sh` 走 fetch + rebuild 路线（不重装依赖、不卸 daemon）。普通用户用上面的 install 脚本即可。
+> 已手动 `git clone` 仓做开发的用户仍可用 `scripts/update.sh` 走 fetch + rebuild 路线（不重装依赖、不卸 daemon）。普通用户用上面的 install 脚本即可。（build步骤要求可用内存不低于16G，tarball安装不必。）
 
 源码分发测试需要直接部署当前目录中的代码时，在项目根目录执行：
 
@@ -185,8 +177,6 @@ bash scripts/update.sh --skip-sync
 > xiaobei 底层基于 openclaw，建议先准备好大模型 API：
 >
 > - **主力模型（强烈推荐）**：[阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..) — 一个套餐已经可以覆盖xiaobei系统所需的所有大模型（思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成)。
->
-> - **仍想用火山方舟 Coding Plan 的用户**：在默认配置模板基础上参考 [openclaw-awk.json](config-templates/openclaw-awk.json)，手动替换 `provider` 和 `agents.default` 字段即可。
 
 > **🎬 视频生成模型配置**
 >
@@ -211,9 +201,9 @@ bash scripts/update.sh --skip-sync
 
 > **🧠 进阶：记忆增强与 dream（可选）**
 >
-> 默认配置下，小贝的记忆走 FTS 全文检索，已经够用且零额外配置。如果你记忆体量很大、想要更好的语义召回，可以接入一个 embedding 模型；也可以选择打开凌晨"做梦"机制让小贝在夜间整理记忆。
+> 默认配置下，小贝的记忆走 FTS 全文检索，已经够用且零额外配置。如果你记忆体量很大、想要更好的语义召回，可以接入一个 embedding 模型。
 >
-> 任何 OpenAI 接口格式的 embedding 服务都可以接（如阿里云百炼的 `text-embedding-v3/v4` 系列）。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`；想开做梦就把 `plugins.entries.memory-core.config.dreaming.enabled` 改回 `true`。改完重启 gateway 生效。可以让小贝帮你完成配置。
+> 任何 OpenAI 接口格式的 embedding 服务都可以接（如阿里云百炼的 `text-embedding-v3/v4` 系列）。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`，改完重启 gateway 生效。可以让小贝帮你完成配置。
 
 ### 配置繁琐，不想操心？
 
@@ -225,14 +215,12 @@ VIP Club（售价 **168 元/年**），权益包括：
 - VIP 微信交流群：问题讨论、产品反馈、技术沟通、专家 DNA 分享……
 - 官方中转服务：针对部分自媒体平台的发布技能要求固定 IP 和签名的问题，向 VIP Club 会员免费提供官方中转服务
 - 会员期内所有增值服务享半价（不含 awada lane 租赁）
-- 会员可申请成为服务合作商
+- 会员可申请成为服务合作商，共享AI时代红利
 - 会员可申请定制开发服务
 
 *⚠️ 如存在不当使用官方中转服务、在社群发表不当言论等行为，Wiseflow 团队有权提前终止会员资格且不予退款，详见会员协议。*
 
-另开放 **服务代理商** 合作，共享AI时代红利！详见：https://openclaw-for-business.com/pricing 
-
-也欢迎添加"掌柜的"企业微信（由 xiaobei sales-cs 驱动）咨询了解：
+欢迎添加"掌柜的"企业微信（由 xiaobei sales-cs 驱动）咨询了解：
 
 <img width="360" height="360" alt="xiaobei掌柜" src="https://github.com/user-attachments/assets/b013b3fd-546e-4176-b418-57bee419e761" />
 
@@ -369,7 +357,6 @@ wiseflow/
 - ViMax（HKUDS 的视频生成框架 — `video-producer` 的机位一致性约束与素材 slot 规划借鉴其镜头规划策略） https://github.com/HKUDS/ViMax
 - OpenMontage（calesthio 的开源蒙太奇剪辑方案 — `video-producer` 的 Stage 12 拼接成片+转场工作流借鉴其片段组装与节奏控制思路） https://github.com/calesthio/OpenMontage
 - gbro-collage-broll（MIT — 半调纸拼贴 B-roll 方法论 — `expert-video` 的 Collage B-roll workflow 借鉴其隐喻设计、语义色场与视觉 QA；现由 awk-img-gen 提供独立纸片素材，HyperFrames 负责确定性组装，特殊生成式动作才调用 aigc-video-gen） https://github.com/pyang5166/gbro-collage-broll
-- agent-skills-launch-pack_（起号方法论知识来源） https://github.com/chenjin-cmd/agent-skills-launch-pack_
 
 ## Citation
 
