@@ -16,8 +16,7 @@ with --save-slides), they can be reused via --screenshots-dir to skip
 re-rendering.
 
 Dependencies:
-  pip install python-pptx Pillow playwright
-  python3 -m playwright install chromium
+  Installed by xiaobei: python-pptx, Pillow, shared Node Playwright/Chromium
 
 Usage:
   # Render from HTML (auto-capture screenshots)
@@ -41,34 +40,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Constants (shared with html_to_longimage.py)
-# ---------------------------------------------------------------------------
-
-# Slide CSS selectors to try, in priority order
-_SLIDE_SELECTORS = ("section.slide", "section[class*='slide']", ".slide", "section")
-
-# JS to inject before screenshot: force all slides into their "visible" state
-# so that IntersectionObserver-driven animations (fade-up, etc.) are fully applied.
-_FORCE_VISIBLE_JS = """
-// Add .visible to all slides (triggers CSS animation final states)
-document.querySelectorAll('section.slide, .slide').forEach(s => s.classList.add('visible'));
-// Also force any other common animation trigger classes
-document.querySelectorAll('[data-animate], .animate, .reveal, .fade-in').forEach(
-  el => { el.classList.add('visible'); el.classList.add('active'); el.classList.add('shown'); }
-);
-"""
-
-# Delay after forcing visible state, to let CSS transitions complete
-_TRANSITION_SETTLE_MS = 700
-
-# 等待 CDN 资源（字体/图片）加载的最长时间（ms）。超时则放弃等待（资源被墙/慢），
-# 用已加载状态继续截图——避免 networkidle 在 CDN 不通时挂死连接超时。
-_RESOURCE_LOAD_TIMEOUT_MS = 8000
-
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / 'browser/bridge'))
+from shared_playwright import render_slides
 
 # ---------------------------------------------------------------------------
-# Rendering (same pipeline as html_to_longimage.py)
+# Rendering (shared Node driver)
 # ---------------------------------------------------------------------------
 
 def _render_slides(
@@ -82,55 +58,7 @@ def _render_slides(
     Returns a list of PNG image bytes, one per slide.
     Raises RuntimeError on browser/render failures.
     """
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-
-    abs_html = os.path.realpath(html_path)
-    file_url = f"file://{abs_html}"
-
-    images: list[bytes] = []
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        try:
-            context = browser.new_context(
-                viewport={"width": width, "height": height},
-                device_scale_factor=scale,
-            )
-            page = context.new_page()
-            # 本地 file:// HTML：先等 DOM 解析（必成功），再给 CDN 资源（字体/图片）
-            # 最多 _RESOURCE_LOAD_TIMEOUT_MS 加载窗口——加载完则保真，超时（字体被墙/慢）
-            # 则放弃等待用已加载状态继续。原 networkidle 在字体 CDN 不通时会等到连接超时挂死。
-            page.goto(file_url, wait_until="domcontentloaded")
-            try:
-                page.wait_for_load_state("load", timeout=_RESOURCE_LOAD_TIMEOUT_MS)
-            except PlaywrightTimeoutError:
-                pass  # CDN 资源慢/不通；用当前已加载状态继续截图
-
-            # Find the best selector that matches slides
-            selector = _SLIDE_SELECTORS[0]
-            slide_count = page.locator(selector).count()
-            for alt in _SLIDE_SELECTORS[1:]:
-                if slide_count > 0:
-                    break
-                selector = alt
-                slide_count = page.locator(selector).count()
-
-            if slide_count == 0:
-                return []
-
-            # Force all slides into visible/animated state before screenshot
-            page.evaluate(_FORCE_VISIBLE_JS)
-            page.wait_for_timeout(_TRANSITION_SETTLE_MS)
-
-            # Capture each slide element
-            for i in range(slide_count):
-                el = page.locator(f"{selector} >> nth={i}")
-                img_bytes = el.screenshot(type="png")
-                images.append(img_bytes)
-        finally:
-            browser.close()
-
-    return images
+    return render_slides(html_path, width, height, scale)
 
 
 # ---------------------------------------------------------------------------
@@ -364,14 +292,8 @@ def _ensure_deps() -> None:
         from PIL import Image  # noqa: F401
     except ImportError:
         missing.append("Pillow")
-    try:
-        from playwright.sync_api import sync_playwright  # noqa: F401
-    except ImportError:
-        missing.append("playwright")
     if missing:
         hint = "pip install " + " ".join(missing)
-        if "playwright" in missing:
-            hint += " && python3 -m playwright install chromium"
         print(
             f"Missing dependencies: {', '.join(missing)}\n"
             f"Install with: {hint}",

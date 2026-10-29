@@ -23,6 +23,7 @@ ASR 自检复用 skills/_shared/asr.py，按 火山 → 百炼业务空间 → A
 import argparse
 import base64
 import json
+import math
 import mimetypes
 import os
 import re
@@ -37,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared"))
 from asr import asr  # noqa: E402
+from bailian_errors import BailianAPIError
 
 DEFAULT_API_BASE = "https://openspeech.bytedance.com/api/v3"
 DEFAULT_TTS_PATH = "/tts/unidirectional"
@@ -74,8 +76,8 @@ LOUDNESS_RATE_MAX = 100
 BAILIAN_WS_BASE_TEMPLATE = "https://{wsid}.cn-beijing.maas.aliyuncs.com/api/v1"
 BAILIAN_AGENT_PLAN_BASE = "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
 BAILIAN_TTS_PATH = "/services/audio/tts/SpeechSynthesizer"
-# 业务空间：plus 主力，3.1 flash 优先于 3.0 flash；Agent Plan 保留原候选链。
-BAILIAN_TTS_MODELS = ["qwen-audio-3.0-tts-plus", "qwen-audio-3.1-tts-flash", "qwen-audio-3.0-tts-flash"]
+# 业务空间默认 3.1 Plus；显式模型或音色禁止沿模型链改声音。
+BAILIAN_TTS_MODELS = ["qwen-audio-3.1-tts-plus", "qwen-audio-3.1-tts-flash", "qwen-audio-3.0-tts-plus", "qwen-audio-3.0-tts-flash"]
 BAILIAN_PLAN_TTS_MODELS = ["qwen-audio-3.0-tts-plus", "qwen-audio-3.0-tts-flash"]
 BAILIAN_DEFAULT_VOICE = "longanhuan_v3.6"
 BAILIAN_31_DEFAULT_VOICE = "longanhuan_v3.1"
@@ -84,7 +86,6 @@ BAILIAN_FORMATS = {"mp3", "pcm", "wav", "opus"}
 # 火山 ogg_opus 在百炼叫 opus
 FORMAT_ALIAS = {"ogg_opus": "opus"}
 BAILIAN_SAMPLE_RATES = {8000, 16000, 22050, 24000, 44100, 48000}
-BAILIAN_MODEL_UNAVAILABLE_CODES = {403, 404}
 
 SAFE_INPUT_DIRS = (Path("scripts"), Path("assets"), Path("tmp"), Path("output_videos"), Path("fragments"))
 SAFE_OUTPUT_DIRS = (Path("assets/audio"), Path("tmp"), Path("output_videos"), Path("fragments"))
@@ -341,7 +342,7 @@ def validate_args(args: argparse.Namespace, text: str, provider: str = "volc") -
         args.format = mapped
         if args.sample_rate is not None and args.sample_rate not in BAILIAN_SAMPLE_RATES:
             die(f"--sample-rate must be one of: {', '.join(str(r) for r in sorted(BAILIAN_SAMPLE_RATES))} (百炼)")
-        # 百炼音色不硬拦：系统/克隆/设计音色名由百炼侧校验，火山系音色在 bailian_voice 里换默认
+        # 百炼音色不硬拦：系统/克隆/设计音色名由百炼侧校验，火山系音色在 bailian_voice 里拒绝跨供应商替换
     else:
         if args.voice and args.voice not in VALID_VOICES:
             # 不硬拦——允许用户传克隆音色 S_xxx 或官方未列入的 speaker
@@ -454,18 +455,16 @@ def resolve_tts_provider():
 
 
 def bailian_voice(voice: str | None, model: str = "") -> str:
-    """百炼模式音色选择：用户传了火山系 speaker 时警告并换百炼默认音色。"""
-    default_voice = BAILIAN_31_DEFAULT_VOICE if model == "qwen-audio-3.1-tts-flash" else BAILIAN_DEFAULT_VOICE
+    """Choose a model-compatible default; explicit voices are never substituted."""
+    default_voice = {"qwen-audio-3.1-tts-plus": "longanlingxin_v3.1",
+                     "qwen-audio-3.1-tts-flash": BAILIAN_31_DEFAULT_VOICE,
+                     "qwen-audio-3.0-tts-plus": "longanlingxin"}.get(model, BAILIAN_DEFAULT_VOICE)
     if voice and (
         voice in VALID_VOICES
         or "_bigtts" in voice
         or voice.startswith(("S_", "saturn_", "ICL_"))
     ):
-        print(
-            f"[warn] 音色 {voice} 是火山系音色，百炼不识别；改用百炼默认音色 {default_voice}",
-            file=sys.stderr,
-        )
-        return default_voice
+        raise ValueError(f"音色 {voice} 属于火山；请选择原供应商或显式指定匹配的百炼模型/音色，不自动换声")
     return voice or default_voice
 
 
@@ -508,6 +507,7 @@ def _bailian_stream_sentences(raw_sentence: dict) -> dict:
 
 def create_speech_bailian(
     base: str, api_key: str, payload: dict, *, streaming: bool, timeout: int = 120,
+    diagnostics: list | None = None,
 ) -> tuple[bytes, list[dict]]:
     """调百炼 SpeechSynthesizer。返回 (audio_bytes, sentences)。
 
@@ -515,6 +515,10 @@ def create_speech_bailian(
     streaming=True：SSE 流式 + word_timestamp_enabled，audio.data base64 分片按序拼接，
     sentence-end 事件带字级时间戳（转成火山 subtitle schema 落 .subtitle.json）。
     """
+    trace = {"model": payload["model"], "voice": payload["input"]["voice"],
+             "streaming_requested": streaming, "events": [], "audio_chunks": 0, "audio_bytes": 0}
+    if diagnostics is not None:
+        diagnostics.append(trace)
     url = f"{base.rstrip('/')}{BAILIAN_TTS_PATH}"
     body = dict(payload)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -529,60 +533,82 @@ def create_speech_bailian(
         resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as exc:
         err_body = exc.read().decode(errors="replace")
-        raise BailianTtsHTTPError(exc.code, err_body)
+        error = BailianTtsHTTPError(exc.code, err_body)
+        trace.update(http_status=exc.code, category=error.category, service_code=error.service_code,
+                     request_id=error.request_id)
+        raise error
     except urllib.error.URLError as exc:
-        die(f"百炼 TTS 请求失败: {exc.reason}")
+        trace["category"] = "network"
+        raise ValueError("百炼 TTS network：请求失败；未重试或切换通路") from exc
 
     with resp:
-        if not streaming:
-            try:
-                parsed = json.loads(resp.read())
-            except json.JSONDecodeError:
-                die("百炼 TTS 非流式响应不是 JSON")
-            audio_url = ((parsed.get("output") or {}).get("audio") or {}).get("url")
-            if not audio_url:
-                die(f"百炼 TTS 响应无 output.audio.url: {json.dumps(parsed, ensure_ascii=False)[:500]}")
-            try:
-                with urllib.request.urlopen(audio_url, timeout=60) as dl:
-                    return dl.read(), []
-            except urllib.error.URLError as exc:
-                die(f"百炼 TTS 音频下载失败: {exc.reason}")
+        trace.update(http_status=getattr(resp, "status", 200),
+                     content_type=resp.headers.get("Content-Type", ""))
+        # Some gateways return JSON despite SSE being requested. Parse the actual
+        # transport, and keep the complete URL from this same synthesis request.
+        def events():
+            if "json" in trace["content_type"].lower() or not streaming:
+                yield json.loads(resp.read())
+                return
+            data_lines = []
+            for raw in resp:
+                line = raw.decode("utf-8").rstrip("\r\n")
+                if not line:
+                    if data_lines:
+                        data = "\n".join(data_lines)
+                        data_lines = []
+                        if data == "[DONE]":
+                            return
+                        yield json.loads(data)
+                elif line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+            if data_lines and "\n".join(data_lines) != "[DONE]":
+                yield json.loads("\n".join(data_lines))
 
-        # SSE：逐行解析，audio.data 分片按序拼接；sentence-end 收字级时间戳
         chunks: list[bytes] = []
         sentences: list[dict] = []
-        for raw_line in resp:
-            line = raw_line.decode(errors="replace").strip()
-            if not line.startswith("data:"):
-                continue
-            chunk_raw = line[len("data:"):].strip()
-            if not chunk_raw or chunk_raw == "[DONE]":
-                continue
-            try:
-                chunk = json.loads(chunk_raw)
-            except json.JSONDecodeError:
-                continue
-            output = chunk.get("output") or {}
-            audio = output.get("audio") or {}
-            if audio.get("data"):
-                chunks.append(base64.b64decode(audio["data"]))
-            if output.get("type") == "sentence-end" and output.get("sentence"):
-                sentences.append(_bailian_stream_sentences(output["sentence"]))
+        audio_url = None
+        completed = False
+        for chunk in events():
             code = chunk.get("code")
             if code and code not in ("0", 0, "Success"):
-                die(f"百炼 TTS 流错误: code={code} message={chunk.get('message', '')}")
-        if not chunks:
-            die("百炼 TTS 流式返回空音频（无 audio.data 分片）")
-        return b"".join(chunks), sentences
+                error = BailianTtsHTTPError(200, json.dumps(chunk))
+                trace.update(category=error.category, service_code=error.service_code, request_id=error.request_id)
+                raise error
+            output = chunk.get("output") or {}
+            audio = output.get("audio") or {}
+            if len(trace["events"]) < 1000:
+                trace["events"].append({"type": output.get("type"), "finish_reason": output.get("finish_reason"),
+                                         "request_id": chunk.get("request_id"),
+                                         "has_audio_data": bool(audio.get("data")), "has_audio_url": bool(audio.get("url")),
+                                         "word_count": len((output.get("sentence") or {}).get("words") or [])})
+            if audio.get("data"):
+                chunks.append(base64.b64decode(audio["data"], validate=True))
+            if output.get("type") == "sentence-end" and output.get("sentence"):
+                sentences.append(_bailian_stream_sentences(output["sentence"]))
+            audio_url = audio.get("url") or audio_url
+            completed |= output.get("finish_reason") == "stop"
+        trace.update(audio_chunks=len(chunks), completed=completed, has_final_audio_url=bool(audio_url))
+        # Prefer the complete file to partial chunks, without resubmitting TTS.
+        if audio_url and completed:
+            if not audio_url.startswith(("http://", "https://")):
+                raise ValueError("百炼 TTS 音频 URL 协议不支持")
+            with urllib.request.urlopen(audio_url, timeout=60) as dl:
+                audio_bytes = dl.read()
+            trace["audio_source"] = "final_url"
+        elif completed and chunks:
+            audio_bytes = b"".join(chunks)
+            trace["audio_source"] = "chunks"
+        else:
+            raise ValueError("百炼 TTS 响应不完整或无音频；可在同模型同音色下关闭 --enable-subtitle，成功后用 video-producer narration-align 获取 ASR 时间码")
+        trace["audio_bytes"] = len(audio_bytes)
+        if not audio_bytes:
+            raise ValueError("百炼 TTS 返回空音频；停止，不生成下游产物")
+        return audio_bytes, sentences
 
 
-class BailianTtsHTTPError(Exception):
+class BailianTtsHTTPError(BailianAPIError):
     """百炼 TTS HTTP 错误（携带状态码，供候选链 fallback 决策）。"""
-
-    def __init__(self, code: int, body: str) -> None:
-        super().__init__(f"HTTP {code}: {body}")
-        self.code = code
-        self.body = body
 
 
 def create_speech_bailian_with_fallback(
@@ -591,22 +617,25 @@ def create_speech_bailian_with_fallback(
 ) -> tuple[bytes, list[dict], str]:
     """沿选定端点的候选链合成。返回 (audio, sentences, used_model)。"""
     candidates = BAILIAN_PLAN_TTS_MODELS if mode == "agent-plan" else BAILIAN_TTS_MODELS
+    if not getattr(args, "model", None) and getattr(args, "voice_is_default", False) is not True:
+        raise ValueError("显式音色必须同时指定 --model，以保持模型/音色配对")
     models = [args.model] if getattr(args, "model", None) else list(candidates)
     for idx, model in enumerate(models):
         payload = build_bailian_payload(args, text, model)
         try:
             audio, sentences = create_speech_bailian(
                 base, api_key, payload, streaming=bool(args.enable_subtitle), timeout=timeout,
+                diagnostics=getattr(args, "diagnostic_events", None),
             )
             args.voice = payload["input"]["voice"]
             return audio, sentences, model
         except BailianTtsHTTPError as exc:
-            print(f"[error] 百炼 TTS HTTP {exc.code}: {exc.body[:500]}", file=sys.stderr)
+            print(f"[error] route={mode}: {exc}", file=sys.stderr)
             is_last = idx == len(models) - 1
-            if exc.code in BAILIAN_MODEL_UNAVAILABLE_CODES and not is_last:
+            if exc.category == "model_unsupported" and not is_last:
                 print(f"[warn] model {model} 不可用 (HTTP {exc.code})，切换候选链下一个...", file=sys.stderr)
                 continue
-            die(f"百炼 TTS 合成失败 (HTTP {exc.code}): {exc.body[:500]}")
+            raise
     die("百炼 TTS 候选链全部失败")
 
 
@@ -646,6 +675,29 @@ def _audio_input_args(path: Path, fmt: str, sample_rate: int | None) -> list[str
     if fmt == "pcm":
         return ["-f", "s16le", "-ar", str(sample_rate or 24000), "-ac", "1", "-i", str(path)]
     return ["-i", str(path)]
+
+
+def validate_audio(path: Path, fmt: str, sample_rate: int | None) -> float:
+    """Require positive duration and a complete successful decode before publishing."""
+    if not path.stat().st_size:
+        raise ValueError("TTS 音频为空")
+    raw = ["-f", "s16le", "-ar", str(sample_rate or 24000), "-ac", "1"] if fmt == "pcm" else []
+    probe = subprocess.run(["ffprobe", "-v", "error", *raw, "-show_format", "-show_streams",
+                            "-of", "json", str(path)], capture_output=True, text=True, timeout=30)
+    try:
+        info = json.loads(probe.stdout)
+        duration = float(info.get("format", {}).get("duration", 0))
+    except (ValueError, TypeError):
+        raise ValueError("TTS 音频探测失败")
+    if probe.returncode or not math.isfinite(duration) or duration <= 0 or not any(
+            s.get("codec_type") == "audio" for s in info.get("streams", [])):
+        raise ValueError("TTS 音频无有效音轨或时长不大于0")
+    decoded = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-xerror",
+                              *_audio_input_args(path, fmt, sample_rate), "-map", "0:a:0",
+                              "-f", "null", "-"], capture_output=True, text=True, timeout=600)
+    if decoded.returncode:
+        raise ValueError("TTS 音频不能完整解码")
+    return duration
 
 
 def _true_peak(path: Path, fmt: str, sample_rate: int | None) -> float:
@@ -701,7 +753,7 @@ def main() -> None:
     parser.add_argument("--voice", default=None, help="音色 ID（火山系如 zh_female_shuangkuaisisi_uranus_bigtts；百炼系如 longanhuan_v3.6）")
     parser.add_argument(
         "--model", default=None,
-        help="百炼模型 ID（显式指定关闭候选链 fallback；火山模式忽略。缺省 qwen-audio-3.0-tts-plus）",
+        help="百炼模型 ID（显式指定锁定模型；业务空间默认3.1 Plus，Plan默认3.0 Plus）",
     )
     parser.add_argument(
         "--format",
@@ -718,6 +770,8 @@ def main() -> None:
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output files")
     parser.add_argument("--no-asr-check", action="store_true", dest="no_asr_check", help="Skip ASR self-check after TTS generation")
     parser.add_argument("--enable-subtitle", action="store_true", dest="enable_subtitle", help="产出字级时间戳 .subtitle.json（火山：单向流式原生返回；百炼：SSE 流式 + word_timestamp_enabled）")
+    parser.add_argument("--fallback-platform", choices=["agent-plan"], help="明确授权 workspace 额度错误时转现有 Agent Plan 一次；须显式锁定 model/voice")
+    parser.add_argument("--diagnostics", type=Path, help="保存脱敏响应事件摘要，不含密钥、正文、URL或音频数据")
     args = parser.parse_args()
 
     if args.voice_profile or args.platform != "auto":
@@ -744,8 +798,27 @@ def main() -> None:
     text, tts_settings = read_text_source(args)
     apply_tts_settings(args, tts_settings, provider_name)
     validate_args(args, text, provider_name)
+    if provider != "volc":
+        if args.voice_is_default:
+            candidates = BAILIAN_PLAN_TTS_MODELS if provider[3] == "agent-plan" else BAILIAN_TTS_MODELS
+            args.voice = bailian_voice(None, args.model or candidates[0])
+        if args.sample_rate is None:
+            args.sample_rate = BAILIAN_DEFAULT_SAMPLE_RATE
+    if args.fallback_platform and (provider == "volc" or provider[3] != "workspace" or args.voice_profile
+                                   or not args.model or args.voice_is_default):
+        parser.error("回退仅用于 workspace，须显式 --model/--voice，且不能用于绑定音色档案")
+    fallback_key = os.environ.get("AWK_API_KEY", "").strip()
+    if args.fallback_platform and not fallback_key:
+        parser.error("回退需要已配置 AWK_API_KEY；不修改账户或计费配置")
+    args.diagnostic_events = []
 
     output_path = resolve_output_path(args)
+    if args.diagnostics:
+        protected = {output_path.resolve(), output_path.with_suffix(".json").resolve(),
+                     output_path.with_suffix(".subtitle.json").resolve()}
+        protected.update(Path(p).resolve() for p in (args.text_file, args.voice_profile) if p)
+        if args.diagnostics.resolve() in protected:
+            parser.error("--diagnostics 不得覆盖输入、音色档案、音频或元数据")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # 估算超时：中文约 4 字/秒（正常语速）
@@ -769,21 +842,40 @@ def main() -> None:
             f"[info] generating speech: provider=bailian({mode}) voice={args.voice} "
             f"format={args.format} subtitle={args.enable_subtitle} chars={len(text)} timeout={timeout}s"
         )
-        audio, sentences, used_model = create_speech_bailian_with_fallback(
-            base, api_key, args, text, timeout=timeout, mode=mode,
-        )
+        print(f"[info] route={mode} fallback={args.fallback_platform or 'disabled'}")
+        try:
+            try:
+                audio, sentences, used_model = create_speech_bailian_with_fallback(
+                    base, api_key, args, text, timeout=timeout, mode=mode,
+                )
+            except BailianTtsHTTPError as exc:
+                if not args.fallback_platform or exc.category != "quota_or_billing":
+                    raise
+                mode = "agent-plan"
+                print("[warn] workspace 额度/付费限制；按 --fallback-platform 授权转 Agent Plan 一次，保持全部合成参数", file=sys.stderr)
+                audio, sentences, used_model = create_speech_bailian_with_fallback(
+                    BAILIAN_AGENT_PLAN_BASE, fallback_key, args, text, timeout=timeout, mode=mode,
+                )
+        except (ValueError, OSError, BailianTtsHTTPError) as exc:
+            die(str(exc))
+        finally:
+            if args.diagnostics:
+                args.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+                args.diagnostics.write_text(json.dumps(args.diagnostic_events, ensure_ascii=False, indent=2))
         meta_extra = {"provider": f"bailian-{mode}", "model": used_model}
     if not audio:
         die("empty audio response")
 
-    output_path.write_bytes(audio)
-
     try:
-        peak_guard = protect_audio_peak(output_path, args.format, args.sample_rate)
+        with tempfile.TemporaryDirectory(prefix=".tts-validate-", dir=output_path.parent) as tmp:
+            candidate = Path(tmp) / output_path.name
+            candidate.write_bytes(audio)
+            validate_audio(candidate, args.format, args.sample_rate)
+            peak_guard = protect_audio_peak(candidate, args.format, args.sample_rate)
+            audio_duration = validate_audio(candidate, args.format, args.sample_rate)
+            candidate.replace(output_path)
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         die(str(exc))
-
-    audio_duration = get_audio_duration(output_path)
 
     metadata_path = output_path.with_suffix(".json")
     metadata = {
@@ -797,18 +889,24 @@ def main() -> None:
         "audio_bytes": output_path.stat().st_size,
         "peak_guard": peak_guard,
         "duration": round(audio_duration, 3),
+        "subtitle_status": "available" if any(s.get("words") for s in sentences) else "unavailable" if args.enable_subtitle else "not_requested",
         "file": str(output_path),
     }
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # enable_subtitle=true 时 sentences 带 words[startTime/endTime]，落盘供下游对齐
     subtitle_path: Path | None = None
-    if sentences:
+    if any(s.get("words") for s in sentences):
         subtitle_path = output_path.with_suffix(".subtitle.json")
         subtitle_path.write_text(
             json.dumps({"sentences": sentences}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+    elif args.enable_subtitle:
+        output_path.with_suffix(".subtitle.json").unlink(missing_ok=True)
+        print("[warn] subtitle_unavailable：当前响应未提供字级时间码；用 video-producer narration-align 对已生成音频执行公共 ASR", file=sys.stderr)
+    elif args.overwrite:
+        output_path.with_suffix(".subtitle.json").unlink(missing_ok=True)
 
     print(f"[done] Audio saved to: {output_path}")
     print(f"[done] Metadata: {metadata_path}")

@@ -52,8 +52,10 @@ Verdict JSON schema (also pretty-printed to stdout):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -118,67 +120,57 @@ def ffprobe(path: str) -> dict:
 # ── Frame extraction & black detection ─────────────────────────────────────
 
 def extract_frames(video: str, duration: float, out_dir: Path) -> list[dict]:
-    """Extract 5 frames at FRAME_POSITIONS_PCT. Returns list of {position_pct, path, mean_luma, is_black}."""
+    """Sample five positions; 100% means the last decoded frame, never EOF seek."""
     out_dir.mkdir(parents=True, exist_ok=True)
     frames: list[dict] = []
 
     for pct in FRAME_POSITIONS_PCT:
-        # timestamp in seconds
         ts = duration * pct / 100.0
-        # 端 0% 时 ts=0，ffmpeg trim 起会拒；用 -ss 段定位 + -frames:v 1
         frame_path = out_dir / f"frame_{int(pct):03d}.jpg"
-        cmd = [
-            "ffmpeg", "-y", "-v", "quiet",
-            "-ss", f"{ts:.3f}", "-i", video,
-            "-frames:v", "1", "-q:v", "2",
-            str(frame_path),
-        ]
-        rc, _, _ = run(cmd, timeout=30)
-        if rc != 0 or not frame_path.exists():
-            frames.append({"position_pct": pct, "path": None, "mean_luma": None, "is_black": None})
+        item = {"position_pct": pct, "requested_timestamp_seconds": ts,
+                "path": None, "mean_luma": None, "is_black": None,
+                "status": "coverage_missing", "error": "frame extraction failed"}
+        # A container can outlive its video track. Expand a bounded tail window,
+        # then decode from the start if both windows contain no video frames.
+        seeks = [max(0.0, duration - 2), max(0.0, duration - 8), 0.0] if pct == 100 else [ts]
+        for seek in dict.fromkeys(seeks):
+            frame_path.unlink(missing_ok=True)  # never reuse an earlier review's JPEG
+            cmd = ["ffmpeg", "-nostdin", "-y", "-v", "info", "-xerror", "-copyts",
+                   "-ss", f"{seek:.6f}", "-i", video, "-map", "0:v:0", "-an",
+                   "-vf", "showinfo", "-vsync", "0", "-q:v", "2"]
+            cmd += ["-update", "1"] if pct == 100 else ["-frames:v", "1"]
+            try:
+                proc = subprocess.run(cmd + [str(frame_path)], capture_output=True, text=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                item["error"] = "frame decode timeout"
+                break
+            if proc.returncode == 0 and frame_path.is_file() and frame_path.stat().st_size:
+                stamps = re.findall(r"pts_time:([-+\d.eE]+)", proc.stderr)
+                item.update(path=str(frame_path), extraction="last_decoded" if pct == 100 else "seek",
+                            decoded_timestamp_seconds=float(stamps[-1 if pct == 100 else 0]) if stamps else None)
+                break
+            item["error"] = f"ffmpeg exit={proc.returncode}; no usable frame"
+        if not item["path"]:
+            frame_path.unlink(missing_ok=True)
+            frames.append(item)
             continue
 
-        # Use ffmpeg signalstats to get mean luma. signalstats gives YAVG.
-        rc, out, _ = run([
-            "ffmpeg", "-v", "quiet", "-i", str(frame_path),
-            "-vf", "signalstats", "-f", "null", "-",
+        rc, out, err = run([
+            "ffmpeg", "-v", "info", "-i", str(frame_path),
+            "-vf", "signalstats,metadata=print:key=lavfi.signalstats.YAVG",
+            "-f", "null", "-",
         ], timeout=15)
         mean_luma: float | None = None
-        # signalstats prints to stderr normally; with quiet we get nothing.
-        # Fallback: use ffmpeg with stderr passthrough to catch YAVG=N.
         if rc == 0:
-            rc2, out2, err2 = run([
-                "ffmpeg", "-v", "info", "-i", str(frame_path),
-                "-vf", "signalstats", "-f", "null", "-",
-            ], timeout=15)
-            for line in (err2 + out2).splitlines():
-                # Example: "signalstats: YAVG=0.012300 ..."
-                if "YAVG=" in line:
-                    try:
-                        mean_luma = float(line.split("YAVG=")[1].split()[0])
-                    except (IndexError, ValueError):
-                        pass
-                    break
-
-        # If signalstats failed, try a Pillow-free fallback via ffmpeg lutyuv mean
+            match = re.search(r"lavfi.signalstats.YAVG=([\d.]+)", out + err)
+            if match:
+                mean_luma = float(match.group(1)) / 255.0  # JPEG full-range luma
         if mean_luma is None:
-            # Use ffmpeg blackframe filter — it logs frames below threshold
-            rc3, _, err3 = run([
-                "ffmpeg", "-v", "info", "-i", str(frame_path),
-                "-vf", f"blackframe=threshold={BLACK_LUMA_THRESHOLD}",
-                "-f", "null", "-",
-            ], timeout=15)
-            # If "black" appears in stderr, frame is black
-            is_black_log = "First black frame detected" in err3 or "black" in err3.lower()
-            mean_luma = 0.0 if is_black_log else 0.5  # placeholder; we trust is_black_log
-
-        is_black = mean_luma is not None and mean_luma < BLACK_LUMA_THRESHOLD
-        frames.append({
-            "position_pct": pct,
-            "path": str(frame_path),
-            "mean_luma": round(mean_luma, 4) if mean_luma is not None else None,
-            "is_black": is_black,
-        })
+            item["error"] = "luma analysis failed"
+        else:
+            item.update(mean_luma=round(mean_luma, 4), is_black=mean_luma < BLACK_LUMA_THRESHOLD,
+                        status="ok", error=None)
+        frames.append(item)
 
     return frames
 
@@ -262,12 +254,21 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
         die(f"成片不存在: {video}")
 
     review_dir = project_dir / REVIEW_DIR_NAME
-    frames_dir = review_dir / FRAMES_SUBDIR
-    review_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir = review_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    source_hash = sha256(video)
+    # A verdict's evidence must survive other files, repeated reviews and parallel
+    # calls. --output names a report alias; it must never select a shared frame dir.
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{video.stem[:40]}-{source_hash[:12]}-", dir=runs_dir))
+    frames_dir = run_dir / FRAMES_SUBDIR
 
     verdict: dict = {
         "verdict": "pass",
         "file": str(video.resolve()),
+        "review_id": run_dir.name,
+        "report_path": str((run_dir / "verdict.json").resolve()),
+        "source_sha256": source_hash,
+        "source_size_bytes": video.stat().st_size,
         "ffprobe": {},
         "frames": [],
         "audio_level": {},
@@ -320,7 +321,17 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
 
     # ── 2. Frame extraction & black detection ────────────────────────────
     frames = extract_frames(str(video), duration, frames_dir)
+    for frame in frames:
+        if frame.get("path") and Path(frame["path"]).is_file():
+            frame["sha256"] = sha256(Path(frame["path"]))
     verdict["frames"] = frames
+    missing = [f for f in frames if f["status"] != "ok"]
+    verdict["coverage_missing"] = [{"position_pct": f["position_pct"], "reason": f["error"]} for f in missing]
+    verdict["checks"].append({"name": "frame_coverage", "status": "warn" if missing else "pass",
+                              "expected": 5, "completed": len(frames) - len(missing)})
+    if missing:
+        verdict["warnings"].append("coverage_missing: incomplete frame review at " +
+                                    ", ".join(f"{f['position_pct']:g}% ({f['error']})" for f in missing))
     black_count = sum(1 for f in frames if f.get("is_black") is True)
     if black_count >= 2:        # ≥2 black frames out of 5 → critical
         verdict["critical"].append(
@@ -422,6 +433,9 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
     if "420" not in pix_fmt:
         verdict["warnings"].append(f"pix_fmt_unusual: {pix_fmt} — 多平台发布建议 yuv420p")
 
+    if sha256(video) != source_hash:
+        verdict["critical"].append("source_changed: source video changed during review; review again")
+
     # ── Final verdict tally ──────────────────────────────────────────────
     if verdict["critical"]:
         verdict["verdict"] = "fail"
@@ -434,18 +448,35 @@ def review(project_dir: Path, video: Path, target_duration: float | None,
     return verdict
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=".verdict-", delete=False) as handle:
+        temp = Path(handle.name)
+        try:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.flush()
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
+
+
 def _finalize(verdict: dict, output_path: Path | None) -> None:
     """Pretty-print verdict to stdout and write JSON."""
     print(json.dumps(verdict, indent=2, ensure_ascii=False))
 
-    if output_path is None:
-        # Default: write to <project-dir>/review/verdict.json
-        # output_path is None means caller didn't specify — we already have review_dir
-        # but we don't here. Simpler: caller always passes output_path.
-        return
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(verdict, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\n[ok] verdict written to {output_path}", file=sys.stderr)
+    atomic_json(Path(verdict["report_path"]), verdict)
+    if output_path is not None:
+        atomic_json(output_path, verdict)
+        print(f"\n[ok] verdict written to {output_path}", file=sys.stderr)
 
 
 def main() -> None:

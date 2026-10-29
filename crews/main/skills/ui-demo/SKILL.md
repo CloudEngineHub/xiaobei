@@ -16,7 +16,7 @@ metadata:
 
 ## 浏览器后端说明（先读）
 
-本 skill 所有具体操作命令和示例**只针对 `target=camoufox`**（全局 `camoufox-cli` 命令 + 本技能 `ui-demo` 录制执行器）。若当前是 `target=host` 或 `target=node`：只按本 skill 的流程 / 步骤 / 提示事项执行，不要照搬下面的具体命令和示例，浏览器操作走当前后端自带的工具语义。
+探查和演习使用 `camoufox-cli` 兼容入口，录制执行器复用 `xiaobei-browser` 的主仓 SDK 与固定资产。先完成统一安装；不要另装其他 SDK 或自行选择浏览器二进制。
 
 ## When to Use
 
@@ -29,7 +29,7 @@ metadata:
 
 **有头/无头总原则**：全程默认无头。只有两种情况用有头：① 用户明确表示要旁观（见 Phase 2 的必问环节）；② 无头模式无法正常工作（页面渲染异常、必须人工过验证码等），此时改有头并告知用户原因。
 
-**⚠️ 同一 session 的模式必须保持一致：以 `--headed` 打开后，后续每条 `camoufox-cli` 命令（包括 `eval`、`snapshot`、`screenshot`、`scroll`、cookie 导出和 `close`）都必须带 `--headed`，直到关闭 session。漏带会重启 daemon、关闭浏览器窗口并丢失当前页面。需要切换模式时，先按原模式 `close`，再按新模式 `open`。**
+**同一 session 的启动模式保持一致。** 新运行时遇到显式模式冲突会返回 `MODE_CONFLICT`；不要反复重启处理冲突。需要切换模式时，先确认当前任务可以结束，再关闭自己的 session 并按新模式打开；人工等待或其他任务占用时先处理 lease。
 
 以下未带 `--headed` 的示例适用于无头 session；有头 session 使用时必须补上该参数。Phase 3 的 `ui-demo` 执行器创建独立浏览器，不复用演习 daemon。
 
@@ -88,7 +88,7 @@ camoufox-cli --session ui-demo --json screenshot /tmp/ui-demo-check.png
   camoufox-cli --session ui-demo --headed --json screenshot /tmp/ui-demo-check.png
   ```
 
-  **⚠️ 有头演习后续所有命令必须持续带 `--headed`，包括导出 cookie 和最终 `close`；漏带会重启 daemon 并丢页面。** 从有头探查进入本步骤时，先关闭旧 session 的命令也必须带 `--headed`。
+  有头演习保持原模式；如收到模式冲突，检查现有 session 和任务占用，不擅自重启。关闭前确认该 session 属于当前演习。
 
   旁观模式下的演习纪律：
   - 每一步操作**前**，在聊天里先说这一步要做什么（对应未来的字幕文案），再执行；
@@ -110,12 +110,7 @@ camoufox-cli --session ui-demo --json screenshot /tmp/ui-demo-check.png
 ### 演习收尾（强制）
 
 1. 把**录制计划**发给用户确认：步骤清单（每步一句话+字幕文案）、预计时长、明确不录的内容。用户认了才进 Phase 3。
-2. 若 Phase 3 需要登录态，先导出 cookie，再关演习 session。以下为无头示例；**有头演习两条命令都必须加 `--headed`**：
-
-   ```bash
-   camoufox-cli --session ui-demo --json cookies export <project-dir>/cookies.json
-   camoufox-cli --session ui-demo --json close
-   ```
+2. 结束当前演习后只关闭自己的 session。录制会创建独立身份，需要登录时在本次录制上下文重新登录；不要导出演习或旧 profile 的 Cookie 注入新身份。可在录制脚本中使用该站点正常登录流程，需要用户验证码时按浏览器规则处理。
 
 ---
 
@@ -128,8 +123,7 @@ camoufox-cli --session ui-demo --json screenshot /tmp/ui-demo-check.png
 ```bash
 ui-demo --steps <project-dir>/demo-steps.mjs \
         --output <project-dir>/output/demo-<feature>.webm \
-        --base-url http://localhost:3000 \
-        --cookies <project-dir>/cookies.json
+        --base-url http://localhost:3000
 ```
 
 | 参数 | 默认 | 说明 |
@@ -139,11 +133,10 @@ ui-demo --steps <project-dir>/demo-steps.mjs \
 | `--headed` | 关 | 有头录制（仅用户要求旁观或无头异常时用） |
 | `--viewport` | `1280x720` | 浏览器窗口尺寸。成片按窗口内容区实测裁定（略小于窗口高，如 1280x658），实际分辨率见输出报告 `resolution` 字段 |
 | `--base-url` | env `BASE_URL` | 注入 steps 函数的 `baseURL` |
-| `--cookies` | — | 演习 session 导出的 cookie 文件，录制前注入（跳过登录画面） |
 
 退出码：0 成功 / 1 参数错或步骤出错（已录到的部分仍保存）/ 3 技能 Node 依赖或浏览器未装（按 `error` 提示修复；浏览器未装时先 `camoufox-cli install`）。
 
-Node 依赖由统一安装流程按本技能 `package.json` 安装到技能目录；全局 `camoufox-cli` 的嵌套依赖不能替代本技能依赖。收到依赖缺失提示时，重跑统一安装流程，或执行提示中的 `npm install --prefix ... --omit=dev` 修复命令。
+录制复用产品 `browser/` 的依赖、driver 和固定资产，本技能无需独立 npm 安装。收到运行库或资产缺失提示时修复统一安装，不在技能目录另装 SDK。Playwright 视频录制所需 FFmpeg 也应由分发流程准备，不能在执行器中临时下载。
 
 ### demo-steps 文件模板
 
@@ -152,7 +145,7 @@ export default async function run(demo) {
   const { page, baseURL, showSubtitle, moveAndClick, typeSlowly,
           smoothScroll, pause } = demo;
 
-  // Step 1 - 登录（cookies 已注入通常直接跳过；失效则走表单登录）
+  // Step 1 - 在本次录制上下文登录
   await page.goto(`${baseURL}/dashboard`);
   await pause(3000);
   const loggedIn = await page.locator('.user-menu, .avatar').first()
@@ -262,7 +255,7 @@ export default async function run(demo) {
 - [ ] 可见输入使用 `typeSlowly`
 - [ ] 滚动使用 `smoothScroll`
 - [ ] 关键过渡点有 `showSubtitle`
-- [ ] 需要登录态时 cookies.json 已从演习 session 导出
+- [ ] 需要登录时已安排本次录制上下文的正常登录流程，不导入其他身份 Cookie
 
 ## Common Pitfalls
 

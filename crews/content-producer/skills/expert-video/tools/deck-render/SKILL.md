@@ -52,6 +52,8 @@ deck-render render /absolute/project/composition --output /absolute/project/rend
 
 - `theme` = light/dark。`pip` = top-left/top-right/bottom-left/bottom-right/none；有小窗时整侧留白，底部另留字幕带。默认与 1080p 的 `pip-compose` 参数匹配；改小窗尺寸/画幅时复核并调整版式。
 - `scenes` 非空；每页 `duration` 为 3–30 秒，页时长之和必须对应唯一口播音轨；翻页取句边界。工具不自动改稿/合页/伸缩音频。
+- `script/deck-spec.json` 是 `deck-render` 与 `video-producer visual-plan-check` 共用的唯一计划源，不再并列维护 `segments`。有视觉承诺时 scene 填 `visual_kind`、`visual_action`；一场多节拍用 scene 内 `beats` 数组，每个 beat 填 `duration`，可覆盖场级视觉类型/动作。beat 时长之和须等于 scene.duration；无 beats 时整场即一节拍。
+- scene 的可选 `start/end` 是全片秒数；beat 的可选 `start/end` 是场内秒数。按各自 duration 累加校验，无空隙/重叠。可在 scene 或 beat 内放多条 `cues:[{start,end,text}]`，时间相对于所属场/节拍，须有序、不重叠、不越界，字幕不额外累加时长。顶层可填 `duration` 校验总长。动态图数量按展开后的 beat 统计，每个 beat 的动作须能在预览中独立核验。
 - 每页标题最多 32 字；`points` 最多 4 条、每条最多 48 字。`subtitle` 与 `source` 要简短，超出版式须重排，通过 check 与目检。
 - `type` = title/points/chart/image。chart 是正数柱状图（1–6 项，label 最多 8 字），必须给制作溯源 `source` 和面向观众标明数据来源的 `caption`；负数/零/折线等改写 scene SVG，不伪造数据迁就模板。
 - image 页给 `image` 绝对路径、`source` 来源与授权，图片复制进 assets。`source` 仅留制作溯源，不渲染；仅 `caption` 会显示给观众。`caption` 不写“原图已裁净”“内部素材”等制作备注。
@@ -65,4 +67,4 @@ deck-render render /absolute/project/composition --output /absolute/project/rend
 - ❌ 用 `/slideshow` 或 `present` 做可导航 deck 后直接 render；此路径可能只输出第一页。
 - `preview` 产物必须人工检查遮挡、中文、图表、翻页，GATE B 批准后再 render；工具 check 不代替内容审片与甲方闸门。
 
-依赖在本目录 package.json 精确锁定 hyperframes 0.8.50、gsap 3.14.2、playwright-core 1.61.1。安装/更新通过 `scripts/install-deck-render.sh`（Windows 为同名 `.ps1`）装 npm 包与 Chromium headless shell；Linux/macOS 安装 Noto，Windows 使用系统微软雅黑；容器构建时预装进镜像。不要运行 npx 临时下载或自动 upgrade。渲染 CLI 参考：[HyperFrames rendering](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/rendering.mdx)，具体参数以本包锁定版本为准。
+本目录 package.json 仅锁定 hyperframes 0.8.50、gsap 3.14.2。Playwright 版本统一跟随 `browser/package.json`，驱动共用 `browser/node_modules/playwright-core`，Chromium headless shell 仅放在 `browser/.browsers`；不要在技能内安装 Playwright 或下载浏览器。安装/更新通过 `scripts/install-deck-render.sh`（Windows 为同名 `.ps1`）复用共享安装器；Linux/macOS 安装 Noto，Windows 使用系统微软雅黑；容器构建时预装进镜像。不要运行 npx 临时下载或自动 upgrade。渲染 CLI 参考：[HyperFrames rendering](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/rendering.mdx)，具体参数以本包锁定版本为准。

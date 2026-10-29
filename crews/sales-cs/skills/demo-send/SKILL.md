@@ -1,46 +1,20 @@
 ---
 name: demo-send
 description: >
-  Send product demo material to a free-status customer when they
-  ask about concrete usage, want to understand the product form, or need a
-  first visual reference before deeper sales qualification.
+  Send configured product demo material when customers ask about concrete
+  usage, want to understand the product, or need a visual reference.
 ---
 
-# demo-send
+# Demo material
 
-> 技能目前为示例。启用前需根据实际业务调整。
+在同级 `config.json` 的 `media` 字段配置演示材料的本地绝对路径或 HTTPS URL。字段为空时，先让 main agent 配置实际素材；不要猜测文件名、路径或链接。
 
-## 用途
-当客户属于 `free` 状态，且提出具体使用问题、想先看看产品形态、或需要一个直观参考时，发送 demo 材料。
-
-## 调用方式
-
-使用 `message` 工具发送预存在微信网盘中的 demo 文件：
+使用所有 channel 共用的媒体发送格式，当前会话可省略 target：
 
 ```
-message(action="sendAttachment", file_name="<文件名>")
+message(action="send", media="<config.json 中的 media>")
 ```
 
-> **错误示例**（禁止使用）：
-> ```
-> message(action="sendAttachment", filename="...", filePath="...")
-> ```
-> 参数名必须是 `file_name`（带下划线），不得传 `filePath` 或 `filename`。`file_name` 对应微信网盘中已存的文件名，不是本地路径。
+可以在同一次调用中使用 `message` 参数附带说明文字。发送前不要先输出另一份相同的介绍；工具完成后再询问客户的具体需求或应用场景。
 
-**可用文件**：
-- `wiseflow5x.mp4` — 小贝（xiaobei）系统演示视频
-
-**示例**：
-```
-message(action="sendAttachment", file_name="wiseflow5x.mp4")
-```
-
-## 完整发送流程
-
-1. 直接调用 `message(action="sendAttachment", file_name="...")` 发送文件（**本 turn 不输出任何文字**）
-2. 工具返回后，在最后一个 turn 统一输出完整回复：说明已发送 demo + 追问客户的具体需求或应用场景 + 提醒官网/GitHub 主页获取最新信息
-
-> **重要**：不要在调用工具前生成任何文字（包括"我先给您发一份..."之类的介绍语），否则客户会收到多条内容相近的消息。
-
-## 调用后必须做的事
-发送 demo 后，**必须立刻追问客户的具体需求或应用场景**，不得只发完就结束。
+`queued` / `submitted` 表示提交成功，不能据此宣称已送达。遇到 `failed` / `unknown` 时保留回执并查询结果，不盲目重新发送，不把内部错误详情直接转发给客户。

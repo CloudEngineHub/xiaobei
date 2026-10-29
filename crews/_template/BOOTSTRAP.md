@@ -12,7 +12,7 @@ Add bootstrap collection steps when the crew needs **user-specific context** tha
 - User preferences (language, style, frequency)
 - Operational links and escalation contacts
 
-**Do NOT add bootstrap steps** when the crew only needs system-level knowledge (paths, tool locations, architecture) — that belongs in `MEMORY.md` or `TOOLS.md` directly.
+**Do NOT add bootstrap steps** when the crew only needs system-level knowledge. Put local paths, environment variable names and tool aliases in the `## Tools` section of `AGENTS.md`; keep durable architecture facts in `MEMORY.md`. Never create a separate `TOOLS.md`.
 
 ## Pattern
 
@@ -57,4 +57,6 @@ Regardless of whether bootstrap steps exist, review these files at startup:
 - **MEMORY.md** — Background context and ongoing task state
 - **IDENTITY.md** — Name and persona
 - **USER.md** — Assumptions about who you are serving
-- **TOOLS.md** — Available tools and usage guidelines
+- **AGENTS.md → Tools** — Local paths, environment notes and tool aliases; read the relevant `SKILL.md` for operating instructions
+
+Subagents automatically receive only `AGENTS.md`. Read other files only when the task needs them and access is authorized; do not automatically read private `MEMORY.md` in subagent, group or cron contexts.

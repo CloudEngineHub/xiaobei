@@ -11,6 +11,13 @@ SESSION = 'douyin'
 UPLOAD_URL = 'https://creator.douyin.com/creator-micro/content/upload?enter_from=dou_web'
 MANAGE_URL = 'https://creator.douyin.com/creator-micro/content/manage'
 
+
+class PublicationPending(RuntimeError):
+    code = 'PUBLISH_PENDING'
+
+    def __init__(self):
+        super().__init__('抖音视频提交尚未结案，先用 douyin-publish video resume 或 douyin-publish video verify-code 核查或完成验证；保留当前浏览器')
+
 def video_publish_state_path():
     override = os.environ.get('DOUYIN_VIDEO_PUBLISH_STATE')
     return Path(override).expanduser() if override else Path.home() / '.camoufox-cli/publications/douyin-video.json'
@@ -35,7 +42,7 @@ def publish_lock(*, allow_pending_video=False):
                 except (ValueError, OSError) as exc:
                     raise RuntimeError('抖音视频任务状态损坏，先核查原任务；不关闭其浏览器') from exc
                 if state.get('state') in {'submitted', 'awaiting_verification', 'unconfirmed'}:
-                    raise RuntimeError('抖音视频提交尚未结案，先用 douyin-publish video resume 或 douyin-publish video verify-code 核查或完成验证；保留当前浏览器')
+                    raise PublicationPending()
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)

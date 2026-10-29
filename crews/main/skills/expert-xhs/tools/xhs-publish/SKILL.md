@@ -34,6 +34,35 @@ xhs-publish --mode video --title "标题" --body @/绝对路径/body.txt --video
 
 标题 1–20 字，正文 1–1000 字；图文需 1–18 张图片，视频需 `--video`。`--topics` 可补充话题，合计最多 10 个；`--private` 设为仅自己可见。笔记含 AI 合成内容时加 `--ai-declaration`，发布请求会带上创作者端的“笔记含 AI 合成内容”声明；纯实拍内容不加。正文中的 `#话题` 自动整理为 Creator 可识别的内联话题格式。
 
-发布前让用户确认标题、正文、图片顺序及可见性。提交成功必须同时有 `ok: true` 和 `note_id`，再记录返回的 `url`。`SUBMISSION_UNKNOWN` 或 `SUBMISSION_UNCONFIRMED` 时先到创作者后台核查，**不要自动重发**。接口明确拒绝时根据错误码处理。操作结果写入 `~/.openclaw/logs/xhs-creator-observe.jsonl`，不含正文或 Cookie。
+发布前核对用户已认可的标题、正文、图片顺序及可见性；已有授权不重复索要同一批准。提交成功必须同时有 `ok: true` 和 `note_id`，再记录返回的 `url`。成功回执的 `status: submitted`、`accepted:true` 表示平台已接受；播放核实可以另行完成，不能把它退回“发布失败”或要求重发。
+
+失败按回执处理：
+
+| 回执 | 含义与处理 |
+|---|---|
+| `TOPIC_NOT_FOUND` / `TOPIC_LOOKUP_FAILED` | `stage:topics`、`submission_attempted:false`，话题在上传前核对。按原授权修正标签；不存在的标签可经已有授权改为普通正文，保留内容意图，不自动选相似话题 |
+| `PRE_SUBMISSION_FAILED` | 看 `stage`（upload/location/payload/sign 等），笔记 POST 未开始；媒体可能已上传。修正对应问题后在原授权内继续，不要求用户在 App 查一条尚未提交的作品 |
+| `VIDEO_READINESS_UNCONFIRMED` | 媒体已上传但未提交笔记，按 readiness 处理 |
+| `SUBMISSION_UNKNOWN` | 笔记 POST 已开始或调用阶段无法确认，不能重发；按下节核查 |
+| `SUBMISSION_UNCONFIRMED` | 平台已接受但 ID 缺失，先恢复 ID 与记录，不能重发 |
+| `PUBLISH_REJECTED` | 平台明确拒绝，按错误码修正 |
+
+回执中的 `attempt_id` 关联本次调用，`stage`、`submission_attempted`、`media_uploaded` 用于交接，不用“发生异常”推断是否发布。`TITLE_INVALID` 等本地参数错误尚未上传或提交，按既有认可范围修正即可；只有内容、账号或可见性超出原授权时才补充确认。
 
 发布 Workflow 负责判断内容是否需要 AI 声明，并在调用发布命令时传入 `--ai-declaration`。
+
+视频转码与笔记提交分别判断：`readiness.state:ready` 表示查询返回就绪证据；Creator 会话缺少 www 查询认证时允许服务端异步转码提交，但返回 `readiness_unknown/auth_unavailable`。网络、服务错误、空数据和持续 pending 不按 ready 处理，提交前停止并返回 `VIDEO_READINESS_UNCONFIRMED`、`submission_attempted:false`。`accepted:true` 与作品 ID 只证明平台接受，`public`/`playable:null` 仍需核实；不要因可播放未知自动重发。
+
+## 提交结果不确定时
+
+`SUBMISSION_UNKNOWN`（包括 `curl: (28) Operation timed out`）表示无法确认结果；`SUBMISSION_UNCONFIRMED` 表示平台返回成功但缺少作品 ID。两者都不能当作发布失败，**不要自动重发**，也不要因创作者列表未出现目标笔记就重发。
+
+- 用现有 `xhs-engagement list` 查看当前账号的已发作品。候选笔记须结合账号、标题和实际内容核实；同名多条时不能自动取第一条。确认目标笔记后保留真实作品 ID 和链接，不再次提交。
+- 列表可能滞后，没查到仍属于待核实。停止发布重试，请用户在 App 核对（必须用app，不可同时登陆网页端创作者后台，会造成平台风控）；用户确认已发布，就按此确认报告最终成功，不再反复询问是否发布或要求重发。有链接时恢复记录；缺少 ID/链接时继续只读取链，不编造。只有用户核实确实未发布并明确要求重试，才重新提交；接受正常自然语言，不要求复述固定口令。触发风控时遵守 `expert-xhs` 的限频和停手规则。
+- 确认成功后的记录沿用 `published-track`，先查询是否已有对应记录。补录使用原作品目录、实际发布日期和发布账号，内容类型与原图文 / 视频一致；历史发布显式传 `--publish-date`，不要把补录日当作发布日。同一目录和发布日的 `record` 会更新原行；不要新造目录或日期造成重复记录。分发状态按实际需求填写，不因超时恢复就统一设为无需分发。
+
+操作结果写入 `~/.openclaw/logs/xhs-creator-observe.jsonl`：提交前错误对应 `not_submitted`，`SUBMISSION_UNKNOWN` 对应 `unknown`，成功但无 ID 对应 `unconfirmed`；包含阶段和调用关联 ID，不含正文或 Cookie。日志只说明本次请求结果，不能代替平台侧核实或用户后续确认。
+
+委派执行时回传成功链接/记录 ID，或失败阶段、是否尝试提交、回执位置和下一步；结果待核实也须及时回报父任务，不能只等成功链接。main 统筹多平台发布时逐项回报当前状态，当前平台结束后继续其余已授权平台。
+
+当前 HTTP 单次请求超时为 120 秒，媒体上传与发布提交均使用该设置；这不是整轮发布的总时限。若仍报约 15000 毫秒超时，请 IT engineer 核查实际加载版本和外层超时限制，不要由发布智能体临时改共享库来反复重试。即使延长超时，结果不确定时仍按上面的核查规则处理。

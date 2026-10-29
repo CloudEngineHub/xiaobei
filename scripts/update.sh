@@ -3,12 +3,14 @@
 #
 # 与 scripts/install.sh 区别（两条互不混用的分发路线）：
 #   - install.sh = tarball 路线首装（已装机器重跑即更新；拉预构建 tarball → pnpm install --prod → daemon restart，全程无需用户预装 Node/git/pnpm）
-#   - update.sh  = 本脚本，git clone 源码用户的升级路线（fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
+#   - update.sh  = 本脚本，git clone 源码用户的升级路线（fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 12+）
 #
 # 适用场景：用户是 git clone 本仓装的（项目目录内有 .git），后续要拉新版本用此脚本。
+#   源码分发测试可加 --skip-sync，直接使用本地代码，跳过本仓 git 初始化、remote 配置和 fetch/reset。
+#   OpenClaw 引擎仍按本地 openclaw.version 检出，依赖安装与构建照常执行。
 #   ⚠️ 通过 install.sh 以 tarball 装的机器**不要**用本脚本——重跑 install.sh 即可升级。
 #   本脚本对无 .git 的目录会 git init + fetch + reset --hard，等于把 tarball 安装转成源码路线，
-#   并要求系统 Node/git/pnpm 11+ 自行 build，恰是 tarball 用户特意绕开的依赖。
+#   并要求系统 Node/git/pnpm 12+ 自行 build，恰是 tarball 用户特意绕开的依赖。
 #
 # 升级前请确保系统空闲（无 agent 会话正在处理任务）。
 #
@@ -18,7 +20,7 @@
 #   3. git fetch + reset --hard 拉取最新 wiseflow 代码
 #   4. 读取 openclaw.version，按锚定版本检出 openclaw 子目录
 #      - 若已是目标 commit，跳过耗时的 install
-#   5. apply-addons.sh（patches + skills + crew 模板，内含 setup-crew.sh）
+#   5. apply-addons.sh（patches + skills + crew 模板，先升级 pip，再按需安装 Python 依赖；内含 setup-crew.sh）
 #   6. pnpm build（编译 openclaw dist）
 #   7. daemon 升级（已装只 reload + restart 不卸装，避免掐断正在跑的会话）
 #   8. 微信 channel 插件同步 + meta 回正
@@ -29,6 +31,8 @@ OFB_REPO_ATOMGIT="https://atomgit.com/wiseflow/xiaobei.git"
 # 默认 GitHub；--atomgit 切到 atomgit 国内镜像（git remote 可匿名 fetch/clone，实测可用）
 OFB_REPO="$OFB_REPO_DEFAULT"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/download-network.sh"
+xiaobei_configure_download_network "$PROJECT_ROOT"
 OPENCLAW_DIR="$PROJECT_ROOT/openclaw"
 VERSION_FILE="$PROJECT_ROOT/openclaw.version"
 OPENCLAW_HOME="$HOME/.openclaw"
@@ -36,6 +40,7 @@ OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-$OPENCLAW_HOME/openclaw.json}"
 SYSTEMD_ENV_FILE="$OPENCLAW_HOME/daemon.env"
 MACOS_GATEWAY_ENV="$OPENCLAW_HOME/service-env/ai.openclaw.gateway.env"
 FORCE=false
+SKIP_SYNC=false
 SKIP_CREW=false
 SKIP_WEIXIN=false
 
@@ -43,6 +48,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --force)
       FORCE=true
+      shift
+      ;;
+    --skip-sync)
+      SKIP_SYNC=true
       shift
       ;;
     --skip-crew)
@@ -65,8 +74,9 @@ while [ $# -gt 0 ]; do
       ;;
     *)
       echo "❌ Unknown option: $1"
-      echo "Usage: $0 [--force] [--skip-crew] [--skip-weixin] [--atomgit] [--github]"
+      echo "Usage: $0 [--force] [--skip-sync] [--skip-crew] [--skip-weixin] [--atomgit] [--github]"
       echo "  --force        Overwrite existing workspace files (including MEMORY.md)"
+      echo "  --skip-sync    Use local project code; skip project git init, remote setup and fetch/reset (OpenClaw pin still enforced)"
       echo "  --skip-crew   Skip setup-crew.sh (only sync addons, no workspace updates)"
       echo "  --skip-weixin Skip bundled/online openclaw-weixin plugin installation"
       echo "  --atomgit     Use atomgit 国内镜像 git remote (default: GitHub)"
@@ -91,12 +101,9 @@ fi
 
 # ─── 1.5 pnpm 版本预检 ────────────────────────────────────────────────
 # openclaw 工作区按其 package.json 的 packageManager pin 要求 pnpm 大版本：
-# apply-addons.sh 的依赖同步传了 --fetch-retries 等 flag，只有 pnpm 11 的
-# install CLI 才认（pnpm 10.x 直接 unknown argument 炸掉）。
-# 注意 pnpm ≥11 默认开 manage-package-manager-versions，在带 pin 的目录里
-# `pnpm --version` 返回 pin 版本而非实际安装版本，须在无 pin 的 / 下探测。
+# pnpm 自身可按 packageManager pin 管理所需版本。
 REQUIRED_PNPM_MAJOR="$(grep -m1 '"packageManager"' "$OPENCLAW_DIR/package.json" 2>/dev/null | grep -o 'pnpm@[0-9.]*' | head -1 | sed 's/^pnpm@//; s/\..*//')"
-: "${REQUIRED_PNPM_MAJOR:=11}"
+: "${REQUIRED_PNPM_MAJOR:=12}"
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "❌ pnpm 未安装（openclaw 工作区需要 pnpm ${REQUIRED_PNPM_MAJOR}.x+）"
   echo "   安装：npm install -g pnpm@${REQUIRED_PNPM_MAJOR} --registry=https://registry.npmmirror.com"
@@ -145,10 +152,9 @@ install_weixin_channel() {
   echo "💬 Ensuring WeChat channel plugin (openclaw-weixin)..."
   local pin_file="$PROJECT_ROOT/openclaw-weixin.version.json"
   local plugin_pkg="@tencent-weixin/openclaw-weixin"
-  local cli_pkg="@tencent-weixin/openclaw-weixin-cli"
   local plugin_version=""
-  local cli_version=""
   local plugin_integrity=""
+  local pin_values=""
   local vendor_dir="$PROJECT_ROOT/vendor/openclaw-plugins"
   local plugin_tgz=""
 
@@ -158,18 +164,18 @@ install_weixin_channel() {
       const p = process.argv[1];
       const c = JSON.parse(fs.readFileSync(p, "utf8"));
       const plugin = c["openclaw-weixin"] || {};
-      const cli = c["openclaw-weixin-cli"] || {};
       const validPackage = /^@[a-z0-9._-]+\/[a-z0-9._-]+$/;
       const validVersion = /^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9._-]+)?$/;
       const validIntegrity = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
-      for (const [label, entry] of [["plugin", plugin], ["cli", cli]]) {
-        if (!validPackage.test(entry.package || "")) throw new Error(`${label}.package invalid`);
-        if (!validVersion.test(entry.version || "")) throw new Error(`${label}.version invalid`);
-        if (!validIntegrity.test(entry.integrity || "")) throw new Error(`${label}.integrity invalid`);
-      }
-      console.log([plugin.package, plugin.version, plugin.integrity, cli.package, cli.version].join("\t"));
+      if (!validPackage.test(plugin.package || "")) throw new Error("plugin.package invalid");
+      if (!validVersion.test(plugin.version || "")) throw new Error("plugin.version invalid");
+      if (!validIntegrity.test(plugin.integrity || "")) throw new Error("plugin.integrity invalid");
+      console.log([plugin.package, plugin.version, plugin.integrity].join("\t"));
     ' "$pin_file")" || { echo "❌ Invalid openclaw-weixin.version.json"; exit 1; }
-    IFS=$'\t' read -r plugin_pkg plugin_version plugin_integrity cli_pkg cli_version <<< "$pin_values"
+    IFS=$'\t' read -r plugin_pkg plugin_version plugin_integrity <<< "$pin_values"
+  else
+    echo "❌ Missing openclaw-weixin.version.json; refusing unpinned install"
+    exit 1
   fi
 
   if [ -n "$plugin_version" ] && [ -d "$vendor_dir" ]; then
@@ -200,25 +206,14 @@ install_weixin_channel() {
       echo "   Re-run with --skip-weixin only if you intentionally want to configure the onboarding channel later."
       exit 1
     fi
-  elif [ -n "$cli_version" ]; then
-    # weixin-cli 内部调用 `openclaw` 命令，需要确保它在 PATH 上
-    # 创建临时 wrapper 指向本机 openclaw（pnpm openclaw = node scripts/run-node.mjs）
-    _openclaw_wrapper_dir="$(mktemp -d)"
-    cat > "$_openclaw_wrapper_dir/openclaw" <<WRAPPER
-#!/bin/sh
-cd "$OPENCLAW_DIR" && node scripts/run-node.mjs "\$@"
-WRAPPER
-    chmod +x "$_openclaw_wrapper_dir/openclaw"
-    if ! PATH="$_openclaw_wrapper_dir:$PATH" npx -y "${cli_pkg}@${cli_version}" install; then
-      rm -rf "$_openclaw_wrapper_dir"
+  else
+    # 直接安装插件 pin；weixin-cli 自身的版本锁不会锁住它内部安装的插件版本。
+    if ! (cd "$OPENCLAW_DIR" && pnpm openclaw plugins install "${plugin_pkg}@${plugin_version}" --pin --force); then
       echo "❌ openclaw-weixin online install failed"
       echo "   Fix network/npm access or re-run with --skip-weixin to configure the onboarding channel later."
       exit 1
     fi
-    rm -rf "$_openclaw_wrapper_dir"
-  else
-    echo "❌ openclaw-weixin CLI version is missing; refusing unpinned online install"
-    exit 1
+    echo "  ✅ openclaw-weixin installed (${plugin_version})"
   fi
 
   node -e '
@@ -244,48 +239,52 @@ WRAPPER
 }
 
 # ─── 2. 配置 git remote ────────────────────────────────────────
-if [ ! -d "$PROJECT_ROOT/.git" ]; then
-  echo "📦 Initializing git repository..."
-  git init
-  git remote add origin "$OFB_REPO"
-  echo "  ✅ git initialized, remote set to $OFB_REPO"
+if [ "$SKIP_SYNC" = "true" ]; then
+  echo "⏭️  Skipping project repository sync (--skip-sync); using local code."
 else
-  CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null || echo "")"
-  if [ -z "$CURRENT_REMOTE" ]; then
+  if [ ! -d "$PROJECT_ROOT/.git" ]; then
+    echo "📦 Initializing git repository..."
+    git init
     git remote add origin "$OFB_REPO"
-    echo "  ✅ Remote 'origin' added: $OFB_REPO"
-  elif [ "$CURRENT_REMOTE" != "$OFB_REPO" ]; then
-    echo "  ℹ️  Current remote: $CURRENT_REMOTE"
-    echo "  ℹ️  Official wiseflow repo: $OFB_REPO"
-    echo ""
-    echo "  Remote is not the official wiseflow repo. Continue anyway? [y/N]"
-    read -r reply
-    case "$reply" in
-      y|Y) echo "  Continuing with existing remote..." ;;
-      *) echo "  Aborted."; exit 0 ;;
-    esac
-  fi
-fi
-
-# ─── 3. 拉取最新 wiseflow 代码 ────────────────────────────────────────
-echo "📥 Fetching latest wiseflow code..."
-if git fetch origin master; then
-  COMMITS_BEHIND="$(git rev-list HEAD..origin/master --count 2>/dev/null || echo "?")"
-  if [ "$COMMITS_BEHIND" = "0" ]; then
-    echo "  ✅ wiseflow code is already up to date."
-  elif [ "$COMMITS_BEHIND" = "?" ]; then
-    echo "  ⚠️  Unable to compare with origin/master, continuing with local wiseflow code."
+    echo "  ✅ git initialized, remote set to $OFB_REPO"
   else
-    echo "  📊 $COMMITS_BEHIND new commit(s) available"
-    if git reset --hard origin/master; then
-      echo "  ✅ wiseflow code updated"
-    else
-      echo "  ⚠️  Failed to reset to origin/master, continuing with local wiseflow code."
+    CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null || echo "")"
+    if [ -z "$CURRENT_REMOTE" ]; then
+      git remote add origin "$OFB_REPO"
+      echo "  ✅ Remote 'origin' added: $OFB_REPO"
+    elif [ "$CURRENT_REMOTE" != "$OFB_REPO" ]; then
+      echo "  ℹ️  Current remote: $CURRENT_REMOTE"
+      echo "  ℹ️  Official wiseflow repo: $OFB_REPO"
+      echo ""
+      echo "  Remote is not the official wiseflow repo. Continue anyway? [y/N]"
+      read -r reply
+      case "$reply" in
+        y|Y) echo "  Continuing with existing remote..." ;;
+        *) echo "  Aborted."; exit 0 ;;
+      esac
     fi
   fi
-else
-  echo "  ⚠️  Failed to fetch latest wiseflow code from origin/master."
-  echo "  ⚠️  Continuing with local wiseflow code."
+
+  # ─── 3. 拉取最新 wiseflow 代码 ────────────────────────────────────────
+  echo "📥 Fetching latest wiseflow code..."
+  if git fetch origin master; then
+    COMMITS_BEHIND="$(git rev-list HEAD..origin/master --count 2>/dev/null || echo "?")"
+    if [ "$COMMITS_BEHIND" = "0" ]; then
+      echo "  ✅ wiseflow code is already up to date."
+    elif [ "$COMMITS_BEHIND" = "?" ]; then
+      echo "  ⚠️  Unable to compare with origin/master, continuing with local wiseflow code."
+    else
+      echo "  📊 $COMMITS_BEHIND new commit(s) available"
+      if git reset --hard origin/master; then
+        echo "  ✅ wiseflow code updated"
+      else
+        echo "  ⚠️  Failed to reset to origin/master, continuing with local wiseflow code."
+      fi
+    fi
+  else
+    echo "  ⚠️  Failed to fetch latest wiseflow code from origin/master."
+    echo "  ⚠️  Continuing with local wiseflow code."
+  fi
 fi
 echo ""
 
@@ -357,27 +356,12 @@ ADDON_ARGS=(--no-build --no-restart)
 "$PROJECT_ROOT/scripts/apply-addons.sh" "${ADDON_ARGS[@]}"
 echo ""
 
-# apply-addons installs npm packages but does not provision the pinned browser
-# or host font. Run the same idempotent step as tarball and Docker installs.
+# Build/provision the shared driver and browser before renderer checks.
+node "$PROJECT_ROOT/scripts/install-browser.mjs" --root "$PROJECT_ROOT" --build --global
+
 echo "🎞️  Ensuring deck-render runtime..."
 "$PROJECT_ROOT/scripts/install-deck-render.sh"
 echo ""
-
-# ─── 6.5. 重新 build + 全局安装 camoufox-cli fork ──────────────
-# apply-addons.sh 只调 `camoufox-cli install`（拉浏览器二进制），不 rebuild fork。
-# 老用户全局装的 camoufox-cli 还是旧版，需要 rebuild dist + npm install -g 覆盖。
-# build.sh 内部幂等（npm install + tsc + npm install -g），重复跑无害。
-FORK_DIR="$PROJECT_ROOT/patches/camoufox-cli"
-if [ -f "$FORK_DIR/build.sh" ]; then
-  echo "🔨 Rebuilding camoufox-cli fork..."
-  bash "$FORK_DIR/build.sh" || echo "  ⚠️  camoufox-cli fork rebuild failed; 继续升级（旧版 fork 仍可用）"
-  # rebuild 后新 fork 可能 pin 了新 camoufox-js → 需要重跑 install 拉新浏览器二进制。
-  # 幂等：已装版本 === 当前版本时跳过。
-  if command -v camoufox-cli >/dev/null 2>&1; then
-    camoufox-cli install || echo "  ⚠️  camoufox-cli install failed; 可后续手动 camoufox-cli install"
-  fi
-  echo ""
-fi
 
 # ─── 7. 编译 openclaw dist ──────────────────────────────────────
 echo "🔨 Building openclaw..."
@@ -603,7 +587,7 @@ install_weixin_channel
 node -e '
   const fs=require("fs"),p=process.argv[1],v=process.argv[2];
   const c=JSON.parse(fs.readFileSync(p,"utf8"));
-  c.meta=c.meta||{}; c.meta.lastTouchedVersion=v; c.meta.lastTouchedAt=new Date().toISOString();
+  c.meta=c.meta||{}; c.meta.lastTouchedVersion=v; delete c.meta.lastTouchedAt;
   fs.writeFileSync(p,JSON.stringify(c,null,2)+"\n");
 ' "$OPENCLAW_CONFIG_PATH" "$OPENCLAW_VERSION"
 echo ""

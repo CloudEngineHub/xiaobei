@@ -17,7 +17,7 @@
 #   - 不支持 DENIED_SKILLS（无需排除，因为只包含声明的技能）
 #   - workspace 专属技能仍然可用（追加到声明列表末尾）
 #
-#   最终总是写入 agents.list[].skills，避免"空 skills 字段 => 全量技能泄露"
+#   最终总是写入 agents.entries.<id>.skills，避免"空 skills 字段 => 全量技能泄露"
 #   resolve_agent_skills_json 返回：
 #       JSON 数组   → Agent 最终可见 skills
 
@@ -72,7 +72,7 @@ list_builtin_skill_names() {
   done | sort
 }
 
-# wiseflow 指定的全局基线技能（对所有对内 Crew 统一开放的 7 个上游内置技能）
+# wiseflow 指定的全局基线技能（对所有对内 Crew 统一开放的 6 个上游内置技能）
 # 变更须同步更新 config-templates/openclaw.json 的 skills.entries 确保这些技能处于 enabled 状态
 #
 # 不在此基线的说明：
@@ -85,7 +85,6 @@ list_default_global_skill_names() {
   cat <<'EOF'
 nano-pdf
 skill-creator
-session-logs
 tmux
 weather
 summarize
@@ -372,6 +371,7 @@ for (const b of bins) console.log("+" + b);
         [ -x "$f" ] || continue
         # 保留相对于 scripts/ 的子目录路径（支持 platforms/、vendor/ 等子目录）
         local relpath="${f#$ws_scripts_dir/}"
+        # 声明保持 workspace 相对路径；exec-tiers 在生成宿主策略时统一做 realpath。
         printf '+./skills/%s/scripts/%s\n' "$skill" "$relpath"
       done < <(find "$ws_scripts_dir" -type f -print0 2>/dev/null)
     fi
@@ -430,13 +430,24 @@ inject_channel_reply_rules() {
 RULES
 }
 
-# 向 workspace 的 TOOLS.md 追加通用工具调用规范（幂等）
 # 向 AGENTS.md 追加通用标准 section（幂等）
 # 1. Technical Issue Dispatch Protocol
 # 2. sessions_spawn 规范
 inject_agents_md_sections() {
   local agents_md="$1"
   [ -f "$agents_md" ] || return 0
+
+  if ! grep -qF "## 工作区文件约定" "$agents_md"; then
+    cat >> "$agents_md" << 'BOOTSTRAP_GUIDE'
+
+## 工作区文件约定
+
+- OpenClaw 2026.10.4 不自动加载独立的 `TOOLS.md`。本机路径、环境变量名称和工具别名写在本文件的 `## Tools` 节；工具操作手册仍由对应 `SKILL.md` 维护，不在备忘中保存密钥值。
+- 子 agent 只自动注入 `AGENTS.md`；必须随派工生效的流程和约束写在本文件。需要角色信息或其他资料时，在任务授权范围内按需读取，不假设 `SOUL.md`、`USER.md` 或 `MEMORY.md` 已加载。
+- Cron 自动加载 `AGENTS.md`、`SOUL.md`、`IDENTITY.md`、`USER.md`。`MEMORY.md` 只在本 agent 的私密主会话自动注入；不将其他 crew 的私人记忆当作默认输入。
+- 不新建 `TOOLS.md` 或 `HEARTBEAT.md`；周期任务以当前 Automation / 心跳 scratch 为准。旧版本遗留的这两个文件由用户升级后手动删除，setup 不负责迁移或清理。
+BOOTSTRAP_GUIDE
+  fi
 
   if ! grep -qF "## Technical Issue Dispatch Protocol" "$agents_md"; then
     cat >> "$agents_md" << 'TIDP'
@@ -464,10 +475,10 @@ SSP
 }
 
 inject_file_edit_guide() {
-  local tools_md="$1"
-  [ -f "$tools_md" ] || return 0
-  grep -q "## 本地文件操作规范" "$tools_md" && return 0
-  cat >> "$tools_md" << 'GUIDE'
+  local agents_md="$1"
+  [ -f "$agents_md" ] || return 0
+  grep -q "## 本地文件操作规范" "$agents_md" && return 0
+  cat >> "$agents_md" << 'GUIDE'
 
 ## 本地文件操作规范
 
@@ -496,23 +507,27 @@ inject_media_send_guide() {
 
 正确做法：用当前渠道的媒体发送能力把文件本体直接投递到聊天中（需提供文件绝对路径）。
 
-- 飞书：`message(action="send", media="<绝对路径>")`（对于 HTML 类型文件，飞书要求先复制到 `/tmp/openclaw/`，再执行发送）。
+- 飞书 和 awada：`message(action="send", media="<绝对路径>")`（对于 HTML 类型文件，飞书要求先复制到 `/tmp/openclaw/`，再执行发送）。
 - `openclaw-weixin`：`message(action="send", media="<本地绝对路径或 HTTPS URL>")`，当前会话可不传 target。
 GUIDE
 }
 
 inject_text_newline_guide() {
-  local tools_md="$1"
-  [ -f "$tools_md" ] || return 0
-  python3 "$(dirname "${BASH_SOURCE[0]}")/update-tools-newline-guide.py" "$tools_md"
+  local agents_md="$1"
+  [ -f "$agents_md" ] || return 0
+  python3 "$(dirname "${BASH_SOURCE[0]}")/workspace-guides.py" newline "$agents_md"
+}
+
+append_workspace_guide() {
+  python3 "$(dirname "${BASH_SOURCE[0]}")/workspace-guides.py" append "$1" "$2"
 }
 
 inject_exec_guide() {
-  local tools_md="$1" workspace_dir="$2"
-  [ -f "$tools_md" ] || return 0
+  local agents_md="$1" workspace_dir="$2"
+  [ -f "$agents_md" ] || return 0
   # 独立升级既有 workspace：旧 exec section 不会因幂等检查而挡住换行提示修正。
-  inject_text_newline_guide "$tools_md"
-  grep -q "## exec 命令规范" "$tools_md" && return 0
+  inject_text_newline_guide "$agents_md"
+  grep -q "## exec 命令规范" "$agents_md" && return 0
 
   # 按 SOUL.md 的 crew-type 分发（2026-07-07 简化，删 T0~T3 抽象）：
   #   internal              → 无白名单，短提示即可
@@ -532,7 +547,7 @@ inject_exec_guide() {
   fi
 
   if [ "$crew_type" = "external" ] && [ "$ext_has_allowlist" = "true" ]; then
-    cat >> "$tools_md" << 'GUIDE'
+    append_workspace_guide "$agents_md" "$ws" << 'GUIDE'
 
 ## exec 命令规范
 
@@ -595,10 +610,8 @@ python3 /tmp/my_script.py
 
 临时脚本统一写到 `/tmp/` 下，执行后可删除。
 GUIDE
-    # sed -i 在 BSD（macOS）会把脚本串当成备份后缀吞掉；-i.bak 两端都支持，再清掉 .bak。
-    sed -i.bak "s|@@WS@@|$ws|g" "$tools_md" && rm -f "$tools_md.bak"
   elif [ "$crew_type" = "internal" ]; then
-    cat >> "$tools_md" << 'GUIDE'
+    append_workspace_guide "$agents_md" "$ws" << 'GUIDE'
 
 ## exec 命令规范
 
@@ -607,7 +620,6 @@ GUIDE
 脚本调用仍建议用绝对路径（如 `python3 @@WS@@/skills/xxx/scripts/yyy.py`），仅为跨环境/跨 workspace 稳定，非安全约束。
 
 GUIDE
-    sed -i.bak "s|@@WS@@|$ws|g" "$tools_md" && rm -f "$tools_md.bak"
   fi
   # external 无 + 条目（deny）或未知 crew-type：不注入（无 shell 执行权限）
 }

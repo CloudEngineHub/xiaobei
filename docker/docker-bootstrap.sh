@@ -7,7 +7,7 @@
 #   - 不重启 gateway（构建阶段没运行实例）
 #
 # 复用裸机安装的同一套底层脚本，保证 patch / skills / wrappers / 依赖 / 编译语义与裸机同源：
-#   - patches/camoufox-cli/build.sh         反指纹浏览器 CLI fork
+#   - scripts/install-browser.mjs         反指纹浏览器 CLI fork
 #   - scripts/apply-addons.sh               patch 应用 + skills + crew workspace + 编译
 #   - scripts/setup-crew.sh                 crew workspace 初始化（由 apply-addons 内部触发）
 #   - weixin 插件在线 plugins install        （逻辑内联在此，不调独立的 install-weixin-channel.sh）
@@ -41,7 +41,7 @@ log "PROJECT_ROOT=$PROJECT_ROOT OPENCLAW_HOME=$OPENCLAW_HOME"
 
 # 走镜像源（与裸机 install.sh 链路同源）：registry 由 Dockerfile ARG NPM_REGISTRY
 # 透传进 ENV NPM_CONFIG_REGISTRY，海外 arm64 runner override 成 npmjs 不跨境。
-# bootstrap 内显式 export 让子进程（camoufox-cli/build.sh 的 npm install、
+# bootstrap 内显式 export 让子进程（install-browser.mjs 的 npm install、
 # apply-addons.sh 的 pnpm install、plugins install）都走同一 registry。
 export npm_config_registry="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
 log "npm_config_registry=$npm_config_registry"
@@ -68,13 +68,13 @@ node -e '
 ' "$OPENCLAW_CONFIG_PATH"
 log "STEP 1 done: config template placed"
 
-# ─── camoufox-cli fork 构建 + 全局安装（致命：browser-guide 依赖）────
-log "STEP 2: building camoufox-cli fork..."
-if ! "$PROJECT_ROOT/patches/camoufox-cli/build.sh"; then
-  log "❌ camoufox-cli build failed"
+# ─── xiaobei-browser 构建 + 全局安装（致命：browser-guide 依赖）────
+log "STEP 2: building xiaobei-browser runtime..."
+if ! node "$PROJECT_ROOT/scripts/install-browser.mjs" --root "$PROJECT_ROOT" --build --global --skip-assets; then
+  log "❌ xiaobei-browser build failed"
   exit 1
 fi
-log "STEP 2 done: camoufox-cli fork built + installed globally"
+log "STEP 2 done: xiaobei-browser runtime built + installed globally"
 
 # ─── apply-addons：patch + skills + crew + 编译（致命）────────────
 log "STEP 3: applying addons (patches + skills + crews + build)..."
@@ -96,11 +96,9 @@ log "STEP 3.5 done: deck-render ready"
 # ─── camoufox-cli install：拉 Firefox 二进制（非致命，首启可补）────
 # 幂等：已装且版本一致时打印 "already up to date" 并返回
 #
-# camoufox-js 的 INSTALL_DIR 默认 ~/.cache/camoufox（Linux XDG 缓存路径）。
-# 这里显式设 CAMOUFOX_INSTALL_DIR=/root/.camoufox-cli，让浏览器二进制装进
-# 与 entrypoint volume 一致的目录——stage-2 COPY 和运行时 volume 都指向这里，
-# 装到别处会导致镜像层拷不出来 + 运行时 volume 找不到浏览器。
-# 先 mkdir -p 确保目录存在（install 失败时 stage-2 COPY 也不会因源缺失炸掉）。
+# 主仓 SDK 由统一安装器显式提供 executable_path，不使用 SDK 默认 cache。
+# CAMOUFOX_INSTALL_DIR 是版本化资产父目录，实际为 /root/.camoufox-cli/assets/<version>。
+# stage-2 COPY 保留该目录；profile 子卷不遮挡镜像内资产。
 export CAMOUFOX_INSTALL_DIR="${CAMOUFOX_INSTALL_DIR:-/root/.camoufox-cli}"
 install -d -m 700 "$CAMOUFOX_INSTALL_DIR"
 log "STEP 4: ensuring camoufox Firefox binary (CAMOUFOX_INSTALL_DIR=$CAMOUFOX_INSTALL_DIR)..."
@@ -141,7 +139,7 @@ install_weixin_plugin() {
         ver=$(python3 -c "import json;print(json.load(open('$pin_file'))['openclaw-weixin']['version'])" 2>/dev/null || true)
     fi
     pkg="${pkg:-@tencent-weixin/openclaw-weixin}"
-    ver="${ver:-2.4.8}"
+    ver="${ver:-2.4.10}"
     # 幂等检查：已装版本 == pin 才跳过
     local installed force_flag=""
     installed="$(weixin_installed_version "$pkg" || true)"

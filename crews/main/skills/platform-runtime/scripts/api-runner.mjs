@@ -6,9 +6,19 @@ import { packageRoot, credential, backendAccount, platforms } from './backend.mj
 import { instrumentRequests } from './diagnostics.mjs';
 import { isVideoPublish, videoTransportPolicy, videoRequestPolicy } from './weibo-video.mjs';
 import { publicationObserver, publicationResult } from './publication.mjs';
+import { qrObserver } from './kuaishou-qr.mjs';
+import { processIdentity } from './login-job.mjs';
 
 const [platform, ...args] = process.argv.slice(2);
 const root = packageRoot();
+if (platform === 'kuaishou' && process.env.PLATFORM_API_LOGIN_JOB) {
+  const ownerPid = Number(process.env.PLATFORM_API_LOGIN_OWNER_PID);
+  const ownerIdentity = processIdentity(ownerPid);
+  if (!ownerIdentity) process.exit(2);
+  // Also stop if exec is killed without delivering a catchable signal to its
+  // owner. The backend must never finish a login as an orphan.
+  setInterval(() => { if (processIdentity(ownerPid) !== ownerIdentity) process.exit(2); }, 500).unref();
+}
 let identity;
 let user;
 let saved;
@@ -44,8 +54,11 @@ if (platform === 'weibo' && isVideoPublish(args)) {
 }
 const publishing = args[0] === 'item' && args[1] === 'publish' && ['weibo', 'kuaishou'].includes(platform);
 const observer = publishing ? publicationObserver(platform, parseJson) : undefined;
+const qr = platform === 'kuaishou' && process.env.PLATFORM_API_LOGIN_JOB && args[0] === 'auth' && args[1] === 'login'
+  ? qrObserver(process.env.CATBUS_HOME, parseJson, CatbusError) : undefined;
 const converters = platform === 'weibo' && publishing ? await import(pathToFileURL(join(root, 'dist/platforms/weibo/web/sign.js'))) : {};
-const requests = instrumentRequests(HttpClient, { platform, identity, requestPolicy, observeResponse: observer?.response });
+const requests = instrumentRequests(HttpClient, { platform, identity, requestPolicy: qr?.policy || requestPolicy,
+  observeResponse: qr?.response || observer?.response });
 const outputResult = Output.prototype.result;
 Output.prototype.result = function (data, options) {
   if (observer?.state.accepted) data = publicationResult(platform, data, { state: observer.state, raw: data?.[Symbol.for('catbus.raw')], user, ...converters });

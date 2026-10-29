@@ -18,6 +18,7 @@ metadata:
 不管活儿来自谁，我都是**乙方（承制方）**：按 Brief 交付成片与封面，不自作主张改需求，也不替甲方做选题、标题、简介与发布运营。角色定位、两种工作模式与甲乙方硬边界的完整版见 `AGENTS.md`；本文只写视频制作特有的部分。
 
 - **Brief 是唯一契约**：Brief 没写的先问甲方，不自行脑补品牌事实、授权与承诺。
+- 使用原帖/网页截图作为证据素材时，按 `browser-guide` 的 `references/source-evidence.md` 核对原件、裁切、作者/日期/链接及翻译标识；补充字幕不冒充原帖界面，相关人物观点不自动成为产品背书。缺原始证据向甲方补齐，不自行绕行平台采集。
 - **制作实现归我**：工作区、分镜、素材方案、剪辑手法、渲染参数由我定，不反过来找甲方要这些决策。
 - **交付边界**：成片 `video.mp4` + 封面 `cover.jpg` + 交付说明 `final-deliver.md`，回报三者**绝对路径**。不发布到任何平台、不私信用户、不代拟运营话术、不替甲方把成片拷进平台目录。
 
@@ -47,7 +48,7 @@ metadata:
 
 | 我给甲方 | 位置 |
 |----------|------|
-| 成片 | `<project-dir>/video.mp4`（过 `video-review`，verdict=pass；响度已归一化） |
+| 成片 | `<project-dir>/video.mp4`（通过技术与剪辑审查；声音政策核验完成） |
 | 封面 | `<project-dir>/cover.jpg`（含封面主文案，主文案来自 Brief） |
 | 交付说明 | `<project-dir>/final-deliver.md`：素材来源与授权、各段实际时长、自检结果、弃用中间产物、fallback 决策、遗留问题 |
 
@@ -68,7 +69,7 @@ metadata:
 | 视频类型 / 入口信号 | workflow | Brief `workflow` 值 | 它指导什么 |
 |--------------------|----------|---------------------|--------------|
 | 影视解说 / 剧情解说 + 突然反转插入品宣（"万万没想到"式） | Reversal Ad | `reversal-ad` | 三段结构占比、反转点落在 55%–76%、四种反转手法、反转幅度与接入丝滑度两轴（含二次反转 CTA）、素材三模式 sourcing（Blender 片库 / 用户直供三查 / AIGC）、意象桥与钩连句、植入段约束 |
-| PPT / 幻灯大画面 + 口播小窗，或用户音频+B-roll 讲解 | Deck Talk | `deck-talk` | 逐页或逐段脚本、音频同源翻页、HTML 动画/B-roll 与小窗合成；footage/avatar/audio 三模式，数字人用包内 LivePortrait；阶段产物与动效验收见 workflow |
+| PPT / 幻灯大画面 + 口播小窗，或用户音频+B-roll 讲解 | Deck Talk | `deck-talk` | 逐页或逐段脚本、音频同源翻页、HTML 动画/B-roll 与小窗合成；footage/avatar/audio 三模式，数字人用包内 Wan S2V avatar；阶段产物与动效验收见 workflow |
 | "把这句口播做成拼贴 B-roll""纸拼贴动画""半调拼贴" | Collage B-roll | `collage-broll` | 隐喻清单即 script；按通用阶段链完成分镜、纸片素材、GATE A/B、HyperFrames 渲染与逐层验收，具体产物见 workflow |
 
 - Brief 指定了 `workflow`：**先读对应文档，按它生产 script 并按它自检**（GATE A 质检标准同此），不得替换成自创流程；其制作与验收约定（阶段产物、素材 sourcing 等）在该类型视频上生效，不能跳过基线阶段。
@@ -103,7 +104,7 @@ output_videos/<topic-en-slug>/      # <project-dir>
 ├── audio/                      # narration.mp3 / narration-segments.json / bgm.mp3 / subtitles.srt
 ├── artifacts/                  # (12) 按镜顺序的最终段 01_*.mp4 … NN_*.mp4
 ├── video.mp4                   # (12) 成片
-├── review/                     # verdict.json(13a) / frames/ / motion-audit.json(13b)
+├── review/                     # verdict.json / runs/<review_id>/frames/ / motion-audit.json / edit-audit.json
 ├── cover.jpg                   # (14)
 └── final-deliver.md            # (15)
 ```
@@ -140,13 +141,15 @@ Stage 11 mix-audio          配音配乐四场景分流（A 人物对话声画�
                             整段模式的时间戳对齐仍走 narration-align，两者互补
 Stage 12 assemble           按序拼接成片（原子工具箱，见下节，我按场景组合，不写死流程）
 Stage 13a video-review      公共 video-review 技术自检（强制闸门，verdict=pass 才继续）
-Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）
-Stage 13c normalize         响度归一化到 -14 LUFS（**必跑**：`video-producer normalize`）
+Stage 13b motion-audit      motion_led 抽查（兑付 delivery-promise）；edit-audit 检查停顿/源窗口复用并登记真实审片
+Stage 13c normalize         新混音归一至 -14 LUFS；锁定原混音用 --locked-audio 只测量与逐包核验；无声用 --silent-ok
 Stage 14 make-cover        封面（awk-img-gen，必含封面主文案）
 Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对路径与关键参数
 ```
 
-- **产物文件存在性即 checkpoint**：子命令先查产物文件是否存在，存在则 load 不重生成（允许手改 JSON 后续跑）；要改哪段就重跑对应子命令，未改的不会重生成。
+- **复用前核对版本**：检查当前输入/参数与产物校验记录，文件存在不代表本版已完成。`assemble --video-only` 校验有序源内容与输出哈希；审片记录绑定当前素材和成片哈希。改输入后重做受影响步骤，保留旧版供对比。
+- **剪辑验收**：Stage 12 先听看 5–20 秒带声样片；Stage 13 在最终字幕/响度处理后跑 `video-producer edit-audit`，提交最终时间轴干声、源素材时间窗和实际审片记录。字段与命令见工具说明的 `references/edit-audit.md`。技术 pass、运动比例达标或换素材编号不能代替节奏与动作复用审核。
+- **声音政策**：新混音执行常规 normalize；甲方要求保留已认可音轨时，先锁定原音源，`pip-compose --audio-mode copy` 全轨封装，再 `normalize --locked-audio` 只测量与逐包验证，不因 -14 LUFS 目标重编码、裁切或改增益。明确无声用 `--silent-ok` 核验。最终媒体变更后重新做技术和剪辑审核。
 - 类型 workflow 附带的制作约定（阶段产物、素材 sourcing、验收清单）在该类型视频上生效；**不能裁掉基线阶段，闸门位置与"停下发甲方"的纪律不变**。甲方已在 Brief 中代理批准某道闸门时，把批准范围落 `gates/` 后继续。
 - 可选工具 `reference-concepts`：甲方给了参考视频拆解报告时，据报告出 2–3 个差异化概念落 `reference/concepts.md`。
 
@@ -204,20 +207,21 @@ Stage 15 交付              回报成片 + 封面 + final-deliver.md 的绝对�
 
 | 工具 | 用途 | 命令 |
 |------|------|------|
-| `video-producer` | 阶段链全部原子能力（剧本 / 分镜、素材 slot 与解析、渲染、混音对齐、拼接合成、动效审计、封面）+ 后期处理（`normalize` **必跑**、`burn-srt` / `duck` / `denoise` / `interp` 可选，全部干湿分离不覆盖输入） | `video-producer <子命令>`；`video-producer help` 列全量 |
+| `video-producer` | 剧本/分镜、素材、渲染、混音、合成、动作与剪辑审查、封面；`normalize` 按声音政策执行，锁定模式只读审核；`burn-srt` / `duck` / `denoise` / `interp` 按需使用，输出不覆盖输入 | `video-producer <子命令>`；`video-producer help` 列全量 |
 | `video-producer visual-render` | 通用 HTML/GSAP 片段的 scaffold、检查、预览与 HyperFrames 渲染；纸拼贴与产品动效共用 | `video-producer visual-render scaffold / check / preview / render` |
 | `deck-render` | Stage 10 第三条渲染路径：中文 HTML 幻灯、逐页动画、静帧联系表、确定性 MP4；随后用 video-producer pip-compose 合小窗/旁白 | `deck-render check-setup / scaffold / check / preview / render`；参数见工具说明 |
+| `avatar` | Wan S2V 肖像检测、按原声时间窗生成、恢复、人工口型审查记录、同源分段合并 | `avatar generate / resume / review / assemble`；读 `tools/avatar/SKILL.md` |
 
-HTML 视觉片段与 deck-talk 共用 Node ≥22、Playwright Chromium headless shell、系统适配的中文字体（Windows 微软雅黑；Linux/macOS Noto Sans CJK SC）和锁定 HyperFrames/GSAP/Playwright；安装和更新脚本预装。`visual-render`、`deck-render` 与 `deck-compose` 本地执行不需 API Key；LivePortrait 需要百炼业务空间凭据，TTS/ASR 仍使用下列凭据。数字人调用包内 `liveportrait` 工具。
+HTML 视觉片段与 deck-talk 共用 Node ≥22、Playwright Chromium headless shell、系统适配的中文字体（Windows 微软雅黑；Linux/macOS Noto Sans CJK SC）和锁定 HyperFrames/GSAP/Playwright；安装和更新脚本预装。`visual-render`、`deck-render` 与 `deck-compose` 本地执行不需 API Key；Wan S2V 需要百炼业务空间凭据，TTS/ASR 仍使用下列凭据。数字人调用包内 `avatar` 工具。
 
-跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`awk-img-gen`（静帧、角色三视图、封面，Stage 5/10/14）、`awk-tts`（旁白 TTS，带字级时间戳，Stage 11B；多供应商路由 火山→百炼，`--enable-subtitle` 两家都出字级时间戳）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
+跨领域公共技能：`aigc-video-gen`（视频片段生成 / i2v 首尾帧插值，Stage 7/10；输出路径须落在 `output_videos/` 下，调用时 workdir 是 Content Producer workspace 根）、`awk-img-gen`（静帧、角色三视图、封面，Stage 5/10/14）、`awk-tts`（旁白 TTS，Stage 11B；多供应商路由 火山→百炼，`--enable-subtitle` 请求字级时间戳；响应缺失时用 `video-producer narration-align` 对已生成音频执行公共 ASR）、`bgm-library`（ccMixter 免版税 + 自动 TASL 署名，商用安全，Stage 11C 优先）、`pexels-footage` / `pixabay-footage`（免版税素材与 BGM 搜索）、`video-review`（成片技术自检闸门，Stage 13a）、`video-edit subtitles`（main crew 暴露的烧字幕原子；不可用时向 Brief owner 报工具缺口，不手写 ffmpeg）。
 
 env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKSPACE_ID`+`MODELSTUDIO_API_KEY`/`DASHSCOPE_API_KEY`（百炼业务空间，优先）、`VOLC_ASR_*`（`narration-align` 回退路径与甲方口播录音转写的火山优先路由；旧控制台双头 `VOLC_ASR_APP_ID` + `VOLC_ASR_ACCESS_KEY`，或新控制台单头 `VOLC_ASR_APP_KEY`）。ASR/TTS 凭据任一组在即可路由；全缺时子命令 exit 2，补齐属 IT engineer 职责，不要静默降级。Python 依赖 `requests`、`Pillow` 仍由仓根 `requirements.txt` 统一安装（Pillow 还用于小窗遮罩、联系表和旧 JSON 动效）；新 HTML 片段不新增 pip 包。机器资源约束读本 workspace `MEMORY.md` 或 Brief；HyperFrames 渲染可用 `--workers 1` 控制低内存机器负载。
 
 ## 禁止事项（强制）
 
 - **禁止跳过 GATE A / GATE B 交付**：两闸门是流程的一部分，呈交摘要后必须结束本轮回复等甲方批。
-- **禁止跳过 `video-review` 与响度归一化交付**：Stage 13a verdict=pass、Stage 13c `normalize` 已跑，才进 Stage 14。
+- **交付审核齐全**：最终媒体的 `video-review`、动作承诺审核、`edit-audit` 和 Stage 13c 声音检查完成才进交付。声音检查按新混音归一化、锁定音轨逐包保留或无声核验三种实际政策执行；锁定音轨偏离响度目标要如实说明。
 - **禁止声称没做过的事**：没有 tool result 或产物文件证明，不许声称已渲染 / 已生成 / 已改动。
 - **禁止替甲方做需求决策**：选题方向、品牌事实、卖点承诺、业务植入与 CTA 口径、发布文案不由我定；Brief 没写就问。
 - **禁止让甲方建工作区**：工作区自建；也不要把中间产物写进甲方（main / 用户）的目录。
@@ -228,4 +232,4 @@ env 依赖：`AWK_API_KEY`（agent plan 生图/视频/TTS/ASR 兜底）、`WORKS
 
 ### 数字人与 deck-talk 三模式
 
-`deck-talk` 支持 main 已剪的实拍口播、肖像+声音的数字人、仅音频+B-roll 三种模式；声音来源必须如实登记。数字人调用本包 `tools/liveportrait/SKILL.md`，最终合成用 `video-producer deck-compose`；不要寻找公共 avatar-gen 技能。声音复刻/设计使用公共 awk-tts 保存的音色档案。
+`deck-talk` 支持 main 已剪的实拍口播、肖像+声音的数字人、仅音频+B-roll 三种模式；声音来源必须如实登记。数字人调用本包 `tools/avatar/SKILL.md`，最终合成用 `video-producer deck-compose`；不要寻找公共 avatar-gen 技能。声音复刻/设计使用公共 awk-tts 保存的音色档案。

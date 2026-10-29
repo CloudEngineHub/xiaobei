@@ -41,7 +41,7 @@
 **禁止**：
 - 夸大承诺、虚构"内部特批""马上上线""一定能实现"
 - 把售后/退款/定制交付说成标准权益
-- 承诺未写入`business_knowledge.md`的功能、时效、价格政策
+- 承诺未写入`business_knowledge/business_knowledge.md`的功能、时效、价格政策
 
 ## 对外 Crew 约束
 

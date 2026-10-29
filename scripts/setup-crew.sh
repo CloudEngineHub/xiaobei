@@ -2,6 +2,7 @@
 # setup-crew.sh - 多 Agent 系统安装脚本
 # 将 crews/ 中的内置模板、共享协议、模板库部署到 ~/.openclaw/
 # 幂等设计：已存在的 workspace 不会覆盖（除非 --force）
+# 仅部署当前版本模板；旧 TOOLS.md / HEARTBEAT.md 由用户升级后手动删除。
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,12 +13,13 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CONFIG_PATH="$OPENCLAW_HOME/openclaw.json"
 FORCE=false
 
-# 内置 Crew（main / it-engineer）在 §4 中强制注册进 openclaw.json agents.list；
-# content-producer 已在 config-templates/openclaw.json agents.list 预注册（§4 仅规范化）；
+# 内置 Crew（main / it-engineer）在 §4 中强制注册进 openclaw.json agents.entries；
+# content-producer 已在 config-templates/openclaw.json agents.entries 预注册（§4 仅规范化）；
 # 其余对外 crew（sales-cs / ...）的 workspace 在 §1 预建，运行时由 main agent 招募时注册。
 source "$SCRIPT_DIR/lib/agent-skills.sh"
 source "$SCRIPT_DIR/lib/exec-tiers.sh"
 source "$SCRIPT_DIR/lib/crew-workspaces.sh"
+export XIAOBEI_AGENT_ROSTER_MODULE="$SCRIPT_DIR/lib/agent-roster.cjs"
 
 DENIED_OVERRIDES=""
 
@@ -189,7 +191,7 @@ sync_agent_skill_filter() {
   workspace_dir="$(node -e "
     const fs = require('fs');
     const c = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf8'));
-    const agent = (c.agents?.list || []).find((entry) => entry.id === '$agent_id');
+    const agent = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).getAgent(c, '$agent_id');
     const configured = typeof agent?.workspace === 'string' && agent.workspace.trim()
       ? agent.workspace.trim()
       : '~/.openclaw/workspace-$agent_id';
@@ -219,11 +221,11 @@ sync_agent_skill_filter() {
   AGENT_ID="$agent_id" AGENT_SKILLS_RESULT="$skills_result" node -e "
     const fs = require('fs');
     const c = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf8'));
-    const list = c.agents?.list || [];
-    const idx = list.findIndex((entry) => entry.id === process.env.AGENT_ID);
-    if (idx >= 0) {
+    const {getAgent, setAgent} = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE);
+    const agent = getAgent(c, process.env.AGENT_ID);
+    if (agent) {
       const skillsResult = process.env.AGENT_SKILLS_RESULT || '';
-      list[idx] = { ...list[idx], skills: JSON.parse(skillsResult || '[]') };
+      setAgent(c, process.env.AGENT_ID, { ...agent, skills: JSON.parse(skillsResult || '[]') });
       fs.writeFileSync('$CONFIG_PATH', JSON.stringify(c, null, 2) + '\\n');
     }
   "
@@ -236,7 +238,7 @@ list_agent_workspaces() {
     const fs = require('fs');
     const home = process.env.HOME || '';
     const c = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf8'));
-    for (const a of (c.agents?.list || [])) {
+    for (const a of require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).listAgents(c)) {
       if (!a?.id) continue;
       const ws = (typeof a.workspace === 'string' && a.workspace.trim()
         ? a.workspace.trim() : ('~/.openclaw/workspace-' + a.id))
@@ -267,7 +269,7 @@ echo "📦 Setting up Agent System (crews)..."
 # D8 扁平化后不再经 crew_templates/hrbp_templates 中转，直接把 crews/<id>/ 同步到
 # ~/.openclaw/workspace-<id>/。已存在则跳过（保留用户编辑），仅做幂等 guide 注入。
 # main / it-engineer 在 §4 中额外强制注册进 openclaw.json；content-producer 已在模板
-# agents.list 预注册（§4 仅规范化其 skills / allowAgents）；sales-cs 等对外 crew 的
+# agents.entries 预注册（§4 仅规范化其 skills / allowAgents）；sales-cs 等对外 crew 的
 # workspace 在此预建，运行时由 main agent 招募时注册进 openclaw.json。
 for agent_dir in "$CREWS_DIR"/*/; do
   [ -d "$agent_dir" ] || continue
@@ -280,15 +282,15 @@ for agent_dir in "$CREWS_DIR"/*/; do
 
   if [ -d "$dest" ] && [ "$FORCE" != "true" ]; then
     echo "  ⚠️  workspace-$agent_id already exists, keeping user files (use --force to overwrite)"
-    # §2.3：已部署 workspace 仍同步 crew 专属 skill（覆盖），但不碰 AGENTS.md/TOOLS.md/Memory
+    # §2.3：已部署 workspace 仍同步 crew 专属 skill（覆盖），保留 AGENTS.md / MEMORY.md 等用户正文，只追加缺失的运行指导
     # 及部署实例自定义 skill（sync_crew_skills 只覆盖仓库里同名的 skill）
     sync_crew_skills "$agent_dir" "$dest"
     # skill 声明文件（BUILTIN_SKILLS / DENIED_SKILLS）跟仓库走：陈旧条目会让 openclaw.json
     # 的 skills allowlist 指向已改名 / 已收纳的技能，crew 直接失去这批能力。
     sync_skill_declaration_files "$agent_dir" "$dest" "$PROJECT_ROOT" "$OPENCLAW_HOME"
     # 仅做幂等注入（有标记则跳过，不覆盖用户编辑的内容）
-    inject_file_edit_guide "$dest/TOOLS.md"
-    inject_exec_guide "$dest/TOOLS.md" "$dest"
+    inject_file_edit_guide "$dest/AGENTS.md"
+    inject_exec_guide "$dest/AGENTS.md" "$dest"
     inject_agents_md_sections "$dest/AGENTS.md"
     inject_media_send_guide "$dest/AGENTS.md"
     continue
@@ -299,26 +301,25 @@ for agent_dir in "$CREWS_DIR"/*/; do
   # 已把 skills/ 拷过去，这里再刷一遍保证与仓库一致并装依赖）
   sync_crew_skills "$agent_dir" "$dest"
   echo "  ✅ workspace-$agent_id installed"
-  inject_file_edit_guide "$dest/TOOLS.md"
-  inject_exec_guide "$dest/TOOLS.md" "$dest"
+  inject_file_edit_guide "$dest/AGENTS.md"
+  inject_exec_guide "$dest/AGENTS.md" "$dest"
   inject_agents_md_sections "$dest/AGENTS.md"
   inject_media_send_guide "$dest/AGENTS.md"
 done
 
-# ─── 1.5 业务知识软链：非 main crew 共享 main 的 business_knowledge（目录+md）──
-# sales-cs / content-producer 等需要业务上下文的 crew 通过软链读 main 的业务知识。
-# 原 sales-cs 走 sales-cs-manager 包内 sales-cs-enablement 工具手动建；此处统一幂等建好，新 crew 自动获得。
+# ─── 1.5 共享业务知识目录：统一布局、迁移与目录软链 ───────────────────
+# 正文固定为 business_knowledge/business_knowledge.md；只共享目录，不创建文件软链。
+# 与 sales-cs-enablement 共用同一实现，保留旧正文和用户自定义 workspace 文档。
 MAIN_WS="$OPENCLAW_HOME/workspace-main"
-if [ -e "$MAIN_WS/business_knowledge" ]; then
-  for ws in "$OPENCLAW_HOME"/workspace-*/; do
-    [ -d "$ws" ] || continue
-    [ "$(basename "$ws")" = "workspace-main" ] && continue
-    ln -sfn "$MAIN_WS/business_knowledge" "$ws/business_knowledge" 2>/dev/null || true
-    if [ -e "$MAIN_WS/business_knowledge.md" ]; then
-      ln -sfn "$MAIN_WS/business_knowledge.md" "$ws/business_knowledge.md" 2>/dev/null || true
-    fi
-  done
-fi
+knowledge_workspaces=(--workspace "$MAIN_WS")
+for ws in "$OPENCLAW_HOME"/workspace-*/; do
+  [ -d "$ws" ] || continue
+  [ "$(basename "$ws")" = "workspace-main" ] && continue
+  knowledge_workspaces+=(--workspace "${ws%/}")
+done
+MAIN_WORKSPACE="$MAIN_WS" REPO_MAIN="$CREWS_DIR/main" python3 \
+  "$CREWS_DIR/main/skills/sales-cs-manager/tools/sales-cs-enablement/scripts/symlink_business_knowledge.py" \
+  "${knowledge_workspaces[@]}" --backup-dir "$OPENCLAW_HOME/backups"
 # D8 扁平化 + 去 hrbp 化后 crews/shared/ 不存在、无 agent 消费 crew_templates/，
 # 对外 crew 的 channel reply rules 注入改在 §4 对 workspace 直接做（见 inject_channel_reply_rules 调用）。
 
@@ -350,7 +351,7 @@ if [ -f "$CONFIG_PATH" ]; then
       }
     }
 
-    for (const agent of (c.agents?.list || [])) {
+    for (const agent of require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).listAgents(c)) {
       if (typeof agent.workspace !== 'string') continue;
       const ws = agent.workspace.trim();
       if (ws.startsWith('~/')) {
@@ -363,6 +364,7 @@ if [ -f "$CONFIG_PATH" ]; then
           changed = true;
         }
       }
+      require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).setAgent(c, agent.id, agent);
     }
     if (changed) fs.writeFileSync('$CONFIG_PATH', JSON.stringify(c, null, 2) + '\n');
   " && echo "  ✅ Agent workspace paths normalized"
@@ -401,20 +403,18 @@ if [ -f "$CONFIG_PATH" ]; then
       return { ...entry, skills: JSON.parse((skillsResult || '[]').trim() || '[]') };
     };
 
-    if (!c.agents) c.agents = {};
-    if (!Array.isArray(c.agents.list)) c.agents.list = [];
+    const {listAgents, getAgent, setAgent} = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE);
+    if (!c.agents) c.agents = {entries: {}};
 
     const upsertAgent = (id, buildNext) => {
-      const idx = c.agents.list.findIndex((entry) => entry.id === id);
-      const prev = idx >= 0 ? c.agents.list[idx] : {};
+      const prev = getAgent(c, id) || {};
       const next = buildNext(prev);
-      if (idx >= 0) c.agents.list[idx] = next;
-      else c.agents.list.push(next);
+      setAgent(c, id, next);
     };
 
     const getCrewType = (id) => {
       if (id === 'main' || id === 'it-engineer') return 'internal';
-      const agent = c.agents.list.find((entry) => entry.id === id);
+      const agent = getAgent(c, id);
       if (!agent) return 'external';
       const wsRaw = typeof agent.workspace === 'string' && agent.workspace.trim()
         ? agent.workspace.trim()
@@ -442,7 +442,7 @@ if [ -f "$CONFIG_PATH" ]; then
       const base = {
         ...prev,
         id: 'main',
-        default: prev.default ?? true,
+        ...(!c.agents.entries ? {default: prev.default ?? true} : {}),
         name: prev.name || 'Main Agent',
         workspace: prev.workspace || openclawHome + '/workspace-main',
         // thinkingDefault 不显式设——main 继承 agents.defaults.thinkingDefault（medium）；
@@ -469,10 +469,18 @@ if [ -f "$CONFIG_PATH" ]; then
       return applySkills(base, process.env.IT_SKILLS_RESULT);
     });
 
+    // 系统运维默认由 IT 持有；已有明确的系统 owner 是实例设置，保留不覆盖。
+    const agentDefaults = c.agents.defaults || (c.agents.defaults = {});
+    if (agentDefaults.systemAgent === undefined ||
+        (agentDefaults.systemAgent && typeof agentDefaults.systemAgent === 'object' &&
+         !Object.hasOwn(agentDefaults.systemAgent, 'agentId'))) {
+      agentDefaults.systemAgent = { ...(agentDefaults.systemAgent || {}), agentId: 'it-engineer' };
+    }
+
     // 为所有其他对内 Crew 实例也追加 it-engineer spawn 权限
     // （它们在 depth=1 时需要 maxSpawnDepth>=2，由 agents.defaults.subagents.maxSpawnDepth 保证）
     const PROTECTED_IDS = new Set(['main', 'it-engineer']);
-    for (const agent of c.agents.list) {
+    for (const agent of listAgents(c)) {
       if (PROTECTED_IDS.has(agent.id)) continue;
       const crewType = getCrewType(agent.id);
       if (crewType === 'internal') {
@@ -488,12 +496,13 @@ if [ -f "$CONFIG_PATH" ]; then
       } else {
         if (!agent.reasoningDefault) agent.reasoningDefault = 'off';
       }
+      setAgent(c, agent.id, agent);
     }
 
     // 为所有 Agent 追加自身 ID 到 allowAgents，确保显式 self-spawn 合法
     // （隐式 self-spawn 不传 agentId 时本就放行，但 agent 常显式传入自身 ID，
     //   此时必须通过 allowlist 检查，否则会被拒绝）
-    for (const agent of c.agents.list) {
+    for (const agent of listAgents(c)) {
       if (!agent.id) continue;
       const prevAllow = Array.isArray(agent.subagents?.allowAgents) ? agent.subagents.allowAgents : [];
       if (!prevAllow.includes(agent.id)) {
@@ -502,16 +511,18 @@ if [ -f "$CONFIG_PATH" ]; then
           allowAgents: [...new Set([...prevAllow, agent.id])],
         };
       }
+      setAgent(c, agent.id, agent);
     }
 
-    // 默认确保微信 onboarding 入口存在；工作 channel 由 main agent 后续引导绑定。
+    // 与 config template 一致：微信所有登录账号进入 main；工作渠道按具体账号绑定，
+    // 不生成 feishu -> main 的通配兜底。已有实例的 binding 原样保留。
     if (!Array.isArray(c.bindings)) c.bindings = [];
     const hasMainWeixin = c.bindings.some((binding) =>
       binding?.agentId === 'main' && binding?.match?.channel === 'openclaw-weixin'
     );
     if (!hasMainWeixin) {
       c.bindings.push(
-        { agentId: 'main', comment: 'openclaw-weixin -> Main Agent onboarding entry', match: { channel: 'openclaw-weixin' } }
+        { agentId: 'main', comment: 'openclaw-weixin -> Main Agent onboarding entry', match: { channel: 'openclaw-weixin', accountId: '*' } }
       );
     }
 
@@ -543,7 +554,7 @@ if [ -f "$CONFIG_PATH" ]; then
   AGENT_IDS="$(node -e "
     const fs = require('fs');
     const c = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf8'));
-    console.log((c.agents?.list || []).map((entry) => entry.id).join('\\n'));
+    console.log(require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).listAgents(c).map((entry) => entry.id).join('\\n'));
   " 2>/dev/null)"
   while IFS= read -r agent_id; do
     [ -n "$agent_id" ] || continue
@@ -592,7 +603,7 @@ if [ -f "$CONFIG_PATH" ]; then
     agent_skills_json="$(AGENT_ID="$a_id" node -e "
       const fs = require('fs');
       const c = JSON.parse(fs.readFileSync('$CONFIG_PATH', 'utf8'));
-      const agent = (c.agents?.list || []).find((e) => e.id === process.env.AGENT_ID);
+      const agent = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).getAgent(c, process.env.AGENT_ID);
       console.log(JSON.stringify(agent?.skills || []));
     " 2>/dev/null)"
 
@@ -640,8 +651,7 @@ if [ -f "$CONFIG_PATH" ]; then
 
   # ─── 4c. 应用 Command Tier → exec-approvals + tools.exec ──────
   echo "  📝 Applying command tier exec policies..."
-  EXEC_APPROVALS_PATH="$OPENCLAW_HOME/exec-approvals.json"
-  apply_exec_tiers "$CONFIG_PATH" "$EXEC_APPROVALS_PATH" "$CREWS_DIR" "$PROJECT_ROOT"
+  apply_exec_tiers "$CONFIG_PATH" "$CREWS_DIR" "$PROJECT_ROOT"
 
   # ─── 4d. 注入渠道回复规则到已部署的对外 crew workspaces ──────
   while IFS=$'\t' read -r a_id a_ws; do
@@ -650,8 +660,8 @@ if [ -f "$CONFIG_PATH" ]; then
     [ "$(resolve_crew_type "$a_ws/SOUL.md")" = "external" ] || continue
     inject_channel_reply_rules "$a_ws/AGENTS.md"
     inject_agents_md_sections "$a_ws/AGENTS.md"
-    inject_file_edit_guide "$a_ws/TOOLS.md"
-    inject_exec_guide "$a_ws/TOOLS.md" "$a_ws"
+    inject_file_edit_guide "$a_ws/AGENTS.md"
+    inject_exec_guide "$a_ws/AGENTS.md" "$a_ws"
   done < <(list_agent_workspaces)
   echo "  ✅ Channel reply rules synced to deployed external crew workspaces"
 
@@ -661,8 +671,8 @@ if [ -f "$CONFIG_PATH" ]; then
     [ -f "$a_ws/AGENTS.md" ] || continue
     inject_agents_md_sections "$a_ws/AGENTS.md"
     inject_media_send_guide "$a_ws/AGENTS.md"
-    inject_file_edit_guide "$a_ws/TOOLS.md"
-    inject_exec_guide "$a_ws/TOOLS.md" "$a_ws"
+    inject_file_edit_guide "$a_ws/AGENTS.md"
+    inject_exec_guide "$a_ws/AGENTS.md" "$a_ws"
   done < <(list_agent_workspaces)
   echo "  ✅ Standard AGENTS.md sections synced to all deployed workspaces"
 
@@ -793,8 +803,8 @@ generate_ofb_env_md() {
       _ENV_FILE_FORMAT_DESC="dotenv 格式，一行一个"
       _ENV_FILE_QUOTE_NOTE=""
       _SVC_ENV_FILE="$HOME/.openclaw/daemon.env"
-      _RESTART_CMD="systemctl --user restart openclaw"
-      _RESTART_NOTE="编辑 .env 后需 \`systemctl --user restart openclaw\` 生效"
+      _RESTART_CMD="systemctl --user restart openclaw-gateway.service"
+      _RESTART_NOTE="编辑 .env 后需 \`systemctl --user restart openclaw-gateway.service\` 生效"
     fi
 
     cat > "$workspace_dir/OFB_ENV.md" << ENVEOF
@@ -806,6 +816,7 @@ generate_ofb_env_md() {
 - **wiseflow 项目路径**：$_PROJECT_ROOT
 - **openclaw 子目录**：$_PROJECT_ROOT/openclaw
 - **配置文件**：$_CONFIG_PATH
+- **默认 Gateway 主日志**：$_OPENCLAW_HOME/logs/gateway.log（实际位置以配置中的 logging.file 为准）
 
 ## 环境变量文件
 
@@ -815,7 +826,7 @@ generate_ofb_env_md() {
 
 ### 文件位置
 
-\`$HOME/.openclaw/.env\`（state-dir dotenv，Linux / macOS 同路径）
+\`$_ENV_FILE_PATH\`（当前 state-dir dotenv）
 
 > ⚠️ **技能密钥一律写这个文件，不要写 daemon.env / service-env。** 此文件被**每个 openclaw 进程**加载（gateway、bare CLI、self-spawned subagent、cron isolated-agent），密钥能到达所有调用路径。daemon.env（Linux）/ service-env（macOS）是服务管理器的 EnvironmentFile，**只有托管 gateway 进程**继承；subagent / cron / 裸 CLI 子进程不继承，把只被 subagent 调用的技能密钥放那里会报"未配置"。
 
@@ -859,9 +870,24 @@ cd $_PROJECT_ROOT && ./scripts/install.sh --skip-crew
 # 重启 gateway（生效 daemon.env 改动）
 $_RESTART_CMD
 
-# 直接调用上游 CLI（如需）
-cd $_PROJECT_ROOT/openclaw && pnpm openclaw <subcommand>
+# 已构建 CLI（不触发源码构建）
+openclaw <subcommand>
+
+# 最近 20 行日志（只读，不跟随）
+openclaw logs --limit 20
+
+# 有界排障窗口（只读）
+openclaw logs --limit 200 --plain
+
+# 用户交互跟随日志（自动巡检不用）
+openclaw logs --follow
 \`\`\`
+
+上面的 openclaw 指已安装入口，不保证在终端 PATH。预构建安装可用 \`"$_PROJECT_ROOT/bin/openclaw" logs --limit 20\`；源码部署可用 \`node "$_PROJECT_ROOT/openclaw/dist/index.js" logs --limit 20\`。Windows PowerShell 使用安装目录中的 bin/openclaw.cmd；完整平台例子见项目 docs/install-troubleshooting.md 的「运行日志」，入口速查在 AGENTS.md 的 Tools 节。
+
+生产运行中优先使用可用且获授权的原生管理工具。终端使用已安装的 openclaw CLI 或已构建 dist/index.js；不要用可能重建共享 dist 的 pnpm openclaw / 源码开发入口。构建前先通过原服务管理器停止 Gateway，不绕过运行中产物保护。
+
+本机路径、环境变量名称和工具别名写在 AGENTS.md 的 Tools 节，不新建 TOOLS.md；技能操作手册保留在 SKILL.md。
 ENVEOF
     echo "  ✅ OFB_ENV.md updated in $agent_label workspace ($([ "$_is_docker" = "true" ] && echo "Docker" || echo "source"))"
   fi
@@ -871,20 +897,18 @@ ENVEOF
 # main agent 不直接编辑 daemon.env，需要加环境变量时 spawn it-engineer 执行。
 generate_ofb_env_md "$OPENCLAW_HOME/workspace-it-engineer" "it-engineer"
 
-# ─── 5b. Docker 部署时往 it-engineer MEMORY.md 注入容器环境提示 ──────
-# MEMORY.md 里有大量 `systemctl --user restart openclaw` 引用（坑2、定时任务部分），
-# 这些在 Docker 容器里不适用（容器无 systemd）。Docker 部署时在 MEMORY.md 顶部
-# 插入醒目提示，让 it-engineer 优先用 `docker restart <容器名>` 而非 systemctl。
+# ─── 5b. Docker 部署时往 it-engineer AGENTS.md 注入容器环境提示 ──────
+# 子 agent 只自动注入 AGENTS.md，容器运维约束不能留在 MEMORY.md。
 inject_docker_env_hint() {
-  local memory_file="$OPENCLAW_HOME/workspace-it-engineer/MEMORY.md"
-  [ -f "$memory_file" ] || return 0
+  local agents_md="$OPENCLAW_HOME/workspace-it-engineer/AGENTS.md"
+  [ -f "$agents_md" ] || return 0
 
   # 幂等：已有标记则跳过
-  if grep -q '<!-- WISEFLOW_DOCKER_ENV_HINT -->' "$memory_file" 2>/dev/null; then
+  if grep -q '<!-- WISEFLOW_DOCKER_ENV_HINT -->' "$agents_md" 2>/dev/null; then
     return 0
   fi
 
-  # 用 sed 在首行后插入提示块（不依赖临时文件，原子替换）
+  # 在首个标题后插入提示块，保留其他正文。
   local hint_block='
 <!-- WISEFLOW_DOCKER_ENV_HINT -->
 ## ⚠️ 容器环境提示（Docker 部署）
@@ -904,25 +928,25 @@ inject_docker_env_hint() {
 3. **gateway 启动**：容器 entrypoint 自动启动 gateway，无需手动 `systemctl start`
 4. **配置热加载**：改 `.env` / `daemon.env` 后需 `docker restart` 生效（gateway 启动时加载）
 
-**容器内可用的运维命令**：
-- 看日志：`docker logs -f <容器名>` 或容器内 `tail -f /tmp/xiaobei-*.log`
-- 进容器调试：`docker exec -it <容器名> bash`
-- 看 gateway 状态：`curl -sf http://localhost:18789/status`
+**运维位置**：
+- 宿主机看日志：`docker logs -f <容器名>`；进容器调试：`docker exec -it <容器名> bash`
+- 容器内看 Gateway 状态：使用已安装的 `openclaw health`
+- `docker logs`、`docker exec`、`docker restart` 都在宿主机执行，不在容器内调用
 <!-- /WISEFLOW_DOCKER_ENV_HINT -->
 '
 
-  # 用 perl 原子插入（macOS sed -i '' 和 Linux sed -i 行为不同，perl 跨平台稳）
+  # perl 避免 macOS / Linux 的 sed -i 参数差异。
   perl -e '
     my ($file, $hint) = @ARGV;
     local $/; open my $fh, "<", $file or die $!; my $c = <$fh>; close $fh;
     $c =~ s/^(# .*\n)/$1$hint/;  # 在首个 "# 标题行" 后插入
     open my $out, ">", $file or die $!; print $out $c; close $out;
-  ' "$memory_file" "$hint_block"
+  ' "$agents_md" "$hint_block"
 
-  echo "  ✅ Docker env hint injected into it-engineer MEMORY.md"
+  echo "  ✅ Docker env hint injected into it-engineer AGENTS.md"
 }
 
-# 仅 Docker 部署时注入（源码部署 MEMORY.md 里的 systemctl 引用是对的）
+# 仅 Docker 部署时注入；源码部署使用 OFB_ENV.md 记录的服务管理器。
 if [ "${WISEFLOW_DOCKER:-0}" = "1" ] || [ -f /.dockerenv ] || [ "${OPENCLAW_HOME:-}" = "/root/.openclaw" ]; then
   inject_docker_env_hint
 fi

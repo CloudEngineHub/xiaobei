@@ -4,17 +4,19 @@
 
 - 微信公众号文章写作、排版与推送
 - 小红书/小绿书图文创作与发布
-- 图文海报生成
-- 视频生成与多平台分发（支持视频号、抖音、小红书、快手、tiktok）
+- 抖音图文音乐发布，支持多图上传与推荐配乐
+- 图文海报与原创配乐生成
+- 视频生成与多平台分发（支持视频号、抖音、小红书、快手、TikTok、微博……）
+- 低成本口播视频制作：幻灯片、剪纸动画、操作录屏 B-roll，支持自定义音色与数字人小窗
 - Twitter/X、微博、知乎等平台发文
 - 微信朋友圈内容发布（通过企业微信接口）
-- 爆款视频追爆分析、仿写与再创作（支持抖音、快手、小红书等平台视频链接）
+- 爆款视频下载分析、仿写与再创作（支持抖音、快手、小红书等平台视频链接）
 - 赛道头部账号DNA级复刻（目前支持小红书、微信视频号、抖音、微信公众号四个平台）
 - 已发布作品数据监控与每日定时复盘
-- 自媒体评论区获客
+- 自媒体评论区获客与站内私信联络（支持小红书、抖音等平台）
 - 7*24 小时智能客服（售前接待）
-- 通过社交媒体寻找潜在客户或市场调研
-- 信息搜集与情报：支持小红书、抖音、微博、知乎、快手、B站、Twitter、YouTube、视频号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等 18 类信源——无需配置任何 key、纯免费
+- 通过社交媒体寻找潜在客户，查询小红书蒲公英达人合作与千帆分销商资料
+- 信息搜集、竞对监控与市场调研：支持小红书、抖音、微博、知乎、快手、TikTok、B站、Twitter/X、YouTube、微信公众号、LinkedIn、Reddit、新闻、政务、财经、学术、购物、GitHub 等信源，扩展商业、技术/AI、学术、招聘、口碑和设计六类站点
 - "四声分析"法战略研判与讨论
 - 产品deck、ppt制作，投资/IR 材料准备
 - 网站设计与制作、ICP 备案等材料辅助
@@ -32,28 +34,19 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 ---
 
-## 🚀 **V5.7.3 更新**
+## 🚀 **V5.8.0 更新**
 
-- 新增带B-roll的口播视频制作能力，对比纯AIGC模式，单条成本由几十下降到几块，且更易获平台推荐：
-  - B-roll 支持 幻灯片生成\剪纸人动画\操作录屏，前两者基于hyperframes，后者基于xiaobei浏览器自动化能力，均无需调用aigc模型，用户有现成素材也可直接提供；
-  - 口播音频支持用户录制和TTS合成两种，TTS合成支持自定义音色，支持混入口音（降低ai味，避免被平台限流）；
-  - 支持屏幕小窗添加数字人同步画面，仅需提供一张照片（建议用真人）
-  - 上述流程均支持由xiaobei出方案并自主委托content-producer完成制作全流程，用户只需最终验收
-- 新增卡片内容生产能力：内置“群聊误发式单图”创意、“问答式连续讨论流三图”创意。均使用html代码生成，无需AIGC模型，无平台限流风险；
+- **OpenClaw 基座升级至 2026.10.4**，同步更新插件接入、配置与安装升级流程；
+- **全新小贝浏览器**：基于 Camoufox 构建独立的 `xiaobei-browser` 插件，接入 OpenClaw 原生插件体系，统一管理浏览器身份与持久会话；扫码、验证码等待期间保留窗口，大幅提升登录与自动化操作体验；
+- **更聪明的 IT Engineer 帮你保驾护航**：优化预置记忆与工作指南，将日常使用中的运维经验沉淀为技能，完善日志巡检、定时任务、插件与会话维护，让系统排障和日常运维更省心；
+- **视频制作与验收升级**：数字人改用 Wan S2V，支持按原声分段生成与口型审查；百炼业务空间 TTS 默认升级到 3.1 Plus。补齐画面方案校验、剪辑节奏与素材复用检查、字幕和尾帧检查，支持保留已认可的原音轨；
+- **多平台发布更稳**：优化抖音双封面、草稿续编与发布结果核对，小红书话题校验、转码状态与提交结果追踪；发布结果未知时先核查，防止重复提交；
+- **获客与客服完善**：小红书私信增加已读状态校验与自动回复去重；Awada Channel 增强语音转写、网盘文件发送与客户资料联动，过滤框架故障和模型回退提示，减少对客户的干扰；
+- **安装升级体验优化**：完善 AtomGit 国内线路、GitHub 下载代理、资源断点续传与失败重试，补齐 Windows 安装和日志排障指引；幻灯片、卡片、PPT 等工具共用一套 Playwright/Chromium 渲染环境，统一预装依赖。
 
-**成品展示见xiaobei的微信视频号和小红书号**：https://openclaw-for-business.com/media
+> **升级提示**：5.8.0 相对于 5.7.x、5.6.x 均为**破坏性升级**。建议老用户先将个性化配置和记忆数据备份到 `~/.openclaw` 目录之外，再删除本机的 `~/.openclaw` 目录并全新安装；也可在完成备份后，为安装脚本添加 `--force` 参数，强制覆盖原有配置（Windows PowerShell 安装请先设置 `$env:XIAOBEI_FORCE="1"`）。
 
-- 新增抖音平台图文音乐内容发布能力，支持多图上传、选择推荐配乐与发布链接回收;
-- 大幅优化小红书平台支持性能，并新增蒲公英达人合作和千帆分销商资料查询能力；
-- 新增对快手和tiktok平台的支持，优化 x（twitter）和weibo平台的支持；
-- 音乐生成新增支持百炼平台
-
-## 🚀 **V5.7.4 更新**
-
-- 重构expert-bd技能，专注对外联络，支持xhs、douyin等站内私信能力；
-- 将信息获取能力从expert-bd中分离为expert-osbi;
-- 优化smart-search技能，新增商业、技术/AI、学术、招聘、口碑和设计六类 36 个站点的支持；
-- 修复5.7.3中的bug
+**成品展示见小贝的微信视频号和小红书号**：[查看作品](https://openclaw-for-business.com/media)
 
 详见 [CHANGELOG.md](CHANGELOG.md)
 
@@ -65,22 +58,20 @@ xiaobei 由Wiseflow (原AI首席情报官）作者 bigbrother666sh 开发。
 
 推荐开通 [阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..)——一个套餐覆盖**思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成**全部大模型能力，无需为这些能力分别准备其他供应商账号或 Key。
 
-> 💡 **套餐选择**：前期熟悉安装可选 **Lite 版 39 元/月**；正常使用建议 **Standard 版 139 元/月**。想继续使用火山CodePlan见下方 "模型费用说明"
+> 💡 **套餐选择**：前期熟悉安装可选 **Lite 版 39 元/月**；正常使用建议 **Standard 版 139 元/月**。
 
-> 🎬 **想用视频生成能力？** 默认使用百炼Token Plan内的 HappyHorse1.1 额度；配置 `MODELSTUDIO_API_KEY` 和 `WORKSPACE_ID` 后，使用百炼业务空间的 Wan3.0（效果更佳）。
+> 🎬 **想用视频生成能力？** 默认使用百炼Token Plan内的 wan3.0 或者 happyhorse 1.1；配置 `MODELSTUDIO_API_KEY` 和 `WORKSPACE_ID` 后，使用百炼业务空间的 Wan3.0。
 
 > 视频生成还支持火山 Seedance 和 MiniMax H3，详见下方[视频生成模型配置](#-视频生成模型配置)。
 
 ### 推荐：一键脚本安装（预构建 tarball 路线）
-
-一行命令，全程无需预装 Node / pnpm / git（tarball 自带 portable Node + pnpm）。脚本完成后**唯一人工输入**是填 `AWK_API_KEY`（「TOKEN PLAN」套餐的 key）。
 
 **macOS / Linux（bash，一行命令）：**
 
 ```bash
 # GitHub 线路（适合能正常访问 GitHub 的网络环境）
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.sh)"
-# 国内 atomgit 线路（tarball 走 atomgit.com → GitCode CDN，全程国内直连，脚本也从 raw.atomgit.com 拉取）
+# 国内推荐：AtomGit 线路
 bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.sh)"
 ```
 
@@ -92,15 +83,17 @@ bash -c "$(curl -fsSL https://raw.atomgit.com/wiseflow/xiaobei/raw/master/script
 ```powershell
 # GitHub 线路（适合能正常访问 GitHub 的网络环境）
 irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/install.ps1 | iex
-# 国内 atomgit 线路（tarball 走 atomgit.com → GitCode CDN，全程国内直连，脚本也从 raw.atomgit.com 拉取）
+# 国内推荐：AtomGit 线路
 irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 | iex
 ```
 
-> 按网络环境选一条命令即可：能正常访问 GitHub 走 GitHub 线路（脚本 `install.sh` / `install.ps1`）；国内网络走 atomgit 线路（脚本 `install-atomgit.sh` / `install-atomgit.ps1`，全程不经 GitHub）。两条线路安装产物完全一致，只是下载源不同。
+> 按网络环境选一条线路：能正常访问 GitHub 可用 `install.sh` / `install.ps1`；国内客户推荐 AtomGit 预构建 tarball 配合 `XIAOBEI_GITHUB_PROXY`，客户端无需完整构建 OpenClaw。两条线路安装产物一致。
+
+> `XIAOBEI_GITHUB_PROXY` 可设为其他 HTTPS URL 前缀；不设置时 GitHub 下载保持直连。它覆盖浏览器、指纹模型、GeoIP、Matrix 原生库及安装期间的 GitHub Git 拉取；代理模式还为未自定义的 npm/pnpm、Node headers 和 Playwright 下载配置国内镜像。uBlock 的 Mozilla 下载、系统包管理器及非 GitHub 的可选依赖仍按各自来源访问，不能仅凭此开关承诺全程国内访问。完整范围与覆盖配置见 [安装脚本说明](scripts/README.md#github-下载代理)。升级时也需要设置该变量，并使用包含此功能的新安装包。
 
 > install 脚本默认拉最新 release tag + 下载 tarball。指定版本：`export XIAOBEI_TAG=v5.6.3`（PowerShell：`$env:XIAOBEI_TAG="v5.6.3"`）。
 
-> 💡 **下载中断 / 安装失败？多试几次就好。** tarball 体积较大（~140MB），首装还要下 Firefox 反指纹浏览器（~557MB），网络偶发中断属正常。脚本幂等，重跑会续上已下的部分。
+> 💡 **下载中断 / 安装失败？** 主程序 tarball 有版本缓存；浏览器资源会自动尝试最多 5 次，中断后优先续传，连续 2 分钟没有新数据才超时。当前 Camoufox 156.0.1-beta.36 Linux x64 压缩包约 1.29 GB。五次都失败后临时文件会清理；需要跨次安装续传时，可用 `curl` 下载到本地目录，再通过 `XIAOBEI_BROWSER_DOWNLOADS` 提供给资源安装器，校验通过后使用。见[资源下载缓存](scripts/README.md#浏览器资源下载缓存)。
 
 > ⚠️ **Windows 必须装 bash**（Git Bash 或 WSL）。install.ps1 / install-atomgit.ps1 用 `tar`（Win10 1803+ 自带）解压 tarball，但 `setup-crew.sh` 是 bash 脚本，部署 crew workspace 离不开 bash。无 bash 时脚本会跳过 crew 模板部署并提示手动补跑——此时小贝团队起不来。装 Git Bash：https://git-scm.com （安装时勾选 "Add to PATH"）。
 
@@ -114,7 +107,7 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 
 > **系统要求**：推荐 Ubuntu 22.04；支持 WSL2 / macOS（arm64 + x64）；Windows 10 1803+（x64，需 Git Bash 或 WSL）。WSL2 下脚本自动注入 GUI 显示变量。
 
-> 🖥️ **部署机器建议**：推荐用一台 **7×24 小时常开**的电脑部署，上面**不要放置个人隐私 / 机密文件**。若你希望在日常办公电脑上安装、且只在用时启动——可以期待我们即将推出的**官方 Docker 镜像**，具体可扫下方二维码咨询掌柜👇。
+> 🖥️ **部署机器建议**：推荐用一台 **7×24 小时常开**的电脑部署，上面**不要放置个人隐私 / 机密文件**。若你希望在日常办公电脑上安装、且只在用时启动,可以使用docker部署。
 
 > **调试模式**（前台单次启动，适合测试，不走 launchd/systemd 服务）：`~/xiaobei/bin/openclaw gateway run`
 
@@ -158,7 +151,15 @@ irm https://raw.githubusercontent.com/TeamWiseFlow/xiaobei/master/scripts/instal
 irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.ps1 | iex
 ```
 
-> 已手动 `git clone` 仓做开发的用户仍可用 `scripts/update.sh` 走 fetch + rebuild 路线（不重装依赖、不卸 daemon）。普通用户用上面的 install 脚本即可。
+> 已手动 `git clone` 仓做开发的用户仍可用 `scripts/update.sh` 走 fetch + rebuild 路线（不重装依赖、不卸 daemon）。普通用户用上面的 install 脚本即可。（build步骤要求可用内存不低于16G，tarball安装不必。）
+
+源码分发测试需要直接部署当前目录中的代码时，在项目根目录执行：
+
+```bash
+bash scripts/update.sh --skip-sync
+```
+
+`--skip-sync` 跳过小贝仓库的 Git 初始化、remote 配置和 fetch/reset，适用于开发仓 checkout 或源码 ZIP。OpenClaw 引擎仍按本地 `openclaw.version` 检出；依赖安装、构建和服务重启照常执行，仍可能需要联网。
 
 ### 系统与环境要求
 
@@ -177,8 +178,6 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 > xiaobei 底层基于 openclaw，建议先准备好大模型 API：
 >
 > - **主力模型（强烈推荐）**：[阿里云百炼「Token Plan」套餐](https://www.aliyun.com/benefit/ai/aistar?clubBiz=subTask..12766005..10274..) — 一个套餐已经可以覆盖xiaobei系统所需的所有大模型（思考与对话、图像生成、TTS 语音合成、ASR 语音识别和视频生成)。
->
-> - **仍想用火山方舟 Coding Plan 的用户**：在默认配置模板基础上参考 [openclaw-awk.json](config-templates/openclaw-awk.json)，手动替换 `provider` 和 `agents.default` 字段即可。
 
 > **🎬 视频生成模型配置**
 >
@@ -203,9 +202,9 @@ irm https://raw.atomgit.com/wiseflow/xiaobei/raw/master/scripts/install-atomgit.
 
 > **🧠 进阶：记忆增强与 dream（可选）**
 >
-> 默认配置下，小贝的记忆走 FTS 全文检索，已经够用且零额外配置。如果你记忆体量很大、想要更好的语义召回，可以接入一个 embedding 模型；也可以选择打开凌晨"做梦"机制让小贝在夜间整理记忆。
+> 默认配置下，小贝的记忆走 FTS 全文检索，已经够用且零额外配置。如果你记忆体量很大、想要更好的语义召回，可以接入一个 embedding 模型。
 >
-> 任何 OpenAI 接口格式的 embedding 服务都可以接（如阿里云百炼的 `text-embedding-v3/v4` 系列）。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`；想开做梦就把 `plugins.entries.memory-core.config.dreaming.enabled` 改回 `true`。改完重启 gateway 生效。可以让小贝帮你完成配置。
+> 任何 OpenAI 接口格式的 embedding 服务都可以接（如阿里云百炼的 `text-embedding-v3/v4` 系列）。配置方法：把 `agents.defaults.memorySearch.provider` 从 `"none"` 改为 `"openai-compatible"`，并补上 `remote.baseUrl` / `remote.apiKey` / `model`，改完重启 gateway 生效。可以让小贝帮你完成配置。
 
 ### 配置繁琐，不想操心？
 
@@ -217,14 +216,12 @@ VIP Club（售价 **168 元/年**），权益包括：
 - VIP 微信交流群：问题讨论、产品反馈、技术沟通、专家 DNA 分享……
 - 官方中转服务：针对部分自媒体平台的发布技能要求固定 IP 和签名的问题，向 VIP Club 会员免费提供官方中转服务
 - 会员期内所有增值服务享半价（不含 awada lane 租赁）
-- 会员可申请成为服务合作商
+- 会员可申请成为服务合作商，共享AI时代红利
 - 会员可申请定制开发服务
 
 *⚠️ 如存在不当使用官方中转服务、在社群发表不当言论等行为，Wiseflow 团队有权提前终止会员资格且不予退款，详见会员协议。*
 
-另开放 **服务代理商** 合作，共享AI时代红利！详见：https://openclaw-for-business.com/pricing 
-
-也欢迎添加"掌柜的"企业微信（由 xiaobei sales-cs 驱动）咨询了解：
+欢迎添加"掌柜的"企业微信（由 xiaobei sales-cs 驱动）咨询了解：
 
 <img width="360" height="360" alt="xiaobei掌柜" src="https://github.com/user-attachments/assets/b013b3fd-546e-4176-b418-57bee419e761" />
 
@@ -278,60 +275,60 @@ Crew 遇到自己不能解决的问题：
 
 *详询"掌柜的"👆*
 
-## 🔧 全新的浏览器栈
+## 🦊 全新的浏览器栈
 
-v5.6.0 重构了 OpenClaw 原版浏览器自动化方案，v5.6.3 沿用双线栈并按 OpenClaw v2026.7.1 重新对齐 patch。历史背景与正在规划的 5.8 自有 CLI 方案见 [浏览器架构文档](docs/browser-architecture.md)；下表描述现有实现，5.8 重构尚未实施：
+5.8.0 版本中我们基于[camoufox](https://github.com/daijro/camoufox) 构建了原生的小贝浏览器（`xiaobei-browser`），以独立插件形式接入 OpenClaw。
 
-| 项 | 说明 |
-|----|------|
-| `patches/camoufox-cli/` | **forked camoufox-cli**（vendor 自上游 `camoufox-cli@0.6.2`）+ 三个新功能：`upload` 命令（Playwright `setInputFiles`，发布类技能依赖）/ daemon fail-first 队列（同 session 并发直接 fail，不排队不等待）/ `identity export`（导出 UA + 指纹摘要，对应 `cookies export`）。`build.sh` 全局安装替换 `$PATH` 上的上游版 |
-| `patches/browser-camoufox-pivot/` | **001 monolith 拆成 35 个单文件 patch**（`patches/` 子目录，按文件名 sort 顺序应用，降低上游漂移失效面）+ adapter + 测试 ship 在 `files/`。删 sandbox 整条路 + 删 host `local-managed` 分支 + 新增 `target=camoufox` 旁路（默认） |
-| `patches/overrides.sh` | **去掉 patchright-core 注入**（playwright-core 保留给 remote-cdp 用）；保留 web_search disable |
-| `002-disable-web-search-env-var` | **留**：openclaw 内置 web search 大部分需要申请 api key 甚至海外网络，小贝自带完全免费、零部署的 Smart Search 解决方案 | `OPENCLAW_DISABLE_WEB_SEARCH=1` |
-| `007-prefer-camoufox-cli` | **留**（改名）：在 browser 工具描述中提示优先用 camoufox-cli 做浏览器自动化，原 browser 工具仅作兜底 | 无 |
+- **融入官方插件生态**：遵循 OpenClaw 官方插件管理体系，支持配置、启停与热重载，浏览器接入无需修改引擎源码。
+- **强化反侦测能力**：相较openclaw自带的 Chrome/Chromium 自动化方案，提供内核级指纹保护与持久身份管理，更适合自媒体站点的自动化操作。
+- **与技能体系协同**：为自媒体发布、内容获取、数据获取等技能提供统一的浏览器能力，并为后续 OSBI 信息提取与研究扩展提供基础。
 
-**浏览器与平台技能覆盖登录、填报、发布、互动、采集等工作流**，按平台使用浏览器自动化或 HTTP API：
-
-| 技能 | 职责 |
-|------|------|
-| `browser-guide` | 浏览器操作最佳实践总纲——登录墙 / CAPTCHA / lazy-load / paywall / 有头无头场景规则 / eval 用法 |
-| `smart-search` | 智能搜索——绕开 openclaw 内置 web search 的 api key 依赖，零部署免费方案 |
-| `ui-demo` | 浏览器操作演习与录屏，为教程、产品演示及视频 B-roll 提供素材 |
-
-浏览器技能使用 camoufox-cli 与持久化 session，按场景切换有头/无头模式。
+架构、使用约定与后续规划见 [浏览器开发指南](docs/browser-architecture.md)。
 
 ## 目录结构
 
 ```
 wiseflow/
-├── openclaw/              # 上游仓库（git clone，禁止直接修改）
-├── crews/                 # Crew 模板（D8 扁平化，权限由 crew-type + ALLOWED_COMMANDS 决定）
-│   ├── _template/         # 空白脚手架（创建新模板的起点）
-│   ├── main/              # [default] 小贝——新媒体运营 / 创业伴侣，绑 openclaw-weixin
-│   ├── it-engineer/       # [built-in] IT 工程师——幕后运维 + 排障 sub-agent
-│   ├── content-producer/  # 内容制作者——视频/视觉生产线
-│   └── sales-cs/          # 销售型客服——绑 awada，默认禁用，按需招募
-├── skills/                # 公共技能（≥2 crew 共用，smart-search / browser-guide 等）
-├── patches/               # wiseflow 基础补丁
-│   ├── *.patch            # git 补丁（按序号顺序应用到 openclaw/）
-│   └── overrides.sh       # pnpm 依赖覆盖（如替换 playwright → patchright）
-├── config-templates/      # 配置模板（开箱即用的最佳实践）
-│   ├── openclaw.json      # 默认配置模板（阿里云百炼主力 + fts-only 记忆 + dream 关）
-│   └── openclaw-awk.json  # 火山引擎方舟 Coding Plan 备选模板（主力 GLM-5.2）
-├── scripts/               # 工具脚本（详见 scripts/README.md）
-│   ├── lib/               # 脚本共享工具（agent-skills.sh 等）
-│   ├── install.sh         # 一键安装 + 升级（预构建 tarball 路线，macOS + Linux，GitHub 线路；重跑即升级，保留 ~/.openclaw）
-│   ├── install-atomgit.sh # 一键安装 + 升级（macOS + Linux，atomgit 国内线路；全程不经 GitHub）
-│   ├── install.ps1        # 一键安装 + 升级（Windows，tarball 路线，GitHub 线路；需 Git Bash/WSL）
-│   ├── install-atomgit.ps1 # 一键安装 + 升级（Windows，atomgit 国内线路；需 Git Bash/WSL，全程不经 GitHub）
-│   ├── update.sh          # 已 git clone 开发用户的升级路线（fetch + rebuild，不重装依赖）
-│   ├── dev.sh             # 开发模式启动（前台运行 gateway）
-│   ├── setup-crew.sh      # 多 crew 系统安装（同步 markdown + 注入规范，幂等）
-│   └── setup-wsl2.sh      # WSL2 环境配置
-└── docs/                  # 项目文档
+├── openclaw/                     # OpenClaw 上游引擎（独立 clone）
+├── openclaw.version              # 上游版本与 commit 锁定
+├── browser/                      # 基于 Camoufox 的小贝浏览器
+│   ├── plugin/                   # xiaobei_browser 工具与插件服务注册
+│   ├── src/                      # 工具与 CLI 共用的浏览器运行时
+│   ├── bridge/                   # Python 调用桥接
+│   ├── openclaw.plugin.json      # 独立插件清单
+│   └── assets.lock.json          # 浏览器、指纹模型等资产的版本与校验值
+├── awada/                        # Awada 通信插件
+├── crews/                        # Crew 模板与各自专属技能
+│   ├── _template/                # 新 crew 的空白模板
+│   ├── main/                     # 小贝：新媒体运营 / 创业伴侣
+│   ├── it-engineer/              # IT 工程师：运维与排障
+│   ├── content-producer/         # 内容制作者：视频与视觉生产
+│   └── sales-cs/                 # 销售型客服：按需招募
+├── skills/                       # 公共技能，如 browser-guide、smart-search
+├── patches/                      # 当前仅保留 Gateway 构建相关源码补丁
+│   ├── 009-gateway-build.patch
+│   ├── 010-gateway-build-test.patch
+│   └── apply.sh                  # 按锁定版本应用源码补丁
+├── config-templates/             # OpenClaw 配置模板
+│   └── openclaw.json             # 默认模型、插件、技能与工具配置
+├── config/                       # 环境变量与服务环境模板
+├── scripts/                      # 安装、升级与运维脚本，详见 scripts/README.md
+│   ├── lib/                      # 脚本共享工具
+│   ├── install.sh                # macOS / Linux 预构建安装与升级
+│   ├── install-atomgit.sh         # 国内下载线路
+│   ├── install.ps1               # Windows 安装入口（需 Git Bash / WSL）
+│   ├── install-atomgit.ps1        # Windows 国内下载线路
+│   ├── update.sh                 # 源码安装的升级入口
+│   ├── apply-addons.sh           # 补丁、配置、技能、依赖与构建
+│   ├── install-browser.mjs       # 浏览器安装与资产准备
+│   ├── configure-browser-plugin.mjs # 浏览器插件配置迁移
+│   └── setup-crew.sh             # Crew 工作区初始化与同步
+├── bin/                          # OpenClaw 启动入口
+├── docker/                       # 镜像、Compose 与容器入口
+└── docs/                         # 使用与开发文档
 ```
 
-运行时数据在 `~/.openclaw/`（openclaw.json、daemon.env、workspaces、sessions、camoufox profile 全在此）；程序在 `~/xiaobei/`（install.sh 解压的预构建 tarball：`openclaw/` 引擎 + `crews/` + `skills/` + `scripts/` + `tools/` portable Node/pnpm + `camoufox-cli/` fork + `bin/openclaw` wrapper）。两者职责分开：升级只换 `~/xiaobei/`，`~/.openclaw/` 用户数据不动。可用 `XIAOBEI_HOME` / `OPENCLAW_HOME` env 覆盖位置。
+预构建安装的程序默认位于 `~/xiaobei/`，安装包另附 `tools/` 中的 portable Node/pnpm。OpenClaw 配置、工作区与会话保存在 `~/.openclaw/`；浏览器资产、持久 profile 与运行登记默认保存在 `~/.camoufox-cli/`。程序与用户状态分开存放，安装器可用 `XIAOBEI_HOME` / `OPENCLAW_HOME` 调整程序与 OpenClaw 状态目录，浏览器状态目录可用 `XIAOBEI_BROWSER_HOME` 指定。
 
 🌹 即日起为 xiaobei 开源版本贡献 PR（代码、文档、成功案例分享均欢迎），一经采纳，贡献者将获赠 **VIP Club 一年会员**！
 
@@ -348,7 +345,7 @@ wiseflow/
 ## 🤝 xiaobei 基于如下优秀的开源项目：
 
 - openclaw(Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞) https://github.com/openclaw/openclaw
-- camoufox(🦊 Anti-detect browser, Firefox fork — forked camoufox-cli 作为线 1 浏览器主力，vendor 进 `patches/camoufox-cli/`) https://github.com/daijro/camoufox
+- camoufox(🦊 Anti-detect browser, Firefox fork. SDK include) https://github.com/daijro/camoufox
 - Feedparser（Parse feeds in Python） https://github.com/kurtmckee/feedparser
 - SearXNG（a free internet metasearch engine which aggregates results from various search services and databases） https://github.com/searxng/searxng
 - opencli（A CLI for social media & web platforms — smart-search skill 借鉴了其搜索 URL 模式与平台适配方案） https://github.com/jackwener/opencli
@@ -361,7 +358,6 @@ wiseflow/
 - ViMax（HKUDS 的视频生成框架 — `video-producer` 的机位一致性约束与素材 slot 规划借鉴其镜头规划策略） https://github.com/HKUDS/ViMax
 - OpenMontage（calesthio 的开源蒙太奇剪辑方案 — `video-producer` 的 Stage 12 拼接成片+转场工作流借鉴其片段组装与节奏控制思路） https://github.com/calesthio/OpenMontage
 - gbro-collage-broll（MIT — 半调纸拼贴 B-roll 方法论 — `expert-video` 的 Collage B-roll workflow 借鉴其隐喻设计、语义色场与视觉 QA；现由 awk-img-gen 提供独立纸片素材，HyperFrames 负责确定性组装，特殊生成式动作才调用 aigc-video-gen） https://github.com/pyang5166/gbro-collage-broll
-- agent-skills-launch-pack_（起号方法论知识来源） https://github.com/chenjin-cmd/agent-skills-launch-pack_
 
 ## Citation
 

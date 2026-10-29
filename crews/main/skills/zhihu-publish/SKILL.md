@@ -8,10 +8,9 @@ metadata:
 
 # 知乎发布
 
-通过 **camoufox-cli** 持久化 session `zhihu`（一个且只有一个持久化 session，fail-first 队列：同 session 已有命令在跑时新命令直接 fail）在知乎上发布文章或回答。知乎没有对个人开发者开放的发布 API，只能通过浏览器自动化。
+使用xiaobei受管浏览器 runtime；脚本继续通过 camoufox-cli 兼容入口，交互操作按 browser-guide 使用 xiaobei_browser 并遵循本文的平台专属 session。不要改用原生 browser 或其他后端。
 
-> **主力后端 = `target=camoufox`**。下方命令 / 示例只针对 `target=camoufox`。
-> **`target=host` / `target=node`**：只按本 skill 的「流程 + 提示事项」走--何时有头 / 何时无头 / 频率限制 / 错误处理约定是**后端无关**的，照本 skill 执行。不要照搬 `camoufox-cli ...` 命令，用你当前后端自带的浏览器工具语义调用即可。
+通过 **camoufox-cli** 持久化 session `zhihu`（一个且只有一个持久化 session，fail-first 队列：同 session 已有命令在跑时新命令直接 fail）在知乎上发布文章或回答。知乎没有对个人开发者开放的发布 API，只能通过浏览器自动化。
 
 ---
 

@@ -38,7 +38,7 @@ metadata:
 | 工具 | 用途 | 命令 |
 |------|------|------|
 | `wx-channel-style-profiler` | 生成单条视频的 DNA report，并聚合 DNA 文档与 template（= Brief + 口播文案模板） | `wx-channel-style-profiler` |
-| `wechat-channels-publish` | 发布视频到视频号创作者中心（camoufox-cli 持久化 session `wechat-channel`） | 无 wrapper，按工具说明驱动 `camoufox-cli` |
+| `wechat-channels-publish` | 发布视频到视频号创作者中心（持久化 session `wechat-channel`） | `wechat-channels-publish login/login-confirm/fill`；其余页面操作按工具说明驱动 `camoufox-cli` |
 | `wx-channel-engagement` | 视频号助手后台作品数据抓取，写入 published-track 的 `pub_wx_channel` 表 | `wx-channel-engagement` |
 
 跨领域通用技能：`published-track`（发布记录与指标库）、`content-calibrator`（DNA 表现评估）、`smart-search`（跨平台搜索，选题调研优先社交平台）、`council`（定位决策辅助）、`awk-img-gen`（封面图生成）。

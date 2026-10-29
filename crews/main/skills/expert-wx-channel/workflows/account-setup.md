@@ -20,13 +20,13 @@
 
 1. 默认 DNA 固定为 `dna-0`。
 2. 除 `account-benchmark.md` 分流的对标样本外，用户不指定 DNA 时，参考视频样本和后续新增样本默认累积到 `dna-0`。
-3. `dna-0` 可以由参考账号、参考视频、用户想法和 `business_knowledge.md` 共同形成，不绑定单一账号名。
+3. `dna-0` 可以由参考账号、参考视频、用户想法和 `business_knowledge/business_knowledge.md` 共同形成，不绑定单一账号名。
 4. 若 `wx_channel/dna/dna-0/dna-0.dna.md` 已存在，不覆盖重建；新资料按 `style-dna.md` 的更新流程进入。
 5. 独立对标样本不直接写入 `dna-0`，必须走 `account-benchmark.md` 并进入独立 DNA；用户明确采纳的局部规则可通过局部 DNA 融合更新 `dna-0`。
 
 ### Step 1 - 业务信息检查
 
-先读取 Workspace 根目录的 `business_knowledge.md`，检查三项关键信息：
+先读取 Workspace 的 `business_knowledge/business_knowledge.md`，检查三项关键信息：
 
 | 关键信息 | 最低要求 |
 | --- | --- |
@@ -38,7 +38,7 @@
 
 用户思路不清晰、多个定位方向难以取舍或商业假设冲突时，调用顶层 `council` 技能辅助梳理；`council` 不收纳进视频号专家包。
 
-更新 `business_knowledge.md` 前必须征得用户同意，并遵守 Workspace 根 `AGENTS.md` 的治理规则。
+更新 `business_knowledge/business_knowledge.md` 前必须征得用户同意，并遵守 Workspace 根 `AGENTS.md` 的治理规则。
 
 ### Step 2 - 定位梳理
 
@@ -46,7 +46,7 @@
 
 #### 输入
 
-1. `business_knowledge.md` 中的产品、服务、收费、受众和红线。
+1. `business_knowledge/business_knowledge.md` 中的产品、服务、收费、受众和红线。
 2. 用户目标：个人 IP / 企业品宣 / 电商带货 / 私域引流。
 3. 已有账号样本和表现线索（如有）。
 4. 用户提供的对标方向（如有）。
@@ -97,7 +97,7 @@
 
 #### 路径 B：用户暂无参考，但业务信息完整
 
-Agent 基于 `business_knowledge.md` 提炼搜索关键词，建议用户到视频号站内搜索同类头部或表现较好的账号：
+Agent 基于 `business_knowledge/business_knowledge.md` 提炼搜索关键词，建议用户到视频号站内搜索同类头部或表现较好的账号：
 
 1. 优先找观众相近、承诺清晰、近期仍活跃的账号。
 2. 优先选择分享和评论信号强的视频；播放量只作次要参考。
@@ -106,7 +106,7 @@ Agent 基于 `business_knowledge.md` 提炼搜索关键词，建议用户到视�
 
 #### 路径 C：用户拒绝外部参考或已有明确想法
 
-1. 结合 `business_knowledge.md`、用户定位、目标观众、变现方式和用户思路，提炼 `dna-0`。
+1. 结合 `business_knowledge/business_knowledge.md`、用户定位、目标观众、变现方式和用户思路，提炼 `dna-0`。
 2. Agent 直接按视频维度框架（`video-dna-framework.md`）编写：
 
 ```text
@@ -162,7 +162,7 @@ wx_channel/dna/dna-0/dna-0.template.md
 
 1. 基于 Step 1 拿到的样本提炼定位、账号简介、选题组合、简介包装、内容形式、发布节奏、核心卖点与 CTA 等基础信息，将这些信息与用户确认。
 2. 结合上述信息，走「从零开始打造新号」流程。
-3. 如果 `business_knowledge.md` 不全，可以先从 Step 1 的样本中提取，不足的信息与用户讨论。
+3. 如果 `business_knowledge/business_knowledge.md` 不全，可以先从 Step 1 的样本中提取，不足的信息与用户讨论。
 
 ### 老号诊断速查
 

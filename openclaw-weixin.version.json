@@ -1,8 +1,8 @@
 {
   "openclaw-weixin": {
     "package": "@tencent-weixin/openclaw-weixin",
-    "version": "2.4.8",
-    "integrity": "sha512-hhO9prUQwzfSpIL6XGWazRsxNs89K+Mis3iQW6a8eum4AIDxOUiTFMg4nlNVD/au0SjAx5CcJjo3KYWZqGpgQA=="
+    "version": "2.4.10",
+    "integrity": "sha512-qCN7rFtBK5BO/i5YGEJLdpC/8WQrm0dtPlQ0xNxku4RSyzGaRsiBoLVheU5hgpoOIBvfc5pUwKTktMbROLcIVg=="
   },
   "openclaw-weixin-cli": {
     "package": "@tencent-weixin/openclaw-weixin-cli",

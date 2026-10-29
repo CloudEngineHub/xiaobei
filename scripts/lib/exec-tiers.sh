@@ -2,7 +2,7 @@
 # exec-tiers.sh - crew-type + ALLOWED_COMMANDS → exec-approvals / tools.exec 映射
 #
 # 读取 SOUL.md 的 crew-type（internal/external）+ ALLOWED_COMMANDS 微调，
-# 生成 openclaw 原生 exec 权限配置（tools.exec + exec-approvals.json）。
+# 生成 tools.exec，并通过 OpenClaw 的审批状态 owner 更新宿主策略。
 #
 # 权限模型（2026-07-07 简化，删 T0~T3 四档抽象）：
 #   internal        → security: full（无白名单）
@@ -11,6 +11,7 @@
 # ALLOWED_COMMANDS 是对外 crew 在 deny 上凿洞的唯一通道；对内 crew 不读它。
 #
 # 被 setup-crew.sh source 使用。
+export XIAOBEI_AGENT_ROSTER_MODULE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-roster.cjs"
 
 # ── 便携 readlink -f ──────────────────────────────────
 # macOS 自带 BSD readlink 不支持 -f（静默失败），GNU readlink 才支持。
@@ -87,18 +88,17 @@ resolve_binary_path() {
   local cmd="$1"
   local base_dir="${2:-}"
   # 脚本路径（./scripts/... 或绝对路径）→ 转绝对路径
-  # 注意：不使用 cd 来解析路径（若目录不存在会导致路径被静默丢弃），
-  # 直接做字符串拼接，确保私有技能条目即使尚未安装也能正确写入 exec-approvals.json
+  # 已安装脚本使用 realpath，与引擎的 resolvedRealPath 匹配口径一致；
+  # 尚未安装的脚本保留规范化绝对路径，不因目录缺失而丢弃声明。
   case "$cmd" in
     ./*|../*)
       local abs
-      if [ -n "$base_dir" ]; then
-        # 将 base_dir + cmd 拼接后规范化（去掉多余的 ./ ../）
-        abs="$(printf '%s/%s' "$base_dir" "$cmd" | sed 's|/\./|/|g; s|/[^/]*/\.\./|/|g; s|/$||')"
+      abs="$(node -e 'console.log(require("node:path").resolve(process.argv[1], process.argv[2]))' "${base_dir:-$PWD}" "$cmd")"
+      if [ -e "$abs" ]; then
+        _resolve_realpath "$abs"
       else
-        abs="$(printf '%s' "$cmd" | sed 's|^./||')"
+        printf '%s\n' "$abs"
       fi
-      [ -n "$abs" ] && echo "$abs"
       return
       ;;
     /*)
@@ -192,100 +192,25 @@ build_exec_allowlist_json() {
 crew_type_to_tools_exec_json() {
   local crew_type="$1" has_allowlist="$2"
   case "$crew_type" in
-    internal) echo '{"host":"gateway","security":"full","ask":"off"}' ;;
+    internal) echo '{"host":"gateway","mode":"full"}' ;;
     external)
       if [ "$has_allowlist" = "true" ]; then
-        echo '{"host":"gateway","security":"allowlist","ask":"off"}'
+        echo '{"host":"gateway","mode":"allowlist"}'
       else
-        echo '{"host":"gateway","security":"deny","ask":"off"}'
+        echo '{"host":"gateway","mode":"deny"}'
       fi
       ;;
-    *) echo '{"host":"gateway","security":"deny","ask":"off"}' ;;
+    *) echo '{"host":"gateway","mode":"deny"}' ;;
   esac
 }
 
-# ── 生成/更新 exec-approvals.json ────────────────────
-# 参数: exec_approvals_path agent_configs_json
-#   agent_configs_json 格式: {"agentId":{"security":"..","ask":"..","allowlist":[...]}}
-#
-# 策略：
-#   - 保留已有的 socket 配置（path + token）
-#   - 设置全局 defaults（deny + off）
-#   - 合并内置 crew 的 agent 条目（覆盖已有的内置 crew 配置）
-#   - 保留非内置 crew 的 agent 条目不动
-generate_exec_approvals() {
-  local exec_approvals_path="$1"
-  local agent_configs_json="$2"
-
-  EXEC_APPROVALS_PATH="$exec_approvals_path" \
-  AGENT_CONFIGS="$agent_configs_json" \
-  node -e '
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
-
-const filePath = process.env.EXEC_APPROVALS_PATH;
-const agentConfigs = JSON.parse(process.env.AGENT_CONFIGS);
-
-// 读取已有文件（保留 socket 等）
-let existing = { version: 1 };
-try {
-  if (fs.existsSync(filePath)) {
-    existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  }
-} catch { /* 损坏时重建 */ }
-
-// 保留已有 socket 配置，没有则生成
-const socket = existing.socket || {};
-if (!socket.path) socket.path = "~/.openclaw/exec-approvals.sock";
-if (!socket.token) socket.token = crypto.randomBytes(24).toString("base64url");
-
-// wiseflow 全局默认：deny + off（飞书无审批 UI）
-const defaults = {
-  security: "deny",
-  ask: "off",
-  askFallback: "deny",
-  autoAllowSkills: false,
-};
-
-// 合并 agents 配置
-const agents = existing.agents || {};
-for (const [agentId, config] of Object.entries(agentConfigs)) {
-  const prev = agents[agentId] || {};
-  // 为 allowlist 条目补 id
-  const allowlist = (config.allowlist || []).map((entry) => ({
-    id: crypto.randomUUID(),
-    ...entry,
-  }));
-  agents[agentId] = {
-    security: config.security,
-    ask: config.ask || "off",
-    askFallback: config.askFallback || "deny",
-    ...(allowlist.length > 0 ? { allowlist } : {}),
-  };
-}
-
-const result = {
-  version: 1,
-  socket,
-  defaults,
-  agents,
-};
-
-// 确保目录存在
-fs.mkdirSync(path.dirname(filePath), { recursive: true });
-fs.writeFileSync(filePath, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
-'
-}
-
 # ── 高层接口：为一组 agents 计算并写入 exec 配置 ─────
-# 参数: config_path exec_approvals_path crews_dir project_root
+# 参数: config_path crews_dir project_root
 # 读取每个已注册 crew 的 crew-type，生成 tools.exec + exec-approvals
 apply_exec_tiers() {
   local config_path="$1"
-  local exec_approvals_path="$2"
-  local crews_dir="$3"
-  local project_root="$4"
+  local crews_dir="$2"
+  local project_root="$3"
 
   # 收集所有已注册 crew 的 exec 配置
   local agent_configs="{}"
@@ -296,7 +221,7 @@ apply_exec_tiers() {
 const fs = require("fs");
 const home = process.env.HOME || "";
 const c = JSON.parse(fs.readFileSync(process.env.CONFIG_PATH, "utf8"));
-for (const a of (c.agents?.list || [])) {
+for (const a of require(process.env.XIAOBEI_AGENT_ROSTER_MODULE).listAgents(c)) {
   if (!a || typeof a.id !== "string" || !a.id.trim()) continue;
   const id = a.id.trim();
   const wsRaw = typeof a.workspace === "string" && a.workspace.trim()
@@ -388,29 +313,32 @@ console.log(JSON.stringify(prev));
 ')"
   done <<< "$agent_entries"
 
-  # 写入 exec-approvals.json
-  generate_exec_approvals "$exec_approvals_path" "$agent_configs"
-  echo "  ✅ exec-approvals.json updated"
+  # apply-addons 在新引擎构建和 Doctor 迁移后再同步宿主策略。
+  if [ "${XIAOBEI_DEFER_EXEC_APPROVALS:-0}" = "1" ]; then
+    echo "  ⏳ Host exec approvals deferred until the pinned engine is ready"
+  else
+    printf '%s\n' "$agent_configs" | node "$project_root/scripts/sync-exec-approvals.mjs" --config "$config_path"
+  fi
 
-  # 写入 agents.list[].tools.exec 到 openclaw.json
-  TOOLS_EXEC_PATCHES="$tools_exec_patches" node -e '
+  # 写入 agents.entries.<id>.tools.exec 到 openclaw.json
+  TOOLS_EXEC_PATCHES="$tools_exec_patches" CONFIG_PATH="$config_path" node -e '
 const fs = require("fs");
 const patches = JSON.parse(process.env.TOOLS_EXEC_PATCHES);
-const c = JSON.parse(fs.readFileSync("'"$config_path"'", "utf8"));
-const list = c.agents?.list || [];
+const c = JSON.parse(fs.readFileSync(process.env.CONFIG_PATH, "utf8"));
+const {getAgent, setAgent} = require(process.env.XIAOBEI_AGENT_ROSTER_MODULE);
 for (const [agentId, execConfig] of Object.entries(patches)) {
-  const idx = list.findIndex((a) => a.id === agentId);
-  if (idx >= 0) {
-    list[idx] = {
-      ...list[idx],
+  const agent = getAgent(c, agentId);
+  if (agent) {
+    setAgent(c, agentId, {
+      ...agent,
       tools: {
-        ...(list[idx].tools || {}),
-        exec: execConfig,
+        ...(agent.tools || {}),
+        exec: { ...(agent.tools?.exec || {}), ...execConfig },
       },
-    };
+    });
   }
 }
-fs.writeFileSync("'"$config_path"'", JSON.stringify(c, null, 2) + "\n");
+fs.writeFileSync(process.env.CONFIG_PATH, JSON.stringify(c, null, 2) + "\n");
 '
-  echo "  ✅ agents.list[].tools.exec updated"
+  echo "  ✅ agents.entries.<id>.tools.exec updated"
 }

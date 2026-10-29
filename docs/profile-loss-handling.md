@@ -1,6 +1,6 @@
 # profile 丢失 / 损坏 / 指纹错配 处理规范
 
-> spec `browser-stack-replacement-spec-2026-07.md` §8（补充 D，强化原则 5）。
+> 架构约束见 [浏览器架构文档](./browser-architecture.md) §3.2。
 > 本文档供 browser-guide 和各平台技能引用。平台登录按当前技能入口执行；X/TikTok/微博登录由 platform-runtime 内部管理。
 > HEARTBEAT.md 约束 4 已落地「凌晨心跳跳过 + 等白天」策略，本文档补白天恢复流程。
 
@@ -28,10 +28,10 @@ xhs `a1` / `websectiga` 等设备指纹 cookie 与浏览器指纹绑定。导入
 
 ## camoufox-cli `cookies import` 的合法用途
 
-forked camoufox-cli 保留上游 `cookies export/import` 命令（spec §1.2 不改，JSON = Playwright `add_cookies` 格式，零转换）。**合法用途仅限**：
+5.8 保留 `cookies export/import` 命令，但旧 v1 身份不自动兼容新 SDK；本次可归档旧 profile 后重新登录，具体见开发指南 §3.2。**合法用途仅限**：
 
-- **同指纹 profile 的 cookie 备份 / 恢复**：同一 `--persistent` profile（`camoufox-cli.json` 指纹冻结）的 cookies export 出来再 import 回去，指纹一致，无错配风险。
-- **跨设备迁移同一指纹**：把 profile 整体（`camoufox-cli.json` + `cookies.sqlite` + state）一起搬，不是只搬 cookie。
+- **同指纹 profile 的 cookie 备份 / 恢复**：确认是同一账号与 `--persistent` profile（`camoufox-cli.json` 指纹冻结）后恢复，再验证实际登录状态。
+- **完整 profile 迁移**：迁移整体状态（`camoufox-cli.json` + `cookies.sqlite` + state），同时核对目标 OS、浏览器版本及指纹兼容性；不能仅搬 Cookie，也不能假定跨设备恢复一定有效。
 
 **禁止**：profile 已丢 / 指纹已变时，用 `cookies import` 把中央存的 cookie 灌进新 profile 试图恢复登录——这正是补充 D 禁止的动作。
 
@@ -70,13 +70,15 @@ X/TikTok/微博的导出规则见 [运行库登录说明](../crews/main/skills/p
 
 调用同一平台工具的 `check`，确认在线身份属于预期账号。导出成功不代表发布、私信等写能力已经验收；依照对应工具限制处理。
 
-## 临时性 session 不受影响
+## 普通站点与临时任务
 
-不涉及登录的站点（新闻 / rss-reader / intel-gathering 等纯浏览取数）走 forked cli 默认临时 profile（每次随机指纹，关闭自清），**没有 profile 丢失概念**——临时 profile 本就一次性。补充 A。
+普通站点统一复用持久化 `default`，当前命令省略 `--session` 并保留 `--persistent`。其 profile 丢失同样按本文处理，不因站点无需登录就自动改用临时 profile。
+
+只有明确的隔离渲染或测试任务使用临时 profile；它不能承载需跨任务保留的登录态，收尾只清理该任务拥有的临时目录。
 
 ## 引用
 
-- spec：`docs/browser-stack-replacement-spec-2026-07.md` §8 + 原则 3 / 5 + 补充 D
+- 架构：[浏览器架构与开发方案](./browser-architecture.md) §3.2
 - HEARTBEAT：`crews/main/HEARTBEAT.md` 约束 4（凌晨跳过 + 等白天）
 - forked cli：`patches/camoufox-cli/`（`cookies export/import` + `identity export`）
-- 调研：`docs/browser-extension-replacement-research.md` §12
+- 升级：[5.8 基座调研](./openclaw-10.3-baseline-comparison-2026-10-15.md)

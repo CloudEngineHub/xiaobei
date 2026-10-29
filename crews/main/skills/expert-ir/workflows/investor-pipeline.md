@@ -44,7 +44,7 @@ new → contacted → bp_sent → meeting → dd → ts → invested/passed
 > - 打磨输出已落 `MEMORY.md`
 > - 流水线才有"可讲的内容"
 
-如果用户跳过打磨直接进流水线 → **先**与用户一起完成商业模式梳理（基于 `business_knowledge.md`；多路径权衡用 `council`），结论落 `MEMORY.md` 后再继续。
+如果用户跳过打磨直接进流水线 → **先**与用户一起完成商业模式梳理（基于 `business_knowledge/business_knowledge.md`；多路径权衡用 `council`），结论落 `MEMORY.md` 后再继续。
 
 ### Step 2: 发掘投资人 → Investor Hunting Workflow
 

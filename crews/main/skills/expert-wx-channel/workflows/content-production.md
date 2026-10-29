@@ -58,7 +58,7 @@ DNA template 是 main agent 的生产输入模板：**视频号 DNA 的 template
 
 ### 2. 核实业务事实与边界
 
-读取 Workspace 根的 `business_knowledge.md`，按本次内容需要核实：
+读取 Workspace 的 `business_knowledge/business_knowledge.md`，按本次内容需要核实：
 
 - 产品 / 服务概括和核心差异
 - 目标观众与具体痛点
@@ -76,7 +76,7 @@ DNA template 是 main agent 的生产输入模板：**视频号 DNA 的 template
 | 制作路线 | 素材组装 / 从零制作 / 脚本制作，判断依据见 Step 0 |
 | 主题 / 方向 | 用户给了明确主题时不得另起炉灶，仅按 DNA template 细化选题、短标题与视频描述 |
 | 素材 | 用户提供的文案、笔记、截图、链接、数据、案例、实拍素材必须优先使用 |
-| 目标观众 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge.md` |
+| 目标观众 | 未指定时按 DNA 受众关系推导；涉及业务事实时再核对 `business_knowledge/business_knowledge.md` |
 | 时长 | 未指定时按 DNA template 的时长带；再无要求默认 30-60 秒 |
 | 形态 | 真人出镜 / 配音解说 / 素材剪辑 / AIGC，未指定时按 DNA template 推导 |
 | 出镜与拍摄 | 真人出镜时确认拍摄可行性；不可实拍时与用户确认改配音 / 素材 / AIGC 形态 |
@@ -90,7 +90,7 @@ DNA template 是 main agent 的生产输入模板：**视频号 DNA 的 template
 用户明确交付要求 + 业务事实 / 红线
 > 用户提供的素材
 > DNA template 的风格规则
-> business_knowledge.md 中的相关事实
+> business_knowledge/business_knowledge.md 中的相关事实
 > Agent 的一般内容判断
 ```
 
@@ -112,7 +112,7 @@ DNA 约束的是选题与观看理由、短标题与视频描述写法、内容�
    - **必用素材**：用户明确要求采用的事实、观点、案例和画面物料。
    - **参考素材**：提供方向或表达参考，不直接替代用户结论。
    - **对标素材**：只用于模式比较，不能覆盖用户素材和业务事实。
-4. 素材不足时先补问；确实无法补充时，在内容中避免无证据断言。素材之间冲突时列出冲突并问用户；商业事实以 `business_knowledge.md` 和用户最新说明为准。
+4. 素材不足时先补问；确实无法补充时，在内容中避免无证据断言。素材之间冲突时列出冲突并问用户；商业事实以 `business_knowledge/business_knowledge.md` 和用户最新说明为准。
 5. 用户意图是“保留内容、只换我们的表达方式”（同主题改写）时，整理**内容资产清单**而不是风格分析：主题、中心论点、事实、数据、时间、人物、案例、引用来源、需要保留的关键词与专有名词、免责声明。不能确认的信息标为「待核实」，禁止为了表达顺滑而补事实。
 
 ## Step 3 - 选题
@@ -251,10 +251,10 @@ CP 交付说明会相应增补「修改记录」段（其技能约定，见 expe
 
 ## Step 6 - 发布
 
-按 `wechat-channels-publish` 工具说明驱动 camoufox-cli 发布（该工具无 wrapper，逐条按其步骤执行）：
+按 `wechat-channels-publish` 工具说明发布：登录与正文填充使用 `wechat-channels-publish` wrapper，其余页面操作按说明驱动 camoufox-cli。
 
 0. **封面变体准备（标准步骤，发布前完成）**：视频号发布页封面是双入口——个人主页卡 3:4、分享卡 4:3，直接裁 16:9 主图会切掉封面标题。CP 交付的 `cover.jpg` 是 16:9 主图，两个变体由 main 在发布前生成，采用**模糊底嵌入法**（实测参数）：目标画布 3:4 为 1080×1440、4:3 为 1440×1080；底图 = `cover.jpg` 放大铺满画布 + 高斯模糊 + 亮度压到 0.55；前景 = `cover.jpg` 全宽居中嵌入。产物落作品目录 `cover_profile_3x4.jpg` / `cover_share_4x3.jpg`，发布时两个封面入口分别上传对应变体（各入口的裁剪框里居中构图即可，标题不会被裁掉）。
-1. 打开创作者中心发布页，检查 `wechat-channel` session 登录态；失效时走该工具的无头截图扫码登录流，**Stop and wait** 等用户扫码确认。
+1. 打开创作者中心发布页，检查 `wechat-channel` session 登录态；失效时调用 `wechat-channels-publish login`，仅发送返回 `qr_verified: true` 的 `qr_path`，**Stop and wait** 等用户扫码确认，再用 `wechat-channels-publish login-confirm --keep-open` 核验并续作。
 2. 上传 `video.mp4`，等待上传与转码完成（最长 3 分钟）。
 3. **设置封面**：两个封面入口分别上传 Step 6.0 生成的 `cover_profile_3x4.jpg`（个人主页卡）与 `cover_share_4x3.jpg`（分享卡），按工具说明「Step 5: 设置封面」执行；变体缺失时先用模糊底嵌入法补齐再上传，不要拿 16:9 主图直接对两个入口硬裁（会切标题）。（用户明确要用视频帧时在弹窗胶片条选帧代替。）
 4. **视频描述与短标题都要填**（均取 Step 4 定稿）：视频描述含话题标签，短标题按发布页字段单独填；两项都不得留空。

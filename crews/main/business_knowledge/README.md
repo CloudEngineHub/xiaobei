@@ -1,30 +1,16 @@
-# business_knowledge/ — 业务知识支撑材料
+# business_knowledge/ — 业务知识与支撑材料
 
-> 这是 `business_knowledge.md`（**单文件**，位于上级目录）的**支撑文件夹**。
-> 业务知识**正文**写在 `../business_knowledge.md` 里；本文件夹只放**引用型材料**：
-> 产品截图、价目表截图、案例素材、合同模板、客户名单、资质证书等。
+业务知识正文固定为 `business_knowledge.md`，是本目录内的普通文件；从 workspace 根读取时使用 `business_knowledge/business_knowledge.md`。
 
-## 定位
+正文和支撑材料统一由 main agent 维护，落盘前征得用户同意。其他 crew 只共享 `business_knowledge/` 目录软链，不另建正文文件软链或副本。
 
-- ✅ 放：图片、PDF、截图、二进制素材、过长的附录（不便内联进 md 的）
-- ❌ 不放：业务知识正文（正文进 `business_knowledge.md`）
-- ❌ 不放：可被 `campaign_assets/` 收纳的运营素材（运营素材归 `campaign_assets/`）
-
-## 命名约定
-
-建议按用途命名，便于在 `business_knowledge.md` 里引用：
-
-```
+```text
 business_knowledge/
+├── business_knowledge.md   # 业务知识正文
 ├── README.md              # 本说明
 ├── pricing-2026.png       # 价目表截图
 ├── case-xxx.md            # 案例附录
 └── ...
 ```
 
-在 `business_knowledge.md` 中引用：`见 business_knowledge/pricing-2026.png`。
-
-## 治理
-
-- 由 **main agent** 维护，落盘前征得用户同意（与 `business_knowledge.md` 同治理边界）。
-- sales-cs workspace 通过软链访问本文件夹（与 `business_knowledge.md` 一同软链）。
+正文内的相对链接以本目录为基准，例如 `[价目表](./pricing-2026.png)`。图片、PDF、合同模板、资质等引用材料放在本目录；市场运营素材仍放在 workspace 的 `campaign_assets/`。

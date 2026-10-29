@@ -218,9 +218,61 @@ def title_candidates(path: Path, text: str) -> list[str]:
     return candidates
 
 
-def document_metrics(path: Path, text: str, duration: float = 0.0) -> dict:
+def narration_text(body: str) -> tuple[str, str, bool]:
+    """只提取明确的口播正文；混合文档没有口播节时不猜测正文边界。"""
+    lines = body.splitlines()
+    heading_re = re.compile(r"^\s*#{1,6}\s+(.+?)\s*#*\s*$")
+    selected = None
+    for index, line in enumerate(lines):
+        heading = heading_re.match(line)
+        if heading and re.fullmatch(r"(?:口播全文|转录全文|逐字稿)(?:\s*[（(].*[）)])?", heading[1]):
+            end = next((i for i in range(index + 1, len(lines)) if heading_re.match(lines[i])), len(lines))
+            selected = lines[index + 1:end]
+            break
+    if selected is None:
+        if re.match(r"^---\s*\n", body) or any(
+            heading_re.match(line) or line.lstrip().startswith((">", "```", "~~~", "<!--"))
+            for line in lines
+        ):
+            return "", "unavailable", False
+        selected = lines
+        scope = "plain-transcript"
+    else:
+        scope = "narration-section"
+
+    timestamp = r"\d+(?::\d{1,2}){0,2}(?:\.\d+)?"
+    time_range = re.compile(
+        rf"^\[?{timestamp}(?:s|秒)?\s*[-–—~]\s*{timestamp}(?:s|秒)?\]?\s*[：:]\s*"
+    )
+    single_time = re.compile(rf"^\[{timestamp}(?:s|秒)?\]\s*[：:]?\s*")
+    spoken = []
+    complete = True
+    in_fence = False
+    section = re.sub(r"<!--.*?-->", "", "\n".join(selected), flags=re.DOTALL)
+    for line in section.splitlines():
+        line = line.strip()
+        if line.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line or line.startswith(">"):
+            continue
+        line = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", line)
+        line = single_time.sub("", time_range.sub("", line))
+        if re.search(r"\[(?:剧情概括|概括|转述)\]|【(?:剧情概括|概括|转述)】", line):
+            complete = False
+            continue
+        spoken.append(line)
+    return "\n".join(spoken), scope, complete
+
+
+def document_metrics(path: Path, text: str, duration: float = 0.0, kind: str = DEFAULT_KIND) -> dict:
     """统计证据底座：视频与图文共用一套超集，展示哪些指标由 STATISTICS_METRICS[kind] 决定。"""
     title, body = split_title_body(text)
+    candidates = title_candidates(path, text)
+    scope, complete = "note", True
+    if kind == "video":
+        text, scope, complete = narration_text(body)
+        body = text
     sentences = split_sentences(text)
     sentence_lengths = [len(tokenize(sentence)) for sentence in sentences]
     sentence_count = len(sentences)
@@ -229,11 +281,28 @@ def document_metrics(path: Path, text: str, duration: float = 0.0) -> dict:
     paragraphs = split_paragraphs(body)
     paragraph_lengths = [len(tokenize(paragraph)) for paragraph in paragraphs]
     emoji_count = len(EMOJI_RE.findall(body))
-    speech_chars_per_minute = rounded(character_count / duration * 60) if duration > 0 else 0.0
+    speech_characters = sum(character.isalnum() for character in body) if kind == "video" else 0
+    speech_chars_per_minute = (
+        rounded(speech_characters / duration * 60)
+        if kind == "video" and duration > 0 and speech_characters and complete else None
+    )
+    warning = ""
+    if kind == "video":
+        if scope == "unavailable":
+            warning = "混合文档未找到口播全文节；请单列口播正文后重新统计。"
+        elif not complete:
+            warning = "口播节含剧情概括或转述；仅统计逐字部分，口播密度未提供。"
+        elif not speech_characters:
+            warning = "未提供有效口播正文，口播密度未提供。"
+        elif not duration:
+            warning = "未提供视频时长，口播密度未提供。"
 
     return {
         "source_transcript": str(path.resolve()),
-        "title_candidates": title_candidates(path, text),
+        "title_candidates": candidates,
+        "statistics_scope": scope,
+        "statistics_warning": warning,
+        "speech_characters": speech_characters,
         "characters": character_count,
         "sentences": sentence_count,
         "duration": duration,
@@ -329,13 +398,16 @@ def build_statistics(reports: list[dict], kind: str) -> dict:
         pairs = [
             (float(report["document"][metric_name]), float(report["weight"]))
             for report in reports
+            if report["document"].get(metric_name) is not None
+            and report["document"].get("statistics_scope") != "unavailable"
         ]
-        center = weighted_median(pairs)
+        center = weighted_median(pairs) if pairs else None
         numeric_metrics[metric_name] = {
+            "sample_count": len(pairs),
             "weighted_median": center,
-            "weighted_mad": weighted_mad(pairs, center),
-            "min": rounded(min(value for value, _ in pairs)) if pairs else 0.0,
-            "max": rounded(max(value for value, _ in pairs)) if pairs else 0.0,
+            "weighted_mad": weighted_mad(pairs, center) if pairs else None,
+            "min": rounded(min(value for value, _ in pairs)) if pairs else None,
+            "max": rounded(max(value for value, _ in pairs)) if pairs else None,
         }
 
     weights = [report["weight"] for report in reports]
@@ -353,8 +425,10 @@ def statistics_markdown(statistics: dict, kind: str) -> str:
         "|---|---:|---:|---:|---:|",
     ]
     for metric_name, values in statistics["numeric_metrics"].items():
+        cells = [str(values[key]) if values[key] is not None else "未提供"
+                 for key in ("weighted_median", "weighted_mad", "min", "max")]
         lines.append(
-            f"| {metric_label(metric_name)} | {values['weighted_median']} | {values['weighted_mad']} | {values['min']} | {values['max']} |"
+            f"| {metric_label(metric_name)} | {' | '.join(cells)} |"
         )
     lines.extend(
         [
@@ -364,7 +438,8 @@ def statistics_markdown(statistics: dict, kind: str) -> str:
         ]
     )
     if kind == "video":
-        lines.append("口播密度（字/分钟）仅在 report 提供 `duration` 时有意义；未提供时该行只是 0 值占位。")
+        covered = statistics["numeric_metrics"]["speech_chars_per_minute"]["sample_count"]
+        lines.append(f"口播密度有效样本：{covered}/{statistics['report_count']}；仅统计明确口播正文中的字母、数字与汉字，排除标题、元信息、时间码和备注。缺失时长、正文边界不明或含概括/转述的样本不参与该指标聚合，缺项显示「未提供」。")
     lines.extend(
         [
             "「账号运营子模块」维度（简介写法、内容形式比例、发布习惯）不能由单篇样本推导：样本非对标账号批量时写未观测。",
@@ -430,6 +505,7 @@ def load_reports(paths: list[Path]) -> list[dict]:
             source_path,
             source_path.read_text(encoding="utf-8", errors="ignore"),
             duration,
+            parse_quoted(metadata.get("kind", DEFAULT_KIND)),
         )
         reports.append(
             {
@@ -496,6 +572,11 @@ def report_markdown(
     ]
     if kind == "video":
         statistics_lines.append(f"- 视频时长：{document['duration'] or '未提供'}")
+        statistics_lines.append(f"- 口播有效字符（不含标点与空白）：{document['speech_characters']}")
+        density = document["speech_chars_per_minute"]
+        statistics_lines.append(f"- 口播密度（字/分钟）：{density if density is not None else '未提供'}")
+        if document["statistics_warning"]:
+            statistics_lines.append(f"- 统计说明：{document['statistics_warning']}")
     else:
         statistics_lines.extend(
             [
@@ -845,7 +926,7 @@ def report_command(args: argparse.Namespace) -> None:
     paths = collect_input_paths(inputs_from_args(args), {".md", ".txt"})
     if len(paths) != 1:
         raise SystemExit("report command accepts exactly one transcript; use build to aggregate reports")
-    document = document_metrics(paths[0], paths[0].read_text(encoding="utf-8", errors="ignore"), duration)
+    document = document_metrics(paths[0], paths[0].read_text(encoding="utf-8", errors="ignore"), duration, kind)
     output_dir = Path(args.output_dir or f"{PLATFORM}/dna/{args.dna_id}/reports")
     cover_image = ""
     if args.cover_image:

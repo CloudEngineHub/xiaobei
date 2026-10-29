@@ -118,7 +118,7 @@ start_display_stack() {
   echo "[xiaobei] noVNC web client: http://localhost:6080/vnc.html"
 }
 
-# ─── 5. 渲染 AWK_API_KEY 进 openclaw.json ───────────────────────────
+# ─── 5. 补齐配置默认值并渲染 AWK_API_KEY ────────────────────────────
 # 每次启动都用当前 AWK_API_KEY 环境变量覆盖 openclaw.json 里的 apiKey 字段。
 #
 # 历史问题：旧版用 raw.replace(/\$\{AWK_API_KEY\}/g, key) 替换 placeholder，
@@ -138,6 +138,25 @@ render_awk_api_key() {
     const config = JSON.parse(fs.readFileSync(p, "utf8"));
     const providers = config?.models?.providers || {};
     let updated = false;
+    // Preserve explicit settings in existing volumes when retiring the env patch.
+    const template = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+    const searchEnabled = template.tools?.web?.search?.enabled;
+    if (typeof searchEnabled === "boolean" && config.tools?.web?.search?.enabled === undefined) {
+      config.tools ??= {};
+      config.tools.web ??= {};
+      config.tools.web.search ??= {};
+      config.tools.web.search.enabled = searchEnabled;
+      updated = true;
+    }
+
+    // Keep explicit logging choices in existing volumes; fill only missing fields.
+    for (const [name, value] of Object.entries(template.logging ?? {})) {
+      config.logging ??= {};
+      if (config.logging[name] === undefined) {
+        config.logging[name] = value;
+        updated = true;
+      }
+    }
 
     for (const [name, provider] of Object.entries(providers)) {
       if (provider && typeof provider.apiKey === "string" && provider.apiKey !== key) {
@@ -148,9 +167,9 @@ render_awk_api_key() {
 
     if (updated) {
       fs.writeFileSync(p, JSON.stringify(config, null, 2) + "\n");
-      console.log("[xiaobei] AWK_API_KEY rendered into openclaw.json");
+      console.log("[xiaobei] runtime configuration synchronized");
     }
-  ' "$OPENCLAW_HOME/openclaw.json"
+  ' "$OPENCLAW_HOME/openclaw.json" "$XIAOBEI_ROOT/config-templates/openclaw.json"
 }
 
 # ─── 6. 启用 weixin channel + 首启扫码绑定 ─────────────────────────

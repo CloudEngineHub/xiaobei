@@ -1,0 +1,13 @@
+{
+  "id": "xiaobei-browser",
+  "name": "Xiaobei Browser",
+  "description": "Camoufox browser tool and shared runtime lifecycle service",
+  "categories": ["web"],
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["xiaobei_browser"] },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

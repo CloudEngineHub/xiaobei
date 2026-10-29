@@ -26,7 +26,7 @@ copy_crew_template_contents() {
 # 语义：
 #   - 对仓库里每个合法 skill（含 SKILL.md）+ _ 前缀共享库（如 _shared），rm -rf + ln -s 软链到 dest_ws/skills/<name>/
 #   - 不删除 dest_ws/skills/ 里仓库没有的 skill（保留部署实例自定义 skill）
-#   - 不碰 dest_ws 下的 AGENTS.md / TOOLS.md / Memory 等（保留用户编辑）
+#   - 不碰 dest_ws 下的 AGENTS.md / MEMORY.md 等（保留用户编辑）
 #   - node 依赖不在此装：由 apply-addons.sh per-skill npm install 写进仓内 skill 目录，
 #     Node 从脚本 realpath 向上解析命中 skill 自己的 node_modules
 # 软链而非拷贝：skill 在仓里改完即生效，运行实例无需重跑 setup。

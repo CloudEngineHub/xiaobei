@@ -3,7 +3,7 @@ name: customer-db
 description: >
   Maintain a persistent SQLite customer database within the sales-cs workspace.
   The system hook injects peer (DB primary key) and the Sender block provides
-  user_id_external (raw awada user ID). Use peer for all DB operations.
+  user_id_external (Awada routing ID). Use peer for all DB operations.
 ---
 
 # 客户数据库管理（sales-cs 专用）
@@ -20,13 +20,15 @@ description: >
 
 ## 一、两个重要标识符（必读）
 
-本系统中客户有两个不同的标识符，用途不同，不可混用：
+本系统中客户有两个用途不同的标识符；两者的值可能相同，使用时仍按各自来源取值：
 
 ### peer（来自 [CustomerDB] 块）
-数据库主键。由系统 hook 从当前会话 sessionKey 中提取并注入，是 `cs_record` 表的 `peer` 列的值。所有写库操作必须使用此值。
+数据库主键。系统 hook 优先读取宿主传入的 senderId（与 Sender.id、入站 user_id_external 同源），按 `trim → 移除 ASCII 控制字符` 生成并注入，保留字母大小写、中文、空格、全角括号及其他 Unicode 字符，不做 NFKC、去标点或拼音转换。只有缺少 senderId 时才解析已识别的私聊 sessionKey；新版会话键还包含 lane 和账号信息，不能将整个后缀当作 peer。
+
+所有查库和写库操作都使用注入的 `[CustomerDB].peer`，不要自行推导或重新清洗(hook程序已自动处理)。
 
 ### user_id_external（来自 Sender 块的 `id` 字段）
-awada 原始用户标识，由 awada-server 直接提供。每轮对话开始时，openclaw 会在消息上下文中注入 Sender 信息块：
+由 Awada 服务直接提供的路由标识。它不保证是真实微信 ID，也不保证是未经处理的原始昵称。每轮对话开始时，OpenClaw 会在消息上下文中注入 Sender 信息块：
 
 ```json
 Sender (untrusted metadata):
@@ -37,14 +39,16 @@ Sender (untrusted metadata):
 }
 ```
 
-需要与 awada 平台交互的技能（如 `exp-invite`）必须使用此值，而不是 `peer`。
+对外发送使用 Sender.id 原值，例如标准 `message` 的 `target="user:<Sender.id>"`。建立跟进记录时，将该原值另存为 `follow_up.user_id_external`；不要用 peer 反推发送目标，不要自行改大小写或替换字符。
+
+标识仅在所选 Awada 账号/lane 内解释。当前 CustomerDB 绑定单一 accountId 和 agent；不能把多个账号的同名客户合进同一数据库，也不能因切换账号、lane 或显示名就自动认定是同一人。缺少 CustomerDB 注入时先排查 hook 和账号绑定，不猜测客户键。V2 升级不自动改写旧 follow_up 中的路由标识；历史目标若与当前服务提供的标识不同，须核对当前目标后再发送，不能用 peer 或显示名反推。
 
 ---
 
 ## 二、字段含义
 
 ### peer
-当前客户数据库主键，等于 awada sessionKey 中的用户标识（经过安全过滤后的形式）。
+当前客户数据库主键，即系统注入的 `[CustomerDB].peer`；生成规则和账号范围见上节，不等于完整的会话路由键。
 
 ### business_status
 表示客户商业推进深度：
@@ -107,7 +111,7 @@ Sender (untrusted metadata):
 
 ## 四、follow_up 表（主动跟进任务）
 
-`follow_up` 表记录客户延迟购买意向，供 heartbeat 定时跟进。status 流转：`pending → sent_once → completed`。
+`follow_up` 表记录客户延迟购买意向，供已启用的 Automation 定时扫描。status 流转：`pending → sent_once → completed`。写入记录不等于系统调度已启用；调度由 main 通过 sales-cs-manager 派 IT 配置。
 
 ### 创建跟进任务
 
@@ -127,11 +131,11 @@ Sender (untrusted metadata):
   --context-summary "<客户核心兴趣点和建议跟进角度>"
 ```
 
-> heartbeat 完整执行流程见 HEARTBEAT.md
+> 完整定时扫描与发送回执流程见 proactive-send 的 SKILL.md「定时扫描到期跟进」。OpenClaw 2026.10.4 不读取 HEARTBEAT.md，不在该文件中维护新调度。
 
 ### 过期清理
 
-超过 48 小时仍为 `pending` 的任务视为客户失联，自动标记完成：
+旧的 48 小时清理工具仅供明确要求清理历史记录时使用；常规定时扫描不自动清理，不因迟到就标记完成：
 
 ```bash
 ./skills/customer-db/scripts/follow-up-expire.sh
@@ -144,6 +148,7 @@ Sender (untrusted metadata):
 ```
 
 输出为 tab 分隔的表格（含 header），字段：`id / peer / user_id_external / follow_up_at / reason / context_summary / status`。
+没有到期任务时输出 `NO_DUE_TASKS` 并正常退出；直接结束本轮扫描，不用 `bash -c`、`ls` 或拼接 `echo` 再次验证。脚本报错时按失败处理，不能当作无任务。
 
 ### 标记首次已发送（pending → sent_once）
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""阿里云百炼：业务空间 Wan3.0 视频 / Fun-Music；Agent Plan / legacy HappyHorse / Wan2.7。
+"""阿里云百炼：业务空间 Wan3.0 视频 / Fun-Music；Token Plan Wan3.0 / legacy HappyHorse / Wan2.7。
 
 直连百炼异步任务端点：
   - POST /services/aigc/video-generation/video-synthesis  → 创建任务，返回 task_id
@@ -8,7 +8,7 @@
 
 模型候选链：
   - 业务空间：wan3.0-video-prime → wan3.0-video（统一模型，按媒体输入识别任务）
-  - Agent Plan / legacy：happyhorse-1.1-{mode} → happyhorse-1.0-{mode} → wan2.7-{mode}
+  - Token Plan：wan3.0-video；legacy：happyhorse-1.1-{mode} → happyhorse-1.0-{mode} → wan2.7-{mode}
 
 端点/key 双模式（2026-09 provider 收敛，ds_resolve）：
   - 业务空间（优先）：WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY
@@ -55,7 +55,8 @@ DS_MUSIC_MODEL = "fun-music-v1"
 
 # 业务空间使用 Wan3.0 统一模型，不按 t2v/i2v/r2v 拼接模型 ID。
 DS_WS_MODEL_CHAIN = ["wan3.0-video-prime", "wan3.0-video"]
-# Agent Plan / legacy 保留原有每模式候选链。
+DS_PLAN_MODEL_CHAIN = ["wan3.0-video"]
+# legacy 默认保留原有每模式候选链；Token Plan 可显式指定旧模型。
 # generate() 在 TaskFailed / HttpError 时自动沿链 fallback；--model 显式指定时只用该模型。
 DS_MODEL_CHAIN = {
     "t2v": ["happyhorse-1.1-t2v", "happyhorse-1.0-t2v", "wan2.7-t2v"],
@@ -295,8 +296,9 @@ def ds_validate(args: argparse.Namespace, model: str, provider_mode: str) -> Non
         die("首帧/首尾帧与参考素材不可混用")
 
     if model in DS_WS_MODEL_CHAIN:
-        if provider_mode != "workspace":
-            die("Wan3.0 视频生成需要百炼业务空间：WORKSPACE_ID + MODELSTUDIO_API_KEY/DASHSCOPE_API_KEY")
+        if provider_mode not in ('workspace', 'agent-plan') or (
+                provider_mode == 'agent-plan' and model not in DS_PLAN_MODEL_CHAIN):
+            die('该端点未登记此 Wan3.0 模型；Token Plan 仅支持 wan3.0-video，prime 仅业务空间支持')
         if not args.prompt and not (has_frames or has_ref):
             die("Wan3.0 需要提示词或媒体素材")
         if args.duration != -1 and not 2 <= args.duration <= 30:
@@ -323,12 +325,13 @@ def ds_validate(args: argparse.Namespace, model: str, provider_mode: str) -> Non
     if refs["video"] or refs["audio"] or len(refs["image"]) > 1:
         die("HappyHorse/Wan2.7 参考模式仅支持一张 --ref-image")
     if not args.audio:
-        die("--no-audio 当前仅支持百炼业务空间 Wan3.0")
+        die("--no-audio 当前仅支持 Wan3.0")
 
 
 def ds_candidates(args: argparse.Namespace, mode: str, provider_mode: str) -> list[str]:
     candidates = [args.model] if args.model else (
-        list(DS_WS_MODEL_CHAIN) if provider_mode == "workspace" else list(DS_MODEL_CHAIN[mode])
+        list(DS_WS_MODEL_CHAIN) if provider_mode == "workspace" else
+        list(DS_PLAN_MODEL_CHAIN) if provider_mode == 'agent-plan' else list(DS_MODEL_CHAIN[mode])
     )
     for model in candidates:
         ds_validate(args, model, provider_mode)
@@ -395,7 +398,7 @@ def cmd_video(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Aliyun workspace Wan3.0 video / Fun-Music; Agent Plan HappyHorse video."
+        description="Aliyun workspace / Token Plan Wan3.0 video; workspace Fun-Music."
     )
     sub = parser.add_subparsers(dest="command")
 

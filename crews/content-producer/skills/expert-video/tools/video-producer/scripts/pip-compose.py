@@ -11,6 +11,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from media_integrity import verify_track_copy
+
 
 def run(cmd):
     result = subprocess.run([str(x) for x in cmd], capture_output=True, text=True, timeout=1200)
@@ -34,6 +37,11 @@ def duration(info, track):
     return value
 
 
+def verify_copy(base_path, audio_path, output):
+    return {kind: verify_track_copy(source, output, kind)
+            for kind, source in (('v', base_path), ('a', audio_path))}
+
+
 def geometry(w, h, args):
     for name in ('size', 'aspect', 'margin', 'subtitle_safe', 'radius', 'border'):
         if not math.isfinite(getattr(args, name)):
@@ -51,7 +59,7 @@ def geometry(w, h, args):
     if x < 0 or y < 0 or x+pw > w or y+ph > h-args.subtitle_safe:
         raise ValueError('小窗放不进画布或侵入底部字幕安全区')
     return {'x': x, 'y': y, 'width': pw, 'height': ph, 'radius': args.radius, 'border': args.border,
-            'subtitle_safe': args.subtitle_safe}
+            'subtitle_safe': args.subtitle_safe, 'crop_anchor': getattr(args, 'crop_anchor', 'center')}
 
 
 def main():
@@ -60,9 +68,12 @@ def main():
     parser.add_argument('--presenter', type=Path, help='省略时仅合入旁白')
     parser.add_argument('--audio', type=Path, help='唯一音轨；省略时仅保留底视频音轨')
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--audio-mode', choices=['aac', 'copy'], default='aac', help='copy: 无小窗，音视频全轨复制，不截断；逐包校验')
+    parser.add_argument('--verify-only', action='store_true', help='仅校验已有 copy 输出的音视频逐包哈希与时间戳，不写媒体')
     parser.add_argument('--corner', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], default='bottom-right')
     parser.add_argument('--size', type=float, default=.22, help='小窗宽 / 画布宽')
     parser.add_argument('--aspect', type=float, default=1, help='小窗宽高比；源视频居中裁切，不拉伸')
+    parser.add_argument('--crop-anchor', choices=['top', 'center', 'bottom'], default='center', help='纵向裁切锚点；top 保留头顶')
     parser.add_argument('--margin', type=int, default=32, help='像素')
     parser.add_argument('--subtitle-safe', type=int, default=160, help='底部禁入带，像素')
     parser.add_argument('--radius', type=int, default=24, help='像素')
@@ -83,7 +94,11 @@ def main():
         raise ValueError('输出不得覆盖输入素材')
     if output.suffix.lower() != '.mp4':
         raise ValueError('输出必须为 .mp4')
-    if output.exists() and not args.force:
+    if args.verify_only and (args.audio_mode != 'copy' or args.dry_run):
+        raise ValueError('--verify-only 需 --audio-mode copy 且不能与 --dry-run 同用')
+    if args.audio_mode == 'copy' and args.presenter:
+        raise ValueError('audio-mode copy 仅支持无小窗全轨封装')
+    if output.exists() and not args.force and not args.verify_only:
         raise ValueError('输出已存在；检查后用 --force 重做')
     base = probe(args.base)
     video = stream(base, 'video')
@@ -123,6 +138,14 @@ def main():
     plan = {'output': str(output), 'duration': seconds, 'width': w, 'height': h, 'fps': fps,
             'audio_source': str((args.audio or args.base).resolve()), 'presenter': str(args.presenter.resolve()) if args.presenter else None,
             'pip': box, 'dry_run': args.dry_run}
+    if args.audio_mode == 'copy':
+        plan['audio_mode'] = 'copy'
+        plan['audio_duration'] = audio_seconds
+        plan['verification'] = 'all video/audio packets: SHA256, PTS, DTS, duration, size; stream timebase/start/duration'
+    if args.verify_only:
+        plan['copy_verification'] = verify_copy(args.base, args.audio or args.base, output)
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return
     if args.dry_run:
         print(json.dumps(plan, ensure_ascii=False, indent=2))
         return
@@ -152,10 +175,11 @@ def main():
             draw.rounded_rectangle((b, b, pw-b-1, ph-b-1), radius=max(0, r-b), fill=(0, 0, 0, 0))
             border.save(temp / 'border.png')
             mask_index = 2 + bool(args.audio)
+            crop_y = {'top': '0', 'center': '(in_h-out_h)/2', 'bottom': 'in_h-out_h'}[args.crop_anchor]
             cmd += ['-loop', '1', '-framerate', str(fps), '-i', temp / 'mask.png',
                     '-loop', '1', '-framerate', str(fps), '-i', temp / 'border.png']
             graph = (f'[0:v]setpts=PTS-STARTPTS,setsar=1[base];'
-                     f'[1:v]setpts=PTS-STARTPTS,scale={iw}:{ih}:force_original_aspect_ratio=increase,crop={iw}:{ih},setsar=1,fps={fps},format=rgba[p];'
+                     f'[1:v]setpts=PTS-STARTPTS,scale={iw}:{ih}:force_original_aspect_ratio=increase,crop={iw}:{ih}:(in_w-out_w)/2:{crop_y},setsar=1,fps={fps},format=rgba[p];'
                      f'[p][{mask_index}:v]alphamerge[rounded];'
                      f'[base][rounded]overlay=x={box["x"]+b}:y={box["y"]+b}:eof_action=pass:repeatlast=0[inner];'
                      f'[inner][{mask_index+1}:v]overlay=x={box["x"]}:y={box["y"]}:format=auto,format=yuv420p[v]')
@@ -163,14 +187,29 @@ def main():
                     '-threads', str(args.threads), '-r', str(fps)]
         else:
             cmd += ['-map', '0:v:0', '-c:v', 'copy']
-        cmd += ['-map', f'{audio_index}:a:0', '-af', 'asetpts=PTS-STARTPTS', '-c:a', 'aac', '-b:a', '192k',
-                '-t', str(seconds), '-movflags', '+faststart', dest]
+        if args.audio_mode == 'copy':
+            cmd += ['-map', f'{audio_index}:a:0', '-c:a', 'copy', '-movflags', '+faststart', dest]
+        else:
+            cmd += ['-map', f'{audio_index}:a:0', '-af', 'asetpts=PTS-STARTPTS', '-c:a', 'aac', '-b:a', '192k',
+                    '-t', str(seconds), '-movflags', '+faststart', dest]
         run(cmd)
         result = probe(dest)
         rv = stream(result, 'video')
         ra = stream(result, 'audio')
         if not rv or not ra or (rv['width'], rv['height']) != (w, h) or abs(float(Fraction(rv['r_frame_rate']))-fps) > .01 or abs(duration(result, rv)-seconds) > .12 or abs(duration(result, ra)-seconds) > .12:
             raise ValueError('输出音视频尺寸/帧率/时长校验失败')
+        if args.audio_mode == 'copy':
+            plan['copy_verification'] = verify_copy(args.base, args.audio or args.base, dest)
+        if box:
+            previews = []
+            for index, position in enumerate((0, seconds/2, max(0, seconds-.1)), 1):
+                preview = temp/f'pip-preview-{index}.jpg'
+                run(['ffmpeg', '-v', 'error', '-nostdin', '-ss', str(position), '-i', dest,
+                     '-frames:v', '1', '-vf', f'crop={box["width"]}:{box["height"]}:{box["x"]}:{box["y"]},scale=512:-2', preview])
+                final_preview = output.with_name(f'{output.stem}.pip-preview-{index}.jpg')
+                preview.replace(final_preview)
+                previews.append(str(final_preview))
+            plan['pip_preview_frames'] = previews
         dest.replace(output)
     output.with_suffix('.pip.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(plan, ensure_ascii=False))

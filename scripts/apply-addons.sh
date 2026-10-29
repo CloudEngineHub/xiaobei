@@ -7,7 +7,7 @@
 #   2. 应用基础补丁（patches/*.patch）+ 依赖覆盖（patches/overrides.sh）
 #   3. 安装默认全局 skills（项目根目录 skills/ → ~/.openclaw/skills/）
 #   4. 注入 awada 扩展路径 + 同步 openclaw.json skills 节点
-#   5. 安装依赖：Node per-skill（node_modules 落仓内技能目录）/ Python 统一 pip install --user
+#   5. 安装依赖：Node per-skill（node_modules 落仓内技能目录）/ Python 先升级 pip，再统一 pip install --user
 #   6. 编译 dist + 重启 gateway service
 # Crew 模板安装由 setup-crew.sh 单独负责（扫顶层 crews/）。
 #
@@ -17,6 +17,8 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/download-network.sh"
+xiaobei_configure_download_network "$PROJECT_ROOT"
 CREWS_DIR="$PROJECT_ROOT/crews"
 OPENCLAW_DIR="$PROJECT_ROOT/openclaw"
 OPENCLAW_HOME="$HOME/.openclaw"
@@ -87,75 +89,11 @@ if [ -f "$PROJECT_ROOT/patches/overrides.sh" ]; then
   NEEDS_INSTALL=true
 fi
 
-# ─── 补丁应用 helper（两遍：先纯 --3way，失败回退容错 flags） ──────────
-# 纯 --3way 对 freshly-generated 补丁最稳，且能正确处理 deleted-file 条目
-# （--ignore-whitespace --whitespace=fix 会静默跳过删除）。
-# 仅当纯 --3way 失败（如上游 whitespace 漂移）才回退到容错 flags。
-apply_patch() {
-  local patch="$1"
-  echo "  → $(basename "$patch")"
-  if git apply --3way "$patch" 2>/dev/null; then
-    return 0
-  fi
-  git apply --3way --ignore-whitespace --whitespace=fix "$patch" 2>/dev/null || {
-    echo "  ❌ Failed to apply $(basename "$patch")"
-    echo "     Hint: 上游代码可能已变更，需重新生成此补丁"
-    exit 1
-  }
-}
+# Source-only patch entry also supports local upgrade validation.
+bash "$PROJECT_ROOT/patches/apply.sh"
+NEEDS_INSTALL=true
 
-# ─── 应用基础补丁（patches/*.patch，按序号顺序） ─────────────────
-PATCHES_DIR="$PROJECT_ROOT/patches"
-if ls "$PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
-  # 先数总数，循环里打 [n/N] 进度，避免长时间静默让用户以为死机
-  PATCH_TOTAL=$(ls "$PATCHES_DIR"/*.patch 2>/dev/null | wc -l | tr -d ' ')
-  echo "🩹 Applying base patches (${PATCH_TOTAL} files)..."
-  cd "$OPENCLAW_DIR"
-  PATCH_IDX=0
-  for patch in $(ls "$PATCHES_DIR"/*.patch | sort); do
-    PATCH_IDX=$((PATCH_IDX + 1))
-    printf "  [%d/%d] %s\n" "$PATCH_IDX" "$PATCH_TOTAL" "$(basename "$patch")"
-    apply_patch "$patch"
-  done
-  cd "$PROJECT_ROOT"
-  NEEDS_INSTALL=true
-fi
-
-# ─── 应用浏览器转向 per-file 补丁（patches/browser-camoufox-pivot/patches/）──
-# 原 001 monolith（35 文件）按「一个 patch 只改一个上游文件」拆成 35 个单文件
-# patch，降低上游漂移时的失效面：一个文件漂只挂一个 patch，其余照常应用。
-# 按文件名 sort 顺序应用（各 patch 改不同文件，彼此独立，顺序不影正确性）。
-PIVOT_PATCH_DIR="$PROJECT_ROOT/patches/browser-camoufox-pivot/patches"
-if ls "$PIVOT_PATCH_DIR"/*.patch 1>/dev/null 2>&1; then
-  PIVOT_TOTAL=$(ls "$PIVOT_PATCH_DIR"/*.patch 2>/dev/null | wc -l | tr -d ' ')
-  echo "🩹 Applying browser-camoufox-pivot per-file patches (${PIVOT_TOTAL} files)..."
-  cd "$OPENCLAW_DIR"
-  PIVOT_IDX=0
-  for patch in $(ls "$PIVOT_PATCH_DIR"/*.patch | sort); do
-    PIVOT_IDX=$((PIVOT_IDX + 1))
-    printf "  [%d/%d] %s\n" "$PIVOT_IDX" "$PIVOT_TOTAL" "$(basename "$patch")"
-    apply_patch "$patch"
-  done
-  cd "$PROJECT_ROOT"
-  NEEDS_INSTALL=true
-fi
-
-# ─── 拷入浏览器转向新文件（patches/browser-camoufox-pivot/files/）──
-# per-file patch 只改现有文件；新增的 adapter + 测试以整文件形式 ship 在
-# patches/ 下，这里 cp 进 openclaw（git clean 已先跑，所以目标一定是干净上游
-# 状态）。spec §12.3 线 1 后端。
-PIVOT_FILES_DIR="$PROJECT_ROOT/patches/browser-camoufox-pivot/files"
-if [ -d "$PIVOT_FILES_DIR" ]; then
-  echo "🌐 Copying browser-camoufox-pivot new files into openclaw..."
-  for f in "$PIVOT_FILES_DIR"/*.ts; do
-    [ -f "$f" ] || continue
-    cp "$f" "$OPENCLAW_DIR/extensions/browser/src/"
-    echo "  → extensions/browser/src/$(basename "$f")"
-  done
-  NEEDS_INSTALL=true
-fi
-
-# ─── 同步 skills 禁用配置（从 config-templates 到运行配置）──────
+# ─── 同步 skills / plugins 默认配置（从 config-templates 到运行配置）──────
 if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" ]; then
   node -e "
     const fs = require('fs');
@@ -187,12 +125,43 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
       }
     }
 
+    // 补齐模板中默认禁用的插件；保留用户已有的启用状态和插件配置。
+    if (template.plugins?.entries) {
+      if (!running.plugins) running.plugins = {};
+      if (!running.plugins.entries) running.plugins.entries = {};
+      for (const [name, entry] of Object.entries(template.plugins.entries)) {
+        if (entry?.enabled === false && !(name in running.plugins.entries)) {
+          running.plugins.entries[name] = clone(entry);
+          changed = true;
+        }
+      }
+    }
+
     // 同步 tools.exec 配置（避免 WSL/Linux 下 sandbox 默认导致 exec 失败）
     if (template.tools?.exec) {
       if (!running.tools) running.tools = {};
       if (!running.tools.exec) running.tools.exec = {};
       for (const [key, value] of Object.entries(template.tools.exec)) {
         running.tools.exec[key] = value;
+        changed = true;
+      }
+    }
+
+    // 补齐原生搜索开关，替代旧环境变量补丁；保留用户显式设置。
+    const searchEnabled = template.tools?.web?.search?.enabled;
+    if (typeof searchEnabled === 'boolean' && running.tools?.web?.search?.enabled === undefined) {
+      running.tools ??= {};
+      running.tools.web ??= {};
+      running.tools.web.search ??= {};
+      running.tools.web.search.enabled = searchEnabled;
+      changed = true;
+    }
+
+    // 补齐运行日志默认值；保留用户已有的级别、路径和轮转大小。
+    for (const [key, value] of Object.entries(template.logging ?? {})) {
+      running.logging ??= {};
+      if (running.logging[key] === undefined) {
+        running.logging[key] = clone(value);
         changed = true;
       }
     }
@@ -257,7 +226,7 @@ if [ -f "$CONFIG_PATH" ] && [ -f "$PROJECT_ROOT/config-templates/openclaw.json" 
       fs.writeFileSync('$CONFIG_PATH', JSON.stringify(running, null, 2) + '\n');
     }
   "
-  echo "📝 Skills configuration synchronized"
+  echo "📝 Skills and plugin defaults synchronized"
 fi
 
 # ─── 注入 awada 扩展路径（绝对路径，避免 CWD 依赖）──────────────
@@ -286,8 +255,8 @@ if [ -d "$AWADA_EXT" ] && [ -f "$AWADA_EXT/openclaw.plugin.json" ]; then
   fi
 fi
 
-# ─── 安装 awada 插件依赖（ws + zod）─────────────────────────────
-# awada 走 relay 网关 HTTP/WS 传输，运行时依赖 ws + zod（见 awada/package.json）。
+# ─── 安装 awada 插件依赖（silk-wasm + typebox + ws + zod）─────────────────────────────
+# awada 走 relay 网关 HTTP/WS 传输，运行时依赖 silk-wasm + typebox + ws + zod（见 awada/package.json）。
 # awada 自己的 node_modules 解析这些依赖，不走 ~/.openclaw/node_modules，
 # 故必须装在 awada/ 局部。内容哈希守卫避免重复 install。
 AWADA_PKG_HASH_FILE="$OPENCLAW_HOME/.awada-pkg-hash"
@@ -295,7 +264,7 @@ if [ -d "$AWADA_EXT" ] && [ -f "$AWADA_EXT/package.json" ]; then
   awada_hash="$(_md5 < "$AWADA_EXT/package.json")"
   awada_stored="$(cat "$AWADA_PKG_HASH_FILE" 2>/dev/null || echo '')"
   if [ "$awada_hash" != "$awada_stored" ] || [ ! -d "$AWADA_EXT/node_modules" ]; then
-    echo "📦 Installing awada plugin dependencies (ws + zod)..."
+    echo "📦 Installing awada plugin dependencies (silk-wasm + typebox + ws + zod)..."
     # 裸机/本地走 npmmirror 国内镜像；镜像构建时 ENV NPM_REGISTRY 写死 npmjs（海外构建机不跨境）
     npm_reg="${NPM_REGISTRY:-https://registry.npmmirror.com}"
     (cd "$AWADA_EXT" && npm install --omit=dev --no-audit --no-fund --loglevel=warn --registry="$npm_reg") \
@@ -353,9 +322,9 @@ node "$PROJECT_ROOT/scripts/install-skill-deps.mjs" \
   --root "$PROJECT_ROOT" --state-dir "$OPENCLAW_HOME"
 
 # ─── 安装全仓统一 Python 依赖（pip --user）──────────────────────
-# 扫描 skills/、addons/、crews/ 下所有 requirements.txt，合并去重。
-# 内容哈希守卫：仅当依赖集发生变化时才执行 pip install。
-# 优先使用 pip install --user；若不可用则回退 --break-system-packages。
+# 扫描 skills/、crews/ 和仓根的 requirements.txt，合并去重。
+# 每次先升级 pip；技能依赖仍受内容哈希守卫，仅在依赖集变化时重装。
+# 使用 --user，按 pip 的实际支持情况加入 --break-system-packages。
 PIP_HASH_FILE="$OPENCLAW_HOME/.skill-pip-hash"
 
 merged_pip_deps="$(node -e "
@@ -398,7 +367,7 @@ merged_pip_deps="$(node -e "
 current_pip_hash="$(printf '%s' "$merged_pip_deps" | _md5)"
 stored_pip_hash="$(cat "$PIP_HASH_FILE" 2>/dev/null || echo '')"
 
-if [ -n "$merged_pip_deps" ] && { [ "$current_pip_hash" != "$stored_pip_hash" ] || [ ! -f "$PIP_HASH_FILE" ]; }; then
+if [ -n "$merged_pip_deps" ]; then
   # 查找可用的 pip 命令：pip → pip3 → python3 -m pip
   PIP_CMD=""
   if command -v pip &>/dev/null; then
@@ -429,30 +398,37 @@ if [ -n "$merged_pip_deps" ] && { [ "$current_pip_hash" != "$stored_pip_hash" ] 
   if [ -z "$PIP_CMD" ]; then
     echo "  ❌ pip not available. Install it with: sudo apt install python3-pip" >&2
   else
-    echo "🐍 Installing skill Python dependencies ($PIP_CMD --user)..."
-    # 写入合并后的 requirements 文件
-    pip_req_tmp="$OPENCLAW_HOME/.skill-requirements.txt"
-    echo "$merged_pip_deps" > "$pip_req_tmp"
+    pip_base_flags=(--user --quiet --no-warn-script-location --disable-pip-version-check
+      -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com)
+    pip_install_flags=("${pip_base_flags[@]}")
+    # Ubuntu 22.04 的旧 pip 不认识该参数；新 pip 需要它处理 PEP 668。
+    if $PIP_CMD install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+      pip_install_flags+=(--break-system-packages)
+    fi
+    echo "🐍 Upgrading pip ($PIP_CMD --user)..."
+    if ! $PIP_CMD install "${pip_install_flags[@]}" --upgrade pip; then
+      echo "  ⚠️  pip 升级失败，将按当前 pip 支持的参数尝试安装技能依赖" >&2
+    fi
 
-    pip_install_flags="--user --quiet --no-warn-script-location -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"
-    if ! $PIP_CMD install $pip_install_flags -r "$pip_req_tmp" 2>/dev/null; then
-      echo "  ⚠️  pip --user failed, retrying with --break-system-packages..."
-      pip_install_flags="--break-system-packages --user --quiet --no-warn-script-location -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com"
-      if ! $PIP_CMD install $pip_install_flags -r "$pip_req_tmp"; then
-        echo "  ❌ pip install failed" >&2
-      else
+    if [ "$current_pip_hash" != "$stored_pip_hash" ] || [ ! -f "$PIP_HASH_FILE" ]; then
+      echo "🐍 Installing skill Python dependencies ($PIP_CMD --user)..."
+      pip_req_tmp="$OPENCLAW_HOME/.skill-requirements.txt"
+      echo "$merged_pip_deps" > "$pip_req_tmp"
+      # 升级后重新检测参数支持，后续安装仍使用同一个 pip 命令。
+      pip_install_flags=("${pip_base_flags[@]}")
+      if $PIP_CMD install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_flags+=(--break-system-packages)
+      fi
+      if $PIP_CMD install "${pip_install_flags[@]}" -r "$pip_req_tmp"; then
         echo "$current_pip_hash" > "$PIP_HASH_FILE"
         echo "✅ Python dependencies installed (hash: ${current_pip_hash:0:8})"
+      else
+        echo "  ❌ pip install failed" >&2
       fi
+      rm -f "$pip_req_tmp"
     else
-      echo "$current_pip_hash" > "$PIP_HASH_FILE"
-      echo "✅ Python dependencies installed (hash: ${current_pip_hash:0:8})"
+      echo "✅ Python dependencies up to date (hash: ${current_pip_hash:0:8})"
     fi
-    rm -f "$pip_req_tmp"
-  fi
-else
-  if [ -n "$merged_pip_deps" ]; then
-    echo "✅ Python dependencies up to date (hash: ${current_pip_hash:0:8})"
   fi
 fi
 
@@ -460,29 +436,8 @@ fi
 if [ "$NEEDS_INSTALL" = "true" ]; then
   echo "📦 Syncing dependencies..."
   cd "$OPENCLAW_DIR"
-  # pnpm 在算包 hash digest 时（TypedArrayPrototypeJoin → crypto::Hash::OneShotDigest）对大包
-  # 一次性 join 整个文件当 TypedArray digest，单 isolate OOM。曾试过 fetch 预拉绕开 digest，
-  # 但 pnpm fetch 无脑下所有 optionalDependencies + 平台包（@github/copilot 104MB /
-  # @openai/codex 91MB / @zed-industries/codex-acp 65MB），这些 wiseflow 根本不用，fetch 自己就炸。
-  # 真根治走 patches 008/009/010/013 把 copilot/codex/acpx/codex-supervisor 四个 extension 的
-  # dependencies 段置空 + patches 011/012 删 pnpm-workspace.yaml 的 patchedDependencies + mra-exclude 段——
-  # pnpm 解析依赖树时这四个 extension 还是 workspace package 但依赖空，transitive 大包一个都不拉，
-  # 根本不触发 digest 段。
-  # 不能加 --no-optional：跟 pnpm-lock.yaml 的 optionalDependencies 平台包声明冲突炸
-  # ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY（@lydell/node-pty-darwin-arm64 那条）。平台包自己
-  # 按 arch 选一个下，体积小不触发 OOM，留着不动。
-  # 必须先删 pnpm-lock.yaml：lockfile 里冻结着 patches 改前四个 extension 的完整 dependencies 段，
-  # pnpm 跑时会按 lockfile 下 copilot/codex/zed 大包到 store（即使 link 段被 patches 截了），仍触发 OOM。
-  # 删了让 pnpm 重新解析依赖树，按当前（已被 patches 改空的）dependencies 段生成新 lockfile。
-  # --strict-peer-dependencies=false 容忍 peer 漂移。阿里云镜像 + timeout 10min + 5 重试 + 并发 8 + NODE_OPTIONS 抬 heap 8GB（双保险）
-  if [ -f "pnpm-lock.yaml" ]; then
-    echo "  → removing stale pnpm-lock.yaml (forces re-resolve, skips frozen copilot/codex/zed entries)"
-    rm -f pnpm-lock.yaml
-  fi
-  NODE_OPTIONS="--max-old-space-size=8192" \
-    pnpm install --no-frozen-lockfile --strict-peer-dependencies=false \
-      --registry=https://registry.npmmirror.com \
-      --fetch-retries=5 --fetch-timeout=600000 --network-concurrency=8
+  # Preserve the upstream dependency graph and lockfile.
+  NODE_OPTIONS="--max-old-space-size=8192" pnpm install --frozen-lockfile
   cd "$PROJECT_ROOT"
 fi
 
@@ -494,14 +449,14 @@ printf '%s\n' "$GLOBAL_SHARED_SKILLS_RAW" \
 GLOBAL_SHARED_COUNT="$(wc -l < "$GLOBAL_SHARED_SKILLS_FILE" | tr -d ' ')"
 echo "🧾 Global shared skills catalog updated ($GLOBAL_SHARED_COUNT)"
 
-# ─── 重新同步 agents.list[].skills（纳入最新全局 skills）──────────
+# ─── 重新同步 agents.entries.<id>.skills（纳入最新全局 skills）──────────
 if [ "$SKIP_CREW" = "true" ]; then
   echo "⏭️  Skipping setup-crew.sh (--skip-crew)"
 elif [ -f "$CONFIG_PATH" ] && [ -x "$PROJECT_ROOT/scripts/setup-crew.sh" ]; then
   if [ "$FORCE" = "true" ]; then
-    CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh" --force
+    XIAOBEI_DEFER_EXEC_APPROVALS=1 CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh" --force
   else
-    CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh"
+    XIAOBEI_DEFER_EXEC_APPROVALS=1 CALLED_FROM_APPLY_ADDONS=true "$PROJECT_ROOT/scripts/setup-crew.sh"
   fi
 fi
 
@@ -516,15 +471,28 @@ elif [ "$NEEDS_INSTALL" = "true" ]; then
   echo "✅ Build complete"
 fi
 
-# ─── camoufox-cli 浏览器二进制（反指纹 Firefox，browser-guide 主推） ──────
-# camoufox-cli install 自带幂等：已装版本 === 当前版本时打印 "already up to date" 并返回
-# （camoufox-cli/dist/install.js:118）。首次下载 ~557MB；仅当 camoufox-cli npm 包升级
-# 导致版本漂移时才重下。用户电脑已有则无害跳过。
-if command -v camoufox-cli >/dev/null 2>&1; then
-  echo "🌐 Ensuring camoufox browser binary (idempotent)..."
-  camoufox-cli install || echo "  ⚠️  camoufox-cli install failed (可后续手动 camoufox-cli install)"
-else
-  echo "  ⚠️  camoufox-cli not on PATH; skip browser binary. 全局装: npm i -g camoufox-cli"
+# ─── Build the product browser; installation/cutover belongs to the installer ───
+npm ci --ignore-scripts --prefix "$PROJECT_ROOT/browser"
+npm run build --prefix "$PROJECT_ROOT/browser"
+
+# The custom plugin owns the tool and cross-command browser lifecycle.
+node "$PROJECT_ROOT/scripts/configure-browser-plugin.mjs" --root "$PROJECT_ROOT" --config "$CONFIG_PATH" --write
+
+# 纯构建/打包环境没有运行配置，不初始化用户状态。
+if [ -f "$CONFIG_PATH" ]; then
+  # Migrate with the newly built host, validate, then stamp meta only after success.
+  node "$PROJECT_ROOT/scripts/migrate-openclaw-config.mjs" --config "$CONFIG_PATH" --write
+
+  # Explicit offline schema/state repair. The upstream update guard blocks runtime/service repair.
+  OPENCLAW_UPDATE_IN_PROGRESS=1 OPENCLAW_CONFIG_PATH="$CONFIG_PATH" \
+    node "$OPENCLAW_DIR/dist/index.js" doctor --fix --non-interactive --no-workspace-suggestions
+
+  # 只让完成构建和状态迁移的新引擎更新宿主审批；不再生成 legacy JSON。
+  if [ "$SKIP_CREW" != "true" ]; then
+    source "$PROJECT_ROOT/scripts/lib/agent-skills.sh"
+    source "$PROJECT_ROOT/scripts/lib/exec-tiers.sh"
+    apply_exec_tiers "$CONFIG_PATH" "$PROJECT_ROOT/crews" "$PROJECT_ROOT"
+  fi
 fi
 
 # ─── 重启 gateway service（如果正在运行） ─────────────────────────
@@ -532,16 +500,11 @@ if [ "$NO_RESTART" = "true" ]; then
   echo "⏭️  Skipping gateway restart (--no-restart)"
 elif [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   SERVICE_NAME="openclaw-gateway"
-  # 同步 systemd unit Description 的版本号到 openclaw.version
-  # （升级后 systemctl status 标签不再停留装服务那天的旧版本号）
+  # 2026.10.x 已退役安装时版本戳；不能继续给 Description 写版本号。
   UNIT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${SERVICE_NAME}.service"
-  if [ -f "$UNIT_FILE" ] && [ -f "$PROJECT_ROOT/openclaw.version" ]; then
-    OC_VER="$(grep -E '^OPENCLAW_VERSION=' "$PROJECT_ROOT/openclaw.version" | cut -d= -f2)"
-    if [ -n "$OC_VER" ] && grep -q 'Description=OpenClaw Gateway (v' "$UNIT_FILE"; then
-      sed -i -E "s/(Description=OpenClaw Gateway \(v)[0-9.-]+(\))/\1${OC_VER}\2/" "$UNIT_FILE" 2>/dev/null && \
-        systemctl --user daemon-reload 2>/dev/null && \
-        echo "🏷️  Synced ${SERVICE_NAME}.service Description -> v${OC_VER}"
-    fi
+  if [ -f "$UNIT_FILE" ]; then
+    node "$PROJECT_ROOT/scripts/refresh-gateway-service-metadata.mjs" "$UNIT_FILE"
+    systemctl --user daemon-reload 2>/dev/null || true
   fi
   if systemctl --user is-active "$SERVICE_NAME.service" >/dev/null 2>&1; then
     echo "🔄 Restarting $SERVICE_NAME.service..."

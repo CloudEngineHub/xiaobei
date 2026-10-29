@@ -1,96 +1,66 @@
 # Sales-CS 启用（Enablement）
 
-把对外 crew `sales-cs` 从零启用到可用：检查 channel -> 用户选定 channel -> 派 IT engineer 配置 -> 完善 workspace 文档 -> 软链业务知识 -> 报平安。
+main 负责用户选择、业务知识和 workspace 内容；IT engineer 负责 channel、账号、crew 注册与绑定。沿用用户已经明确的 channel/账号和运维授权，不重复征询。
 
-**依赖**：`sales-cs-enablement`（channel 检查 + 业务知识软链）、IT engineer（`awada-channel-setup` / `work-channel-binding`、`openclaw.json` 合入、Gateway 重启）。
-
-**分工**：main agent（本 workflow 执行者）自己跑检查脚本、问用户问题、写 workspace 文档；机械的 channel / `openclaw.json` 配置一律委派 IT engineer。
-
----
-
-## 前置素材
-
-- awada 租赁咨询二维码：workspace 根的 `ofb_contact.png`（openclaw-for-business 掌柜企业微信）。路径固定，需要时直接发给用户。
-
-## 执行流程
-
-### Step 1 · 检查 awada-channel 是否已配置
+## 1. 检查已有账号和路由
 
 ```bash
 sales-cs-enablement check-channel
 ```
 
-退出码：`0` -> 已配置 awada channel，跳到 Step 3；`1` / `2` -> 未配置，进 Step 2。
+读取脱敏 JSON，区分账号配置、`agentRegistered`、`boundToRequestedAgent`：
 
-### Step 2 · 向用户说明 channel 选择（仅未配置时）
+- exit 0 只表示至少一个账号满足静态条件。已绑定 sales-cs 的账号优先复核；其他 crew 的账号不能抢占。多账号按用户指定选择，不默认取第一条。
+- exit 1 查看具体错误，交 IT 修复，不能直接认定未配置并覆盖。
+- exit 2 先确认实际 config/stateDir 路径，不能在错误位置新建配置。
+- 用户已选其他 channel 时按对应路径处理，Awada 检查失败不自动改变用户选择。
 
-向用户说明：
+## 2. 补齐必要选择
 
-> sales-cs 是对外 crew，需要一个**可公开访问**的 channel--客户不用先加入你的组织就能找到它。飞书 / 企业微信都不太合适，因为它们要求客户先加入你的飞书或企微组织。
->
-> 三个选项：
-> 1. **租赁 awada server 线路**：可以联系 openclaw-for-business 掌柜咨询（二维码见下）
-> 2. **使用openclaw支持的其他channel**：比如QQ、telegram等
-> 3. **退而用飞书 / 企业微信**：接受"客户需先加入组织"的限制
+awada channel的开通必须 awada key, 这个要问用户获得，用户没有或者不清楚的话，让他联系wiseflow掌柜。联系二维码见`ofb_contact.png`, 素材存在时，用标准 `message(action="send", media="<main workspace>/ofb_contact.png")` 发送。
 
-发 `ofb_contact.png` 给用户（选项 1 用）。等用户明确选择后：
+Awada 须明确 OpenClaw accountId、服务端账号标识（lane）、Awada key 和接待方式。key 只交 IT 的受支持配置输入，不写公开资料或日志；不收其他服务管理凭据。公开私聊使用 open + allowFrom ["*"]；pairing/allowlist 是限制接待范围的选择，不把它们报告为公开开放。
 
-- 选 1 或 2 -> 把用户给出的线路/channel 信息带给 IT engineer，进 Step 3
-- 选 3 -> 告知用户需先有飞书或企微 channel，再带 IT engineer 走对应 channel 绑定，进 Step 3
+## 3. 派 IT 完成配置并回报
 
-### Step 3 · 派 IT engineer 完成启用与基础配置
+按用户所选 channel 派工：
 
-spawn IT engineer，交代任务：
+- **Awada**：使用 `awada-channel-setup`，先脱敏预览，再应用指定账号/agent。该脚本已统一处理局部插件路径、账号、crew sample 注册、精确 account binding 和默认启用的 CustomerDB hook；不要再手工合入一次 sample，不改已有 tools/heartbeat/subagents。
+- **飞书/企微**：使用 `work-channel-binding` 的配置流程；Awada 专属 CustomerDB hook 不因此对其他 channel 生效。
+- **其他 channel**：按该 channel 的实际插件和注册流程处理，不称 Awada 为内置插件，不擅自换成 Awada。
 
-> 启用 sales-cs 对外 crew。请按以下顺序执行：
-> 1. 配置 awada channel（走 `awada-channel-setup` 技能；用户期待配置的channel，需要启用openclaw内置plugin：<...>）
->    - 若用户在 Step 2 选 3，则改为配飞书/企微 channel（走 `work-channel-binding`）
-> 2. 把 `crews/sales-cs/openclaw_setting_sample.json` 并入 `~/.openclaw/openclaw.json`：
->    - 加入 `agents.list`（sales-cs）
->    - 绑定对应 channel（awada 优先）
->    - heartbeat / tools / subagents 段直接用 sample 里的固定配置，不要改
-> 3. 重启 Gateway（先告知用户并征得同意）
-> 4. 验证 channel 状态 + customerDB hook 生效
+Awada 派工时一并说明：
 
-等 IT engineer 报平安后进 Step 4。
+- 保留其他账号、crew 和插件路径；binding 写 `match.channel` + `match.accountId`，agent 顶层不写 channel。
+- 启用 Awada 时默认一并配置 CustomerDB hook，限定本账号、sales-cs 和实际 workspace，并授予 hooks.allowConversationAccess=true；仅用户明确要求不启用或已有明确停用设置时跳过。已有其他归属或权限拒绝时报告冲突，不能改绑、混库或擅自省略 hook。核验 hook 注册与客户上下文注入，不仅核验 channel 连接。
+- 需要通过链接交付本地附件时，配置可访问的 mediaPublicBaseUrl，并只转发现有 Gateway 的 token 媒体路由。公网素材 URL 可直接使用；附件的执行支持由 server 返回。
+- 有本地 slash 需求时保留用户现有 commands.json，使用静态标准回复或固定 exec handler；新增/删除名字后按正常流程重载。
+- 在用户已授权的维护窗口使配置生效；若只要求源码准备，不改运行态、不重启。返回配置摘要、绑定、运行状态和未完成验收项，勿返回 key。
 
-### Step 4 · 完善 sales-cs workspace 文档
+IT 完成后，对选定账号执行：
 
-按照你对用户的理解，更重要的是结合 `business_knowledge.md`，完善 sales-cs workspace（`~/.openclaw/workspace-sales-cs/`）下 `AGENTS.md` / `IDENTITY.md` / `SOUL.md` 中所有 `<!-- 由main agent启用时填入并负责后续持续优化更新 -->` 的内容。拿捏不准的问用户。
+```bash
+sales-cs-enablement check-channel --account-id <账号> --probe
+```
 
-### Step 5 · 软链 business_knowledge.md + business_knowledge/
+这只核对 V2 health、Redis 和 capabilities 鉴权，不替代 WS 连接和真实收发验证。获准实号测试后再核对普通消息、标准媒体和 CustomerDB 来访；provider 结果 `succeeded` 才表示执行成功，queued/submitted 继续查原回执，unknown/部分失败不盲目重发。
 
-把 main agent workspace 下的 `business_knowledge.md`（业务知识正文，单文件）和 `business_knowledge/`（支撑材料文件夹）一并软链到 sales-cs workspace：
+## 4. 完善客服内容与素材
+
+结合 business_knowledge/business_knowledge.md，填写 sales-cs workspace 的 AGENTS.md、IDENTITY.md、SOUL.md 中由 main 维护的占位内容，并遵循各文件职责。把演示素材实际本地绝对路径或有效 URL 写入 `skills/demo-send/config.json.media`；未准备好时明确记录待补，不写裸云端文件名或虚构路径。
+
+本机路径、环境变量名称、工具别名等备忘写在 `AGENTS.md` 的 `## Tools` 节，不创建 `TOOLS.md`；操作步骤仍查对应 `SKILL.md`，密钥值不写入工作区文档。保留已有工作区的自定义正文；旧版本遗留的 `TOOLS.md` / `HEARTBEAT.md` 由用户升级后手动删除，启用流程不负责迁移或清理。子 agent 只自动加载 AGENTS.md，派工所需的客服边界和操作约束须在该文件或本次派工中说明。
+
+普通回复直接输出 assistant 文本，媒体统一使用标准 `message`；不为 Awada 另写发送标签、sendAttachment 或独立音频转写规则。主动跟进遵守其技能中的执行回执核对流程。
+
+用户要求定时主动跟进时，继续读取 [Follow-up Scheduling](follow-up-scheduling.md)，由 main 明确业务范围并派 IT 配置独立 Automation。HEARTBEAT.md 已退役，sample 的 heartbeat 频率也不能代替到期扫描任务；不能仅创建 follow_up 记录就承诺会定时发送。用户未要求时不默认启用。
+
+## 5. 链接业务知识并交付
 
 ```bash
 sales-cs-enablement link
 ```
 
-首次启用若 `business_knowledge.md` 不存在，脚本会从仓库模板复制一份到 main workspace；若 `business_knowledge/` 不存在，脚本会创建空目录，后续由 main agent 填充。工具行为细节见 `sales-cs-enablement` 工具说明。
+正文和支撑材料统一在 main workspace 的 business_knowledge/ 目录维护，正文路径为 business_knowledge/business_knowledge.md；sales-cs 只通过目录软链读取。工具会备份并迁移旧正文、同步工作区文档中的路径引用、移除指向旧正文的文件软链。新旧正文冲突或目标已有真实目录时拒绝覆盖，确认来源后再处理。
 
-### Step 6 · 报平安
-
-向用户汇报：
-
-- sales-cs 已启用，绑了哪个 channel
-- workspace 路径（`~/.openclaw/workspace-sales-cs/`）
-- 对外称呼
-- business_knowledge.md + business_knowledge/ 软链已建立
-- 提醒用户：sales-cs 的后续调整（记忆、话术、IDENTITY 等）由 main agent 负责，走 Review workflow 发起
-
----
-
-## 错误处理
-
-| 情况 | 处理 |
-|------|------|
-| `link` 报"目标已存在且不是软链" | 脚本拒绝覆盖真实文件防误删。与用户确认该文件来源后人工处理，再重跑 |
-| IT engineer 配置 channel 失败 | 反馈用户具体卡点（key 缺失 / channel 未开通等），不跳过 Step 3 直接报平安 |
-| 用户迟迟不选 channel | 停在 Step 2 等待，不替用户默认选择 |
-
-## Pitfalls
-
-- **IT engineer 改了 heartbeat 段**：sample 里的 heartbeat 是固定配置（1h / isolatedSession / activeHours 08:00-24:00），不要让 IT engineer 自行调整。
-- **business_knowledge 软链指向错**：必须指向 main agent workspace 的 `business_knowledge.md` + `business_knowledge/`，不能让 sales-cs 自维护。
-- **用户在 Step 2 选飞书/企微但没现成 channel**：需先走 `work-channel-binding` 配 channel，再绑 sales-cs。
-- **业务知识空着就报平安**：`business_knowledge.md` 若只有模板占位，向用户说明待补充，启用后尽快与用户一起充实。
+向用户报告所选 channel/account、workspace、对外称呼、业务知识与演示素材就绪情况，并区分配置、服务连接和实号验收结果。知识仍是模板、素材缺失或测试未获准时如实列出；后续话术和资料优化由 main 按 Review workflow 负责。

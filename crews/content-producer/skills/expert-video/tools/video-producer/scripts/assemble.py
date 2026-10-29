@@ -12,6 +12,13 @@ Usage:
   python3 scripts/assemble.py <project_dir> --manifest render/segments.json \
       --verify-fps 25 --expect-durations slots/shotdur.json
 
+  # 无声混合多段硬拼（含 collage-broll）：只 remux/stream copy，逐段和总帧数精确校验
+  python3 scripts/assemble.py <project_dir> --manifest render/segments.json \
+      --video-only --transition hard --expect-durations slots/shotdur.json \
+      --verify-fps 25 --expect-frames 1325 --output video-v5-silent.mp4
+  # 输入须同尺寸、同恒定帧率；计划 dur*fps 必须与实测帧数完全一致。
+  # collage-broll 仍要求 audio/collage-audio-plan.json 的 sound_policy=silent。
+
 入：project_dir/render/ 各 shot-NN/gen*.mp4（段已就绪，assemble 不再切段）
    或 --manifest 显式有序段清单（JSON 列表，条目为路径字符串或 {"name","path"}，
    路径相对 project_dir 或绝对；name 缺省取文件 stem，stem 为 clip 时取父目录名）
@@ -26,13 +33,17 @@ plan.json 兼容三种形态：[{"id","dur"}...] / {"segments":[...]} / {"beats"
 
 import argparse
 import json
+import math
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+from fractions import Fraction
 from pathlib import Path
 
 import _brief
+from media_integrity import file_sha256, probe_json
 
 VALID_TRANSITIONS = {"hard", "fade", "dissolve", "xfade"}
 XFADE_TYPES = {"fade": "fade", "dissolve": "dissolve", "xfade": "fade"}
@@ -332,6 +343,135 @@ def verify_output_fps(video_out: Path, expect_fps: int) -> None:
     print(f"[guard] 帧率断言通过：avg_frame_rate={afr}")
 
 
+def probe_video_only(path: Path) -> tuple[dict, int, float]:
+    """Count decoded video frames; never use container/audio duration for silent concat."""
+    p = run([
+        "ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+        "-show_streams", "-show_data_hash", "sha256", "-of", "json", str(path),
+    ])
+    try:
+        stream = json.loads(p.stdout)["streams"][0]
+        frames = int(stream["nb_read_frames"])
+        duration = float(Fraction(stream["time_base"]) * int(stream["duration_ts"]))
+        if frames <= 0 or duration <= 0:
+            raise ValueError("empty video")
+        fps = Fraction(stream["avg_frame_rate"])
+        if not 1 <= fps <= 120 or Fraction(stream["r_frame_rate"]) != fps:
+            raise ValueError("requires constant 1–120 fps")
+        if abs(duration - float(frames / fps)) > 0.00001:
+            raise ValueError(f"video duration {duration} != {frames} frames / {fps}")
+    except (KeyError, IndexError, ValueError, ZeroDivisionError, TypeError) as exc:
+        die(f"--video-only 视频流校验失败: {path}: {exc}")
+    return stream, frames, duration
+
+
+def concat_video_only(segments: list[tuple[str, Path]], out: Path,
+                      plan: dict[str, float] | None, tolerance: float,
+                      expect_frames: int | None, verify_fps: int | None,
+                      reencode: bool = False) -> None:
+    """Strict CFR hard concat; opt-in serial encoding for mixed reorder delay."""
+    if any(src.resolve() == out.resolve() or out.exists() and src.samefile(out) for _, src in segments):
+        die("--video-only 输出不能覆盖输入")
+    inspected = []
+    signature = None
+    for name, src in segments:
+        stream, frames, duration = probe_video_only(src)
+        keys = ("width", "height", "avg_frame_rate", "sample_aspect_ratio")
+        if not reencode:
+            keys += ("codec_name", "pix_fmt", "has_b_frames", "profile", "level", "extradata_hash",
+                     "color_space", "color_range", "color_primaries", "color_transfer", "field_order")
+        current = tuple(stream.get(k) for k in keys)
+        if signature is not None and current != signature:
+            die(f"--video-only 不兼容的视频流参数: {name}: {dict(zip(keys, current))}; "
+                "先明确统一编码，或使用显式 --video-only-reencode；不自动有损回退")
+        signature = current
+        fps = Fraction(stream['avg_frame_rate'])
+        if verify_fps is not None and fps != verify_fps:
+            die(f"--video-only {name} fps={fps} != --verify-fps {verify_fps}")
+        if plan is not None:
+            if name not in plan:
+                die(f"--video-only 时长计划缺少段: {name}")
+            planned_frames = plan[name] * float(fps)
+            if abs(duration - plan[name]) > tolerance or abs(planned_frames - frames) > 0.00001:
+                die(f"--video-only 时长/帧数不符 {name}: {duration:.6f}s/{frames}帧 vs {plan[name]}s/{planned_frames}帧")
+        print(f"[guard] {name}: {stream['width']}x{stream['height']}@{fps} video={duration:.6f}s frames={frames}")
+        inspected.append((src, frames, duration))
+    total_frames = sum(frames for _, frames, _ in inspected)
+    if expect_frames is not None and total_frames != expect_frames:
+        die(f"--video-only 总帧数 {total_frames} != --expect-frames {expect_frames}")
+    fingerprint = {'version': 2, 'sources': [{'name': name, 'path': str(src.resolve()),
+                                            'sha256': file_sha256(src)} for name, src in segments],
+                   'plan': plan, 'tolerance': tolerance, 'expect_frames': expect_frames,
+                   'verify_fps': verify_fps, 'reencode': reencode}
+    checkpoint = out.with_suffix(out.suffix+'.assemble.json')
+    timescale = str(fps.numerator * 512)
+
+    def verify(path: Path) -> None:
+        result_stream, frames, duration = probe_video_only(path)
+        if frames != total_frames or has_audio(path):
+            die(f"--video-only 成片校验失败: frames={frames}, expected={total_frames}, 必须无音轨")
+        if verify_fps is not None:
+            verify_output_fps(path, verify_fps)
+        if (result_stream['width'], result_stream['height'], Fraction(result_stream['avg_frame_rate'])) != (stream['width'], stream['height'], fps):
+            die('--video-only 成片尺寸或帧率改变')
+        timing = probe_json(path, '-select_streams', 'v:0', '-show_frames', '-show_entries',
+                            'frame=best_effort_timestamp_time')
+        stamps = timing.get('frames', [])
+        if len(stamps) != total_frames or any(not math.isfinite(float(item.get('best_effort_timestamp_time', 'nan')))
+                                              or abs(float(item.get('best_effort_timestamp_time', 'nan'))-float(i/fps)) > .00002 for i,item in enumerate(stamps)):
+            die('--video-only 成片 PTS 未从零逐帧连续，禁止按总帧数判通过')
+        packets = probe_json(path, '-select_streams', 'v:0', '-show_packets', '-show_entries', 'packet=dts').get('packets', [])
+        if not packets or any('dts' not in p for p in packets) or any(int(b['dts']) <= int(a['dts']) for a,b in zip(packets, packets[1:])):
+            die('--video-only 成片 DTS 缺失或非严格递增')
+        print(f"[guard] 无声成片: {frames}帧 / {duration:.6f}s")
+
+    if out.is_file():
+        try:
+            saved = json.loads(checkpoint.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            die(f'已有成片缺少有效输入指纹，不能复用；保留旧版并改 --output: {out}')
+        if saved.get('inputs') != fingerprint or saved.get('output_sha256') != file_sha256(out):
+            die(f'已有成片与当前输入/参数不一致，不能复用；保留旧版并改 --output: {out}')
+        verify(out)
+        print(f"[checkpoint] --video-only 成片已存在: {out}")
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="assemble-video-only-", dir=out.parent) as temp:
+        work = Path(temp)
+        lines = ["ffconcat version 1.0"]
+        for index, (src, source_frames, duration) in enumerate(inspected):
+            # Strip audio BEFORE the demuxer: mixed source audio stream layouts cannot
+            # affect stream matching/timestamps. Common MP4 timebase is remux-only.
+            dst = work / f"{index:04d}.mp4"
+            # Explicit fallback only: serialize jobs, cap decode/encode/filter threads,
+            # retain every frame and its geometry; remove reorder-delay differences.
+            codec = (["-vf", "setpts=PTS-STARTPTS", "-fps_mode", "passthrough",
+                      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                      "-threads", "1", "-bf", "0", "-pix_fmt", "yuv420p"]
+                     if reencode else ["-c:v", "copy"])
+            run(["ffmpeg", "-y", "-v", "error", "-threads", "1",
+                 "-filter_threads", "1", "-i", str(src), "-map", "0:v:0",
+                 *codec, "-an", "-sn", "-dn",
+                 "-video_track_timescale", timescale, str(dst)])
+            _, normalized_frames, normalized_duration = probe_video_only(dst)
+            if normalized_frames != source_frames or abs(normalized_duration - duration) > 0.00001:
+                die(f"--video-only 中间段帧数/时长改变: {src}")
+            lines.extend([f"file '{dst.name}'", f"duration {duration:.9f}"])
+        listing = work / "segments.ffconcat"
+        listing.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = work / "result.mp4"
+        run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+             "-i", str(listing), "-map", "0:v:0", "-c:v", "copy",
+             "-an", "-sn", "-dn", "-video_track_timescale", timescale, str(result)])
+        verify(result)
+        if any(file_sha256(src) != record['sha256'] for (_,src),record in zip(segments, fingerprint['sources'])):
+            die('拼接时源素材发生变化，重新执行；不交付结果')
+        result.replace(out)
+    checkpoint.write_text(json.dumps({'inputs': fingerprint, 'output_sha256': file_sha256(out)},
+                                     ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+    print(f"[done] --video-only {len(segments)} 段: {out}")
+
+
 def concat_hard(segments: list[tuple[str, Path]], out: Path) -> None:
     """hard 转场：concat demuxer 直拼。concat_list.txt 里 file 行用绝对路径，避免 cwd 解析歧义。"""
     list_file = out.parent / "concat_list.txt"
@@ -411,7 +551,21 @@ def main() -> None:
                         help="逐段时长计划 JSON（[{'id','dur'}] / {'segments'} / {'beats'} 三形态兼容）")
     parser.add_argument("--duration-tolerance", type=float, default=0.12,
                         help="--expect-durations 校验容差（秒，默认 0.12）")
+    parser.add_argument("--video-only", action="store_true",
+                        help="显式无声硬拼：同尺寸恒定帧率，默认视频stream copy；禁止隐式规格/音轨转换")
+    parser.add_argument("--expect-frames", type=int, default=None,
+                        help="--video-only 输入总帧数及成片帧数精确断言（如 1325）")
+    parser.add_argument("--video-only-reencode", action="store_true",
+                        help="显式低载串行统一编码，保留尺寸/帧数；用于混合B帧延迟，需 --video-only")
     args = parser.parse_args()
+    if args.video_only_reencode and not args.video_only:
+        die("--video-only-reencode 须配合 --video-only")
+    if args.expect_frames is not None and (not args.video_only or args.expect_frames <= 0):
+        die("--expect-frames 须配合 --video-only 且为正整数")
+    if args.video_only and (args.transition != "hard" or args.width is not None
+                            or args.fps is not None or args.audio_duration is not None
+                            or args.preview_duration is not None):
+        die("--video-only 只支持 hard；禁止规格/音轨转换及预览")
 
     project = Path(args.project_dir).resolve()
     workflow = _brief.parse_workflow(_brief.read_brief(project))
@@ -453,6 +607,37 @@ def main() -> None:
     if not segments:
         die(f"{source_dir}/ 下无任何段（render/ 走 shot-NN/gen*.mp4；其他目录走 *.mp4；"
             f"非常规命名产物走 --manifest 显式清单），先跑 render-shot 或 timeline-compose")
+
+    # Known avatar segments retain their provenance gate even in the generic assembler.
+    for _, segment in segments:
+        for suffix in ('.avatar.json', '.liveportrait.json'):
+            avatar_job = segment.with_suffix(suffix)
+            if avatar_job.is_file():
+                sys.path.insert(0, str(Path(__file__).resolve().parents[7] / 'skills/_shared'))
+                from avatar_job import load_avatar_job
+                try:
+                    load_avatar_job(avatar_job)
+                except (ValueError, OSError, KeyError) as exc:
+                    die(f'数字人片段未通过合成闸门：{segment.name}: {exc}')
+
+    # Opt-in path retains Stage 11 sound-policy gate, but supports mixed multi-segment
+    # silent delivery without visiting unify_audio / normalization / single-file gate.
+    if args.video_only:
+        if workflow == "collage-broll":
+            if not args.manifest:
+                die("collage-broll --video-only 必须显式 --manifest")
+            audio_plan = project / "audio" / "collage-audio-plan.json"
+            if not audio_plan.is_file():
+                die("collage-broll Stage 11 前置缺失: audio/collage-audio-plan.json")
+            if json.loads(audio_plan.read_text(encoding="utf-8")).get("sound_policy") != "silent":
+                die("collage-broll --video-only 要求 Stage 11 sound_policy=silent")
+        plan = None
+        if args.expect_durations:
+            plan_path = Path(args.expect_durations)
+            plan = load_duration_plan(plan_path if plan_path.is_absolute() else project / plan_path)
+        concat_video_only(segments, project / args.output, plan, args.duration_tolerance,
+                          args.expect_frames, args.verify_fps, args.video_only_reencode)
+        return
 
     # 逐段时长守卫（fail-fast：拼接前对源段校验，重跑命中 checkpoint 时同样生效）
     if args.expect_durations:

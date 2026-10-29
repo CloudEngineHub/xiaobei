@@ -53,7 +53,7 @@ metadata:
 
 ## 边界
 
-- 商业模式打磨（融资前的电梯版梳理 / 5 问结构化）：由 agent 结合 `business_knowledge.md` 直接与用户完成，多路径权衡用 `council`；打磨结论落 `MEMORY.md` 后才进入投资人接触。
+- 商业模式打磨（融资前的电梯版梳理 / 5 问结构化）：由 agent 结合 `business_knowledge/business_knowledge.md` 直接与用户完成，多路径权衡用 `council`；打磨结论落 `MEMORY.md` 后才进入投资人接触。
 - 项目申报 / 补贴 / 创业大赛 → 包内 Project Application Workflow（数据落 `ir-record` 的 applications 表）。
 - 软著 / 商标 / 专利等知识产权申报：不在职责范围，不承接。
 - 公开信息研究 → `expert-osbi`；找客户、评论需求筛选、客户互动和联络 → `expert-bd`。

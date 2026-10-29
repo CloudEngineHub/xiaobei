@@ -5,7 +5,7 @@ description: 使用 Camoufox 持久化创作者会话登录并发布抖音视频
 
 # 抖音发布
 
-发布使用 Camoufox 持久化 session `douyin`，登录态保存在 profile。本人作品取数由 douyin-engagement 通过 HTTP 完成，仅在进程内临时读取同一 profile 的 cookie/UA。不要调用 login-manager，不手工导出或导入 cookie，不使用 hunter 的 API 会话代替发布会话。
+发布使用 Camoufox 持久化 session `douyin`，登录态保存在 profile。本人作品取数由 douyin-engagement 通过 HTTP 完成，仅在进程内临时读取同一 profile 的 cookie/UA。不手工导出或导入 cookie，不使用 hunter 的 API 会话代替发布会话。
 
 ## 登录与检查
 
@@ -15,6 +15,8 @@ douyin-publish check
 ```
 
 `login` 打开有头创作者中心，请用户完成扫码或页面验证；返回 `awaiting_user_login` 不代表已经登录。用户完成后用 `check` 验证创作者接口，检查会关闭浏览器进程并保留 profile。未登录返回 exit 2；验证码、风控和接口异常停止处理，不无限重试。
+
+`check` 返回 `PUBLISH_PENDING` 是已有视频提交未结案，不是登录失效或取数故障；先用 `douyin-publish video resume` 只读核查原任务，不重新扫码、重传或清状态。核查确认原作品后工具自动结案，后续发布才可继续。
 
 ## 视频与图文
 
@@ -35,6 +37,8 @@ douyin-publish note run --images /绝对路径/1.png /绝对路径/2.png --title
 
 封面与 AIGC 声明必须在唯一可见的目标弹窗内保存；支持 dialog/modal/Semi Modal，不能只看 `role="dialog"` 或页面文字就判断已完成。已有声明弹窗时用 `video fill` / `cover` 续编，脚本先完成声明再操作正文/封面；同类弹窗不唯一或设置未保存时停止并保留草稿。浏览器异常的安全定位字段见 `references/video.md`。
 
+“设置横封面获更多流量”是引导，不是第二个编辑器；`video cover` 只关闭已识别引导，再处理当前编辑器并核验双封面。“预览封面/标题”会暂时移除播放器，不能据此重传；工具会在当前已知草稿切回“预览视频”，最终仍须通过视频就绪、时长、正文、双封面和 AIGC 核验。
+
 封面预览检测须确认本次选择的文件，并重新查找当前弹窗；相同图片可能复用缓存而没有新 load 事件，弹窗也可能重建。`COVER_UPLOAD_TIMEOUT` 不代表上传一定失败，先用 `video status` 核查并续编当前草稿，不重传整段视频或点击发布。
 
 封面入口按「竖封面」/「横封面」名称定位，不按排列顺序选。上传前须确认当前编辑器标题或内部激活选项卡与目标类型一致；`COVER_EDITOR_MISMATCH` 时停止并保留草稿。上传框只从当前编辑器内选择，首次上传/替换输入框不代表两个封面方向；不能通过放宽图片比例检测掩盖传错槽位。
@@ -44,5 +48,7 @@ douyin-publish note run --images /绝对路径/1.png /绝对路径/2.png --title
 未结案的视频任务会阻止普通登录、取数和图文操作关闭共用浏览器。仅验证页面已丢失或登录失效时，用 `douyin-publish login --resume-video` 恢复原账号，随后 `douyin-publish video resume` 核查原提交；该入口保留提交记录，当前短信弹窗仍在时拒绝关闭。
 
 只在返回确认的完整作品 ID 与公开链接后入库。exit 3、超时或取链失败时，到作品管理页核实；视频用 `douyin-publish video resume` 或 `douyin-publish video get-link` 核查保存的本次任务，不用全局最新旧作品代替；图文用 `douyin-publish note get-link --title "完整标题"`。未提交的失败草稿用 `douyin-publish video edit-draft` 续编。禁止自动重发。已停用 API 发布及其 job-file/status/verify 子命令，不用它们核查浏览器任务。
+
+`publish_attempted:true` / `submission_attempted:true` 后结果未确认，须报告“已尝试提交，正在核实”，不能说“没发布”或再次点发布。用户确认已发布时据此更新最终结论；取链仍用原任务只读核查，缺 ID 时不编造入库。委派任务将 `reconciliation`、回执位置和下一步及时回传父任务；main 统筹多平台发布时逐项回报并继续其他已授权平台，不只等成功链接。
 
 发布和取数共用排他锁，串行执行。单账号每 24h 视频和图文合计 ≤5 条；风控后至少 30 分钟不重试。

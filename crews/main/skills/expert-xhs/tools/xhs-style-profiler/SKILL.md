@@ -1,9 +1,6 @@
 ---
 name: xhs-style-profiler
 description: 提取小红书作品 DNA：单篇笔记（图文 / 视频）生成 report，按 dna-id 聚合选题、标题与封面、内容创意、匹配的用户问题（搜索意图）、业务植入套路、互动引导与 CTA 套路、视频形态与制作指向、正文表达与图组视觉、口播文案子模块与账号运营子模块，推导 main agent 的图文 / Brief 生产 template。
-metadata:
-  openclaw:
-    emoji: 🧬
 ---
 
 # xhs-style-profiler
@@ -90,6 +87,13 @@ xhs-style-profiler report \
 - `--weight`：样本权重，默认 1。
 - `--focus`：限制该样本只影响指定维度 ID，可重复传入。
 
+视频统计输入约定：
+
+- 纯文字稿可只含一级标题和逐字口播。混合文件须把口播放在 `## 口播全文` 下（可带括号说明；也接受 `转录全文` / `逐字稿`），到下一个标题结束；来源、作者、备注、结构标注和视觉分析放在该节之外。
+- 时间戳列表可用 `- 0.04–5.32s：原话`；统计时移除列表前缀与时间码，不计标题、标点和空白，只计口播中的字母、数字与汉字。句长、人称等视频统计也只看该口播正文。
+- `[剧情概括]` / `[转述]` 不作逐字口播统计；正文边界不明、缺时长或含概括/转述时，口播密度标为「未提供」，聚合时排除该项，不能用 0 代替缺项。
+- 口播密度使用视频总时长，表示全片平均字符密度，不能代替实际发声段语速或人工听音判断。
+
 Agent 生成 scaffold 后必须：
 
 1. 补齐「样本观测」：作品类型、样本来源、账号与简介、发布时间、数据线索、素材来源与授权。
@@ -130,6 +134,11 @@ xhs-style-profiler update \
 ```
 
 脚本合并历史 report 与新 report、重算统计并保留 Agent 已写内容；kind 从 DNA 文档 frontmatter 继承（也可用 `--kind` 显式指定，冲突时报错）。Agent 仍需重新审视聚合结论并同步修订 template。
+
+- `update` 只替换机器统计、元数据和报告引用，并在用户输入区追加 pending 偏好；维度正文、改名标题、附加手工段落原样保留，template 不自动改写，也不会重新生成待填 scaffold。新增偏好仍须 Agent 回读证据、转译并修订 template。
+- 保留 DNA/template frontmatter 的 `dna-id`、`type`、`kind`；保留 DNA 的 `report_count`、`total_weight`、`weighting`、`generated_at`、唯一 `<!-- dna-reports ... -->` 引用区块，以及 `## 报告与权重`、原生统计表和其末尾“统计只用于辅助聚合……”边界、`## 用户输入转译区`。人工规则写在统计区外。维度标题可带稳定 ID 改名，template 正文可用自由 Markdown。
+- 缺少机器区块、统计区混入无法识别的人工段落、历史引用数量不足或 kind 冲突时拒绝写入。先在副本恢复上述结构并核对原 report；不要用 build 绕过，build 会拒绝覆盖已有 DNA/template。
+- 写入前自动保存两份原文件到 DNA 旁 `.profile-backups/<时间-随机后缀>/`，输出 `update.diff` 和含删除行的 `audit.json` 路径。核对 diff 中统计/引用替换与新偏好，再完成定性修订。写入准备或原子替换失败时原文件不变。
 
 `--input` 可省略，用于只融合用户输入或另一个 DNA 的局部规则；此时必须传 `--user-input`。
 

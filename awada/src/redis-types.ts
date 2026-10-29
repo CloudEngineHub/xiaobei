@@ -1,40 +1,29 @@
-/**
- * Minimal subset of the awada Redis protocol types needed by this extension.
- * Mirrors awada-server/src/infrastructure/redis/types.ts without importing from it.
- */
-
-export type InboundEventType = "MESSAGE_NEW" | "PAYMENT_SUCCESS" | "BUTTON_CLICK";
+/** Awada v2 public envelopes. Redis is owned by Relay, never accessed by this plugin. */
+export type InboundEventType = "MESSAGE_NEW" | "PROVIDER_EVENT" | "OPERATION_RESULT";
 export type OutboundEventType = "REPLY_MESSAGE" | "COMMAND_EXECUTE";
-
 export interface TextObject {
   type: "text";
   text: string;
 }
-
-export interface ImageObject {
-  type: "image";
-  file_name: string;
+export interface MediaObject {
+  type: "image" | "file" | "audio" | "video";
+  file_name?: string;
   file_url?: string;
   file_id?: string;
+  base64?: string;
+  duration?: number;
+  provider_data?: Record<string, unknown>;
 }
-
-export interface AudioObject {
-  type: "audio";
-  file_path?: string;
-  file_url?: string;
-  file_id?: string;
+export type ImageObject = MediaObject & { type: "image" };
+export type AudioObject = MediaObject & { type: "audio" };
+export type FileObject = MediaObject & { type: "file" };
+export interface ProviderContent {
+  type: "provider";
+  provider_type: string;
+  data: unknown;
 }
-
-export interface FileObject {
-  type: "file";
-  file_name: string;
-  file_url?: string;
-  file_id?: string;
-}
-
-export type ContentObject = TextObject | ImageObject | AudioObject | FileObject;
+export type ContentObject = TextObject | MediaObject | ProviderContent;
 export type Payload = ContentObject[];
-
 export interface InboundMeta {
   platform: string;
   tenant_id: string;
@@ -42,27 +31,32 @@ export interface InboundMeta {
   lane: string;
   actor_type: string;
   user_id_external: string;
-  session_id: string;
-  session_seq: number;
-  source_message_id: string;
-  raw_ref?: string;
+  session_id?: string;
+  session_seq?: number;
+  source_message_id?: string;
   conversation_id?: string;
+  provider_account_id?: string;
+  provider_event?: string;
+  provider_raw?: Record<string, unknown>;
+  operation_id?: string;
+  sender_name?: string;
+  channel_name?: string;
+  identity_kind?: string;
+  at_me?: boolean;
+  room_type?: string | number;
+  [key: string]: unknown;
 }
-
 export interface InboundEvent {
   schema_version: number;
   event_id: string;
   type: InboundEventType;
   timestamp: number;
-  correlation_id: string;
-  trace_id: string;
+  correlation_id?: string;
+  trace_id?: string;
   meta: InboundMeta;
   payload: Payload;
 }
-
 export interface OutboundTarget {
-  /** Platform routing key. Present on replies (from inbound meta); omitted on proactive sends
-   *  — the relay derives it from the lane binding. */
   platform?: string;
   tenant_id: string;
   lane: string;
@@ -72,33 +66,12 @@ export interface OutboundTarget {
   conversation_id?: string;
   action_ask?: [number, string[]];
 }
-
-export interface OutboundEvent {
-  schema_version: number;
-  event_id: string;
-  reply_to_event_id: string;
-  type: OutboundEventType;
-  timestamp: number;
-  correlation_id: string;
-  trace_id: string;
-  target: OutboundTarget;
-  payload: Payload;
-}
-
-/**
- * Meta sent on POST /outbound (and WS reply frames) — see docs/AWADA-CLIENT-TRANSPORT.md §3.
- * On replies, `platform` / `channel_id` / `user_id_external` are all present (passthrough from
- * inbound `event.meta`). On proactive sends, `platform` is omitted — the relay derives it from
- * the lane binding. `channel_id` / `user_id_external` are always required.
- */
 export interface OutboundMeta {
   platform?: string;
   channel_id: string;
   user_id_external: string;
   tenant_id?: string;
   session_id?: string;
-  /** event_id of the inbound event that triggered this reply (reply correlation / tracing). */
   source_event_id?: string;
-  /** Platform-native message id to reply to (e.g. 企微 reply_to). */
-  reply_to_message_id?: string;
+  action_ask?: [number, string[]];
 }

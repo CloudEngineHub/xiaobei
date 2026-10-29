@@ -6,49 +6,200 @@
       "label": "Awada",
       "description": "Awada channel via relay gateway (HTTP/WS transport)",
       "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
-        "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean" },
-          "relayBaseUrl": { "type": "string" },
-          "awadaKey": { "type": "string" },
-          "lane": { "type": "string" },
-          "dmPolicy": { "type": "string", "enum": ["open", "pairing", "allowlist"] },
-          "allowFrom": { "type": "array", "items": { "type": "string" } },
-          "perMsgMaxLen": { "type": "integer", "minimum": 1 },
-          "agents": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "relayBaseUrl": {
+            "type": "string"
+          },
+          "awadaKey": {
+            "type": "string"
+          },
+          "lane": {
+            "type": "string"
+          },
+          "dmPolicy": {
+            "type": "string",
+            "enum": ["open", "pairing", "allowlist", "disabled"]
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupPolicy": {
+            "type": "string",
+            "enum": ["open", "allowlist", "disabled"]
+          },
+          "groupAllowFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupSenderAllowFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requireMention": {
+            "type": "boolean"
+          },
+          "historyLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "perMsgMaxLen": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mediaMaxMb": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 20
+          },
+          "mediaPublicBaseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "defaultAccount": {
+            "type": "string"
+          },
+          "accounts": {
             "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
             "additionalProperties": {
               "type": "object",
-              "additionalProperties": false,
               "properties": {
-                "enabled": { "type": "boolean" }
-              }
+                "enabled": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "relayBaseUrl": {
+                  "type": "string"
+                },
+                "awadaKey": {
+                  "type": "string"
+                },
+                "lane": {
+                  "type": "string"
+                },
+                "dmPolicy": {
+                  "type": "string",
+                  "enum": ["open", "pairing", "allowlist", "disabled"]
+                },
+                "allowFrom": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "groupPolicy": {
+                  "type": "string",
+                  "enum": ["open", "allowlist", "disabled"]
+                },
+                "groupAllowFrom": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "groupSenderAllowFrom": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "requireMention": {
+                  "type": "boolean"
+                },
+                "historyLimit": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "perMsgMaxLen": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "mediaMaxMb": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "mediaPublicBaseUrl": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
             }
           }
-        }
+        },
+        "additionalProperties": false
       }
     }
   },
   "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
-    "additionalProperties": false,
     "properties": {
-      "enabled": { "type": "boolean" },
-      "relayBaseUrl": { "type": "string" },
-      "awadaKey": { "type": "string" },
-      "lane": { "type": "string" },
-      "dmPolicy": { "type": "string", "enum": ["open", "pairing", "allowlist"] },
-      "allowFrom": { "type": "array", "items": { "type": "string" } },
-      "perMsgMaxLen": { "type": "integer", "minimum": 1 },
+      "commandsFile": {
+        "type": "string"
+      },
       "customerdb": {
         "type": "object",
-        "additionalProperties": false,
         "properties": {
-          "agentId": { "type": "string" },
-          "workspaceDir": { "type": "string" }
-        }
+          "enabled": {
+            "type": "boolean"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "workspaceDir": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
+    },
+    "additionalProperties": false
+  },
+  "categories": ["channels"],
+  "contracts": {
+    "tools": ["awada_api"]
+  },
+  "toolMetadata": {
+    "awada_api": {
+      "configSignals": [
+        {
+          "rootPath": "channels.awada",
+          "required": ["awadaKey"]
+        },
+        {
+          "rootPath": "channels.awada",
+          "overlayMapPath": "accounts",
+          "required": ["awadaKey"]
+        }
+      ]
     }
   }
 }

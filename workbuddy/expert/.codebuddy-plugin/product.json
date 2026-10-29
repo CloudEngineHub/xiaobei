@@ -1,6 +1,0 @@
-{
-  "name": "xiaobei",
-  "homepage": "https://openclaw-for-business.com/",
-  "relay_base_url": "https://relay.openclaw-for-business.com",
-  "relay_credential_env": "OFB_KEY"
-}

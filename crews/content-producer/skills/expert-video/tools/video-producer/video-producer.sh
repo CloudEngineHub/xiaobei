@@ -3,7 +3,7 @@
 # 让 agent 用 `video-producer <子命令> [参数...]` 走 PATH，零路径拼接。
 # 子命令即 scripts/ 下同名 .py，wrapper 转发到对应脚本，不改语义。
 # 子命令入出参见本工具 SKILL.md；制作流程（阶段链 / 两闸门 / 各类型 workflow）
-# 见 expert-video 包内 SKILL.md 与 workflows/。产物文件存在性即 checkpoint（不引状态机）。
+# 见 expert-video 包内 SKILL.md 与 workflows/。复用产物前核对当前输入与工具的校验记录。
 set -euo pipefail
 SELF="${BASH_SOURCE[0]}"
 # Resolve symlink (wrapper is ln -sfn'd into ~/.openclaw/bin) so SCRIPT_DIR points at the real skill dir.
@@ -49,6 +49,8 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
   clip-trim            Stage 12 精确切素材段（入点/出点/倍速/归一化/调色/多窗/定帧缓推）
   deck-compose        三模式 deck-talk 合成（实拍 / 数字人 / 仅音频）
   pip-compose          Stage 12 幻灯底视频 + 可选口播小窗 + 唯一音轨（四角/圆角/描边/字幕安全区/干跑守卫）
+  visual-plan-check    按项目视觉承诺检查文字时长/动态图数量，登记绑定当前产物的预览审查
+  run-stage           执行一条 wrapper 阶段命令并保存 checkpoint、失败交接与恢复入口
   audio-mix            Stage 12 多轨混音（每轨独立延时、音量与淡入淡出）
   timeline-compose     Stage 12 按时间轴 JSON 合成片段（内部调 clip-trim + audio-mix）
   scene-compose        Stage 12 单 Scene 分段合成（片段+旁白+对白 → 一个 Scene 片段）
@@ -56,11 +58,12 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
   add-silent-audio     Stage 12 给无音频的视频片段补静音音轨（concat 前置）
   make-outro           Stage 12 片尾制作（HyperFrames 排版/文字淡入 + 静音轨）
   motion-audit         Stage 13b motion_led 抽查（补公共 video-review）
-  normalize            Stage 13c 响度归一化到 -14 LUFS（**必跑**）
+  edit-audit           Stage 13 节奏/源素材窗口复用检查，登记绑定当前成片的真实审片
+  normalize            Stage 13c 新混音归一化；--locked-audio 只测量并验证原混音保留
   make-cover           Stage 14 封面（awk-img-gen，必含封面主文案）
 
 后期处理（可选，全部干湿分离：输出落 <stem>_<处理名>.mp4，不覆盖输入）:
-  burn-srt             libass 把 SRT 硬烧进画面（甲方要字幕时）
+  burn-srt             libass 烧 SRT/ASS 字幕，ASS 保留原生样式/绘图（甲方要字幕时）
   duck                 sidechaincompress 让旁白触发 BGM 自动压低（要专业混音且可分轨时）
   denoise              afftdn / arnndn 去环境噪声（仅甲方素材音质差时）
   interp               minterpolate 补帧到 30/60fps（仅低 fps 源材）
@@ -68,7 +71,7 @@ video-producer — 视频制作原子能力（wrapper，expert-video 包内工�
 闸门不是子命令——GATE A（Stage 5 后文本闸门）与 GATE B（Stage 9 后素材闸门）由 agent
 按 expert-video SKILL.md 执行：呈交摘要 → 结束本轮回复 → 等甲方（main agent 或用户）逐闸门批准。
 
-产物文件存在性即 checkpoint：每个子命令先查产物文件是否存在，存在则 load 不重生成。
+复用前核对输入/参数与产物校验记录。assemble --video-only 用输入/输出哈希判断，文件存在不代表当前版本已完成。
 HELP
     ;;
   *)

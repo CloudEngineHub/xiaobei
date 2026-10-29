@@ -10,6 +10,8 @@ metadata:
 
 Use this skill when the user/main agent wants to configure a work channel or when Main Agent recommends one.
 
+Workspace conventions: use the `## Tools` section of `AGENTS.md` for local paths, environment variable names and tool aliases; do not create `TOOLS.md`. Preserve existing workspace content. Users manually delete legacy `TOOLS.md` / `HEARTBEAT.md` after upgrading; channel setup does not migrate or clean them up. A subagent automatically receives only `AGENTS.md`; read `OFB_ENV.md` or other task-specific files explicitly when needed and authorized.
+
 Supported channels:
 
 - Feishu
@@ -20,7 +22,7 @@ Supported channels:
 Before collecting account credentials, confirm the selected channel plugin is installed and enabled.
 
 - Feishu: follow `./skills/work-channel-binding/docs/feishu.md` and the current OpenClaw Feishu setup path.
-- WeCom: Main Agent installs the plugin by running:
+- WeCom: installs the plugin by running:
 
 ```bash
 WISEFLOW_CONFIRM_WECOM_INSTALL=confirmed ./skills/work-channel-binding/scripts/install-wecom-channel.sh
@@ -58,6 +60,16 @@ After installing a channel plugin, tell the user that Gateway may need a restart
    - `WISEFLOW_CONFIRM_GATEWAY_RESTART=confirmed ./skills/work-channel-binding/scripts/restart-gateway-confirmed.sh work-channel-binding`
 12. On next session, complete followup:
    - `python3 ./skills/work-channel-binding/scripts/complete-pending-followup.py`
+
+## Gateway Logs for Verification
+
+Resolve the installed CLI from `AGENTS.md` → `Tools` and `OFB_ENV.md`; `openclaw` below is shorthand, not a guarantee that the command is on the terminal PATH. The default macOS/Linux tarball entry is `~/xiaobei/bin/openclaw`; Windows PowerShell uses `& "$env:USERPROFILE\xiaobei\bin\openclaw.cmd"`. A source installation can use `node "<PROJECT_ROOT>/openclaw/dist/index.js"`; do not run `pnpm openclaw` against a production Gateway.
+
+- `openclaw logs --limit 20` reads the last 20 lines without following. Use `openclaw logs --limit 200 --plain` for a bounded diagnostic window and correlate channel/account, timestamps and errors with the binding being checked.
+- `openclaw logs --follow` is for explicitly requested interactive watching. Do not leave an automated check following indefinitely.
+- Read the actual `logging.file`; the product default is `<stateDir>/logs/gateway.log`, with warning/error records by default. Missing successful-connection or delivery info lines is not evidence of failure.
+- When the Gateway is unavailable, read its configured file directly. For Linux service startup failures, use `journalctl --user -u openclaw-gateway.service -n 100 --no-pager`; do not use journalctl on macOS, Windows or inside a container.
+- Reading logs does not authorize a config change, restart or test message. Redact credentials, customer identifiers and message content before reporting findings.
 
 ## First Work Channel Binding Reminder
 

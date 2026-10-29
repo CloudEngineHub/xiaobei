@@ -279,8 +279,12 @@ def main() -> None:
                         help="排布计划 JSON（相对 project_dir 或绝对路径），结构见脚本头注释")
     parser.add_argument("--srt", default=None, help="SRT 输出路径（相对 project_dir 或绝对；不传则不产 SRT）")
     parser.add_argument("--mix", default=None, help="混音输出路径（相对 project_dir 或绝对；不传则不混音）")
+    parser.add_argument("--dry-voice", default=None,
+                        help="按同一排布输出不含 BGM 的完整旁白时间轴，供 edit-audit 检查停顿")
     parser.add_argument("--force", action="store_true", help="忽略 checkpoint 强制重排/重产")
     args = parser.parse_args()
+    if args.dry_voice and Path(args.dry_voice).suffix.lower() != '.wav':
+        die('--dry-voice 输出必须为 WAV，保留准确时间轴')
 
     project = Path(args.project_dir).resolve()
     if not project.is_dir():
@@ -337,6 +341,24 @@ def main() -> None:
             print(f"[done] SRT 已落：{srt_out}")
             print(f"  - burn-srt 引用样式：--force-style '{result['force_style']}'")
 
+    if args.dry_voice:
+        dry_out = resolve(project, args.dry_voice).resolve()
+        protected = [Path(e['file']).resolve() for e in entries]
+        protected += [resolve(project, args.plan), abs_path]
+        if plan.get('bgm'):
+            protected.append(resolve(project, plan['bgm']['file']))
+        if args.mix:
+            protected.append(resolve(project, args.mix))
+        if args.srt:
+            protected.append(resolve(project, args.srt))
+        if dry_out in [p.resolve() for p in protected] or dry_out.exists() and any(p.exists() and dry_out.samefile(p) for p in protected):
+            die('--dry-voice 不得覆盖输入、混音、排布或字幕')
+        if dry_out.is_file() and not args.force:
+            die('--dry-voice 输出已存在；保留旧版另存，或核对后 --force 重做')
+        dry_out.parent.mkdir(parents=True, exist_ok=True)
+        mix_audio(project, entries, None, total, dry_out)
+        print(f'[done] 同时间轴旁白干声已落：{dry_out}')
+
     if args.mix:
         mix_out = resolve(project, args.mix)
         if mix_out.is_file() and not args.force:
@@ -347,7 +369,7 @@ def main() -> None:
             print(f"[done] 混音已落：{mix_out}")
 
     print(f"[next] 拼接走 assemble --manifest（守卫已验帧率/时长后再合成）；"
-          f"响度归一成片后仍必须走 normalize，不在本工具内联 loudnorm")
+          f"成片后按新混音/锁定原混音政策走 normalize；用 edit-audit 审干声停顿与素材复用")
 
 
 if __name__ == "__main__":

@@ -9,20 +9,21 @@
 #   - update.sh  = git clone 源码用户的升级路线（git fetch + reset → checkout openclaw@pin → apply-addons.sh → pnpm build → daemon reload；需系统 Node/git/pnpm，pnpm 必须 11+）
 #
 # 执行流程：
+#   0. Ubuntu/Debian 检查并补齐 curl/tar/zstd/CA/Python/pip（仅安装缺项，普通用户按需 sudo）
 #   1. 检测 OS + arch → 选 tarball asset（linux-x64 / mac-arm64 / mac-x64 / win-x64）
 #   2. bootstrap gum UI（TTY 才有，非 TTY 静默跳过）
 #   3. 解析最新 release tag（GitHub API，回退 gh CLI）
 #   4. 下载 xiaobei-{ver}-{plat}.{tar.zst|tar.gz} → 临时文件（linux 用 zst，mac/win 用 gzip，bsdtar 原生支持）
 #   5. 解压到 WISEFLOW_ROOT（默认 ~/xiaobei，程序目录）：openclaw/ + tools/node + tools/pnpm + bin/openclaw + crews/ + skills/ + scripts/ + camoufox-cli/ + awada/
 #   6. pnpm install --prod --frozen-lockfile（用 ship 的 portable node + pnpm，在 openclaw/ 下；只拉依赖不编译，无 OOM，native 自动按平台）
-#   7. pip install --user（skills 的 python deps，扫 requirements.txt）
+#   7. 先升级 pip，再 pip install --user（skills 的 python deps，扫 requirements.txt）
 #   8. 放置 config-templates/openclaw.json → ~/.openclaw/openclaw.json（运行数据目录 OPENCLAW_HOME）+ 预填微信 channel binding
 #   9. setup-crew.sh（裸跑，无 --force；--force 只用户手动修复用；crew 模板来自 WISEFLOW_ROOT/crews，workspace 落 OPENCLAW_HOME）
 #   10. camoufox-cli：npm install -g 本地 fork（ship 的 portable node）+ camoufox-cli install 下 Firefox
 #   11. openclaw-weixin 插件：openclaw plugins install @tencent-weixin/openclaw-weixin@<pin> --pin（npmmirror）
 #       幂等按**版本**判定：已装版本 == pin 才跳过，不等则 --force 升级到 pin
 #   12. 交互问 AWK_API_KEY → 写 gateway env（Linux daemon.env / Darwin service-env/ai.openclaw.gateway.env，均落 OPENCLAW_HOME）
-#       → openclaw daemon install + restart（唯一人工输入点；不走 onboard，小白友好）
+#       → openclaw daemon install + restart（不走 onboard，小白友好）
 #   13. 打印访问指引
 #
 # 目录职责：WISEFLOW_ROOT（~/xiaobei）= 程序（引擎+模板+脚本+工具+wrapper）；OPENCLAW_HOME（~/.openclaw）= 运行数据（config+env+workspace+logs）。
@@ -271,7 +272,7 @@ print_installer_banner() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# OS / downloader
+# OS / system dependencies / downloader
 # ═══════════════════════════════════════════════════════════════════
 detect_os_or_die() {
     OS="unknown"
@@ -290,6 +291,89 @@ detect_os_or_die() {
     ui_success "Detected: $OS"
 }
 
+# Keep this bootstrap self-contained: the tarball and portable Node are not available yet.
+missing_linux_system_packages() {
+    local tool
+    for tool in curl tar zstd python3; do
+        command -v "$tool" &>/dev/null || printf '%s\n' "$tool"
+    done
+    if ! command -v dpkg-query &>/dev/null || \
+        [[ "$(dpkg-query -W -f='${Status}' ca-certificates 2>/dev/null || true)" != "install ok installed" ]]; then
+        printf '%s\n' ca-certificates
+    fi
+    if ! command -v python3 &>/dev/null || ! python3 -m pip --version &>/dev/null; then
+        printf '%s\n' python3-pip
+    fi
+    return 0
+}
+
+ensure_system_dependencies() {
+    # Other platforms retain their existing package-manager setup.
+    [[ "$OS" == "linux" ]] || return 0
+    command -v apt-get &>/dev/null || return 0
+
+    local packages=() package
+    while IFS= read -r package; do
+        [[ -n "$package" ]] && packages+=("$package")
+    done < <(missing_linux_system_packages)
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        ui_success "System dependencies ready"
+        return 0
+    fi
+
+    local runner=(env)
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if ! command -v sudo &>/dev/null; then
+            ui_error "Missing system packages: ${packages[*]}; sudo is required to install them."
+            ui_info "Ask an administrator to run: apt-get update && apt-get install -y ${packages[*]}"
+            return 1
+        fi
+        runner=(sudo env)
+    fi
+    runner+=("DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-noninteractive}" "NEEDRESTART_MODE=${NEEDRESTART_MODE:-a}")
+    ui_info "Installing missing system packages: ${packages[*]}"
+    if ! "${runner[@]}" apt-get update; then
+        ui_error "apt-get update failed; check package sources and sudo access, then rerun the installer."
+        return 1
+    fi
+    if ! "${runner[@]}" apt-get install -y --no-install-recommends "${packages[@]}"; then
+        ui_error "System package installation failed; resolve the apt error, then rerun the installer."
+        return 1
+    fi
+    hash -r
+    local remaining
+    remaining="$(missing_linux_system_packages)"
+    if [[ -n "$remaining" ]]; then
+        ui_error "System dependencies still unavailable after installation: ${remaining//$'\n'/, }"
+        ui_info "Check command paths and python3 -m pip --version before rerunning the installer."
+        return 1
+    fi
+    ui_success "System dependencies installed"
+}
+
+# Bootstrap is standalone: no Node runtime or neighbouring files are required yet.
+github_download_url() {
+    local url="$1" proxy="${XIAOBEI_GITHUB_PROXY:-}"
+    if [[ -n "$proxy" ]]; then
+        local pattern='^https://[[:alnum:].-]+(:[0-9]+)?(/[^?#[:space:]]*)?$'
+        [[ "$proxy" =~ $pattern ]] || { echo 'XIAOBEI_GITHUB_PROXY must be an HTTPS URL prefix without credentials, query or fragment' >&2; return 1; }
+        while [[ "$proxy" == */ ]]; do proxy="${proxy%/}"; done
+        case "$url" in
+            "$proxy/"*) ;;
+            https://github.com/*|https://api.github.com/*|https://raw.githubusercontent.com/*|https://codeload.github.com/*|https://objects.githubusercontent.com/*|https://release-assets.githubusercontent.com/*) url="$proxy/$url" ;;
+        esac
+    fi
+    printf '%s\n' "$url"
+}
+
+configure_download_network() {
+    [[ -n "${XIAOBEI_GITHUB_PROXY:-}" ]] || return 0
+    local helper="$WISEFLOW_ROOT/scripts/lib/download-network.sh"
+    [[ -f "$helper" ]] || { ui_error 'This release does not support XIAOBEI_GITHUB_PROXY; install a newer tarball.'; return 1; }
+    source "$helper"
+    xiaobei_configure_download_network "$WISEFLOW_ROOT" "$WISEFLOW_ROOT/$PORTABLE_NODE"
+}
+
 DOWNLOADER=""
 detect_downloader() {
     if command -v curl &> /dev/null; then
@@ -305,7 +389,7 @@ detect_downloader() {
 }
 
 download_file() {
-    local url="$1"
+    local url; url="$(github_download_url "$1")" || return $?
     local output="$2"
     if [[ -z "$DOWNLOADER" ]]; then
         detect_downloader
@@ -348,16 +432,17 @@ resolve_latest_version() {
         return 0
     fi
     local api="https://api.github.com/repos/$WISEFLOW_REPO/releases/latest"
+    api="$(github_download_url "$api")"
     local resp
     resp="$(curl -fsSL "$api" 2>/dev/null || true)"
-    XIAOBEI_TAG="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[^"]+"' | head -1 | sed -E 's/.*"v([^"]+)".*/v\1/')"
-    if [[ -z "$XIAOBEI_TAG" ]]; then
+    XIAOBEI_TAG="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v[^"]+"' | head -1 | sed -E 's/.*"v([^"]+)".*/v\1/' || true)"
+    if [[ -z "$XIAOBEI_TAG" && -z "${XIAOBEI_GITHUB_PROXY:-}" ]]; then
         # 回退 gh CLI
         XIAOBEI_TAG="$(gh release view -R "$WISEFLOW_REPO" --json tagName -q .tagName 2>/dev/null || true)"
     fi
     if [[ -z "$XIAOBEI_TAG" ]]; then
-        ui_error "无法解析最新 release tag（GitHub API + gh CLI 都失败）"
-        echo "指定版本：export XIAOBEI_TAG=v5.5.0 后重跑"
+        ui_error "无法解析最新 release tag（GitHub API；启用下载代理时不回退直连）"
+        echo "若代理不支持 GitHub API，请使用 install-atomgit.sh，或指定版本：export XIAOBEI_TAG=v5.8.0 后重跑"
         exit 1
     fi
     XIAOBEI_VER="${XIAOBEI_TAG#v}"
@@ -455,7 +540,7 @@ pnpm_install_prod() {
 }
 
 # skills 的 python 依赖（扫仓内 requirements.txt，pip install --user）
-# 优先高版本 python（3.12/3.11/3.10），回退 python3；小白机可能只有 CommandLineTools 的 3.9。
+# 优先选已有 pip 的高版本 python（3.12/3.11/3.10），回退 python3。
 install_python_deps() {
     local root="$WISEFLOW_ROOT"
     local merged=""
@@ -467,7 +552,10 @@ install_python_deps() {
     # 选 python：优先 3.12/3.11/3.10，回退 python3
     local PY_BIN=""
     for cand in python3.12 python3.11 python3.10 python3; do
-        if command -v "$cand" &>/dev/null; then PY_BIN="$cand"; break; fi
+        if command -v "$cand" &>/dev/null; then
+            [[ -n "$PY_BIN" ]] || PY_BIN="$cand"
+            if "$cand" -m pip --version &>/dev/null; then PY_BIN="$cand"; break; fi
+        fi
     done
     if [[ -z "$PY_BIN" ]]; then
         ui_warn "python3 未安装，跳过 python 依赖（skills 用到时再装）"
@@ -477,18 +565,33 @@ install_python_deps() {
         ui_warn "$PY_BIN -m pip 不可用，跳过 python 依赖"
         return 0
     fi
-    ui_info "Installing python skill deps via $PY_BIN (--user --break-system-packages)"
+    local pip_args=(--user --no-warn-script-location --disable-pip-version-check
+        -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com)
+    local pip_install_args=("${pip_args[@]}")
+    # Ubuntu 22.04 自带的旧 pip 不识别 --break-system-packages；新 pip 用它处理 PEP 668。
+    if "$PY_BIN" -m pip install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_args+=(--break-system-packages)
+    fi
+    ui_info "Upgrading pip via $PY_BIN"
+    if ! "$PY_BIN" -m pip install "${pip_install_args[@]}" --upgrade pip; then
+        ui_warn "pip 升级失败，将按当前 pip 支持的参数尝试安装技能依赖"
+    fi
+    # 升级后重新检测，确保后续调用使用同一解释器及升级后的参数能力。
+    pip_install_args=("${pip_args[@]}")
+    if "$PY_BIN" -m pip install --help 2>/dev/null | grep -F -- '--break-system-packages' >/dev/null; then
+        pip_install_args+=(--break-system-packages)
+    fi
+    ui_info "Installing python skill deps via $PY_BIN"
     # --no-warn-script-location 抑制 'script installed in .../bin which is not on PATH'（小白噪音）
     # --disable-pip-version-check 抑制 pip 升级提示
     # PEP 668：现代系统（Homebrew/Debian/PEP 668）下 pip install --user 仍被拒，
-    # 直接加 --break-system-packages 跨过；--user 限目标目录，不碰系统 site-packages，安全。
-    printf '%s' "$merged" | sort -u | grep -vE '^\s*#|^\s*$' | \
-        "$PY_BIN" -m pip install --user --break-system-packages \
-            --no-warn-script-location --disable-pip-version-check \
-            -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
-            -r /dev/stdin || \
+    # 支持时加入 --break-system-packages；--user 保持依赖安装到当前用户目录。
+    if printf '%s' "$merged" | sort -u | grep -vE '^\s*#|^\s*$' | \
+        "$PY_BIN" -m pip install "${pip_install_args[@]}" -r /dev/stdin; then
+        ui_success "Python deps done"
+    else
         ui_warn "pip install 部分失败，可稍后手动补"
-    ui_success "Python deps done"
+    fi
 }
 
 install_deck_render() {
@@ -699,37 +802,12 @@ is_promptable() {
 # camoufox-cli（Firefox 反指纹浏览器）
 # ═══════════════════════════════════════════════════════════════════
 install_camoufox_cli() {
-    if [[ "$SKIP_BROWSER" == "true" ]]; then
-        ui_info "跳过 camoufox-cli 浏览器二进制（--skip-browser）；后续手动：camoufox-cli install"
-        return 0
-    fi
     local node="$WISEFLOW_ROOT/$PORTABLE_NODE"
-    local npm_bin; npm_bin="$(dirname "$node")/npm"
-    local fork_dir="$WISEFLOW_ROOT/camoufox-cli"
-    # portable node 的 npm 全局前缀指向 $WISEFLOW_ROOT，bin 落 $WISEFLOW_ROOT/bin；
-    # 该目录不在默认 PATH，须显式前置，否则下一步 camoufox-cli install 报 command not found。
-    export PATH="$WISEFLOW_ROOT/bin:$(dirname "$node"):$PATH"
-    export npm_config_prefix="$WISEFLOW_ROOT"
-    # fork 的 dist 是 tsc 编译，camoufox-js/playwright-core/pdf-lib 是 external import
-    # （没打进 bundle），运行时靠 fork 目录下的 node_modules 解析。
-    # tarball 为瘦身 ship 的 fork 不带 node_modules，npm install -g <目录> 又是 symlink
-    # 到源目录（非 copy），所以必须先在 fork 目录装运行时依赖，否则 bin 跑起来 ERR_MODULE_NOT_FOUND。
-    if command -v camoufox-cli >/dev/null 2>&1 && [ -d "$fork_dir/node_modules/camoufox-js" ]; then
-        ui_success "camoufox-cli already installed"
-    else
-        [[ -d "$fork_dir" ]] || { ui_warn "camoufox-cli fork 不在 tarball 内：${fork_dir}；跳过"; return 0; }
-        run_required_step "Installing camoufox-cli fork deps" bash -c "cd '$fork_dir' && '$npm_bin' install --omit=dev --registry=https://registry.npmmirror.com"
-        run_required_step "Installing camoufox-cli fork (local)" "$npm_bin" install -g "$fork_dir" --registry=https://registry.npmmirror.com
+    local browser_args=(--root "$WISEFLOW_ROOT")
+    if [[ "$SKIP_BROWSER" == "true" ]]; then
+        browser_args+=(--skip-assets)
     fi
-    # npm install -g 建的 bin 可能缺 +x（symlink 目标权限没带过来），直接调会 Permission denied。
-    # chmod +x 跟随 symlink 改目标权限（macOS/Linux 一致）。
-    local cbin="$WISEFLOW_ROOT/bin/camoufox-cli"
-    [[ -e "$cbin" ]] && chmod +x "$cbin" 2>/dev/null || true
-    ui_info "Ensuring camoufox Firefox binary (idempotent, ~557MB first run)"
-    if ! camoufox-cli install; then
-        ui_warn "camoufox-cli install failed; you can run it manually later: camoufox-cli install"
-    fi
-    ui_success "camoufox-cli ready"
+    run_required_step "Installing xiaobei-browser" "$node" "$WISEFLOW_ROOT/scripts/install-browser.mjs" "${browser_args[@]}"
 }
 
 # 读已装 openclaw-weixin 的版本号；读不到返回非零。
@@ -775,7 +853,7 @@ install_weixin_plugin() {
         ver=$(python3 -c "import json;print(json.load(open('$pin_file'))['openclaw-weixin']['version'])" 2>/dev/null || true)
     fi
     pkg="${pkg:-@tencent-weixin/openclaw-weixin}"
-    ver="${ver:-2.4.8}"
+    ver="${ver:-2.4.10}"
     # 幂等检查：已装版本 == pin 才跳过
     local installed force_flag=""
     installed="$(weixin_installed_version "$claw_cmd" "$pkg" || true)"
@@ -799,7 +877,7 @@ install_weixin_plugin() {
     fi
 }
 
-# 装 awada 本地插件依赖（ws + zod）。
+# 装 awada 本地插件依赖（silk-wasm + typebox + ws + zod）。
 # awada 是 TS 插件经 jiti 运行时加载（openclaw.extensions: ["./index.ts"]），无需 build；
 # tarball ship 的 awada/ 不带 node_modules，这里 npm install --omit=dev 装运行时依赖。
 # config-templates/openclaw.json 已预置 plugins.load.paths=["${XIAOBEI_HOME}/awada"] + entries.awada.enabled=false，
@@ -809,11 +887,11 @@ install_awada_plugin() {
     local npm_bin; npm_bin="$(dirname "$node")/npm"
     local awada_dir="$WISEFLOW_ROOT/awada"
     [[ -d "$awada_dir" ]] || { ui_warn "awada 不在 tarball 内：${awada_dir}；跳过"; return 0; }
-    if [ -d "$awada_dir/node_modules/ws" ] && [ -d "$awada_dir/node_modules/zod" ]; then
+    if [ -d "$awada_dir/node_modules/silk-wasm" ] && [ -d "$awada_dir/node_modules/typebox" ] && [ -d "$awada_dir/node_modules/ws" ] && [ -d "$awada_dir/node_modules/zod" ]; then
         ui_success "awada deps already installed"
         return 0
     fi
-    ui_info "Installing awada plugin deps (ws + zod) via npmmirror"
+    ui_info "Installing awada plugin deps (silk-wasm + typebox + ws + zod) via npmmirror"
     if bash -c "cd '$awada_dir' && '$npm_bin' install --omit=dev --registry=https://registry.npmmirror.com"; then
         ui_success "awada deps installed"
     else
@@ -878,7 +956,7 @@ place_config_template() {
     else
         ui_info "openclaw.json 已存在且健康 (有 models + agents.defaults), 保留"
     fi
-    # 把 plugins.load.paths 里的 ${XIAOBEI_HOME} env ref 直接解析成绝对路径写回 config。
+    # 补齐原生搜索默认开关，并将 plugins.load.paths 中的 ${XIAOBEI_HOME} 解析成绝对路径。
     # 原因：openclaw 在 CLI 上下文（daemon install / doctor / status / 用户裸跑 openclaw）校验
     # config 时用的是当前 shell env，未必有 XIAOBEI_HOME → ${XIAOBEI_HOME}/awada 不展开 →
     # "plugin path not found" 误报。awada 位置在 install 时已知（$WISEFLOW_ROOT/awada），
@@ -891,19 +969,43 @@ place_config_template() {
         const c=JSON.parse(fs.readFileSync(p,"utf8"));
         const paths=(c.plugins?.load?.paths) || [];
         let changed=false;
+        // Existing installations may only have the retired environment switch.
+        // Fill the native default from the template without overriding user choices.
+        const template=JSON.parse(fs.readFileSync(process.argv[3],"utf8"));
+        const searchEnabled=template.tools?.web?.search?.enabled;
+        if (typeof searchEnabled==="boolean" && c.tools?.web?.search?.enabled===undefined) {
+            c.tools ??= {};
+            c.tools.web ??= {};
+            c.tools.web.search ??= {};
+            c.tools.web.search.enabled=searchEnabled;
+            changed=true;
+        }
+        // Fill logging defaults without overriding deliberate troubleshooting settings.
+        for (const [key,value] of Object.entries(template.logging ?? {})) {
+            c.logging ??= {};
+            if (c.logging[key]===undefined) {
+                c.logging[key]=value;
+                changed=true;
+            }
+        }
+        let pathsChanged=false;
         const fixed=paths.map(s => {
             if (typeof s==="string" && s.indexOf("${XIAOBEI_HOME}")!==-1) {
-                changed=true;
+                pathsChanged=true;
                 return s.split("${XIAOBEI_HOME}").join(root);
             }
             return s;
         });
-        if (changed) {
+        if (pathsChanged) {
             c.plugins.load.paths=fixed;
+            changed=true;
+        }
+        if (changed) {
             fs.writeFileSync(p, JSON.stringify(c,null,2)+"\n");
         }
-    ' "$config_path" "$WISEFLOW_ROOT" 2>/dev/null; then
-        ui_warn "plugins.load.paths 路径解析失败 (非致命, config 仍可用, 但 awada 可能加载不到)"
+    ' "$config_path" "$WISEFLOW_ROOT" "$tmpl" 2>/dev/null; then
+        ui_error "配置默认值或插件路径同步失败"
+        return 1
     fi
 }
 
@@ -976,7 +1078,7 @@ Options:
   --root <dir>       Program install directory (default: ~/xiaobei; runtime data stays in ~/.openclaw)
   --force            Overwrite existing runtime data (~/.openclaw); default preserves it on re-install
   --skip-bind        Skip the WeChat QR binding at the end (CI/automation)
-  --skip-browser     Skip Camoufox Firefox and deck-render Chromium downloads (smoke/CI)
+  --skip-browser     Skip Camoufox Firefox and shared Chromium downloads (smoke/CI)
   --verbose          Print debug output
   --no-prompt        Disable prompts (CI/automation)
   --help, -h         Show this help
@@ -1057,17 +1159,19 @@ bind_weixin_channel() {
 main() {
     parse_args "$@"
     configure_verbose
-
-    echo -e "${INFO}Preparing installer interface...${NC}"
-    bootstrap_gum_temp || true
-    print_installer_banner
-    print_gum_status
+    github_download_url 'https://github.com/' >/dev/null
     detect_os_or_die
 
     if [[ "$OS" == "linux" ]]; then
         export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
         export NEEDRESTART_MODE="${NEEDRESTART_MODE:-a}"
     fi
+    ensure_system_dependencies || return $?
+
+    echo -e "${INFO}Preparing installer interface...${NC}"
+    bootstrap_gum_temp || true
+    print_installer_banner
+    print_gum_status
 
     ui_kv "OS" "$OS"
     ui_kv "Program dir" "$WISEFLOW_ROOT"
@@ -1107,6 +1211,7 @@ main() {
     # ─── Step 2: 下载 + 解压 tarball（更新 program）──────────
     ui_stage "Downloading pre-built tarball"
     download_and_extract_tarball
+    configure_download_network
 
     # ─── Step 3: pnpm install --prod（拉依赖，无 OOM）────────
     ui_stage "Installing dependencies (pnpm install --prod)"
@@ -1125,13 +1230,13 @@ main() {
     ui_stage "Installing awada plugin deps"
     install_awada_plugin
 
-    # ─── Step 6: HyperFrames + Playwright Chromium + CJK 字体 ──
+    # ─── Step 6: shared Playwright/Chromium + Camoufox ───────
+    ui_stage "Installing shared browser runtime"
+    install_camoufox_cli
+
+    # ─── Step 7: HyperFrames + CJK 字体 ─────────────────────
     ui_stage "Installing deck-render runtime"
     install_deck_render
-
-    # ─── Step 7: camoufox-cli + Firefox binary（幂等）────────
-    ui_stage "Installing camoufox-cli browser"
-    install_camoufox_cli
 
     # ─── Step 8: openclaw-weixin 插件（幂等）─────────────────
     ui_stage "Installing WeChat plugin"
@@ -1405,6 +1510,8 @@ refresh_gateway_env_only() {
         mv "${daemon_env_file}.new" "$daemon_env_file"
         printf 'OPENCLAW_STATE_DIR=%s\n' "$OPENCLAW_HOME" >> "$daemon_env_file"
         if [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+            "$WISEFLOW_ROOT/$PORTABLE_NODE" "$WISEFLOW_ROOT/scripts/refresh-gateway-service-metadata.mjs" \
+                "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/openclaw-gateway.service"
             ensure_systemd_wait_display_dropin
             systemctl --user daemon-reload 2>/dev/null || true
             systemctl --user restart "openclaw-gateway.service" 2>/dev/null && ui_success "Restarted gateway"

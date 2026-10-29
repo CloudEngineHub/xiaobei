@@ -48,7 +48,7 @@ xhs-hunter feed homefeed_recommend --count 20
 xhs-hunter call get_unread_message
 ```
 
-搜索排序 `--sort`：0 综合、1 最新、2 点赞、3 评论、4 收藏。笔记类型 `--type`：0 全部、1 视频、2 图文。`search-notes` 的 `data` 是数组，每项的 `note_card.display_title` 是标题、`note_card.interact_info` 是互动数据；空标题和非笔记位会过滤，`filtered_out` 给出过滤数。`fetch` 支持完整链接与 `xhslink.com` / `xhslink.cn` 短链，返回正文、作者、话题、互动量、图片和视频地址；`--download-media` 要与 `--output-dir` 一起使用。外部笔记须使用该笔记对应的 `xsec_token`；错配或不可见导致详情为空时返回 `NOTE_UNAVAILABLE`，应从搜索或用户列表重新获取链接。素材需要后续给 Agent 查看时，将 `--output-dir` 设在工作区内。
+搜索排序 `--sort`：0 综合、1 最新、2 点赞、3 评论、4 收藏。笔记类型 `--type`：0 全部、1 视频、2 图文。`search-notes` 的 `data` 是数组，每项的 `note_card.display_title` 是标题、`note_card.interact_info` 是互动数据；空标题和非笔记位会过滤，`filtered_out` 给出过滤数。`fetch` 支持完整链接、`xhslink.com` / `xhslink.cn` 短链和含链接的复制分享文本，返回正文、作者、话题、互动量、图片和视频地址；短链跳到登录页时脚本自动提取 `redirectPath` 中的笔记地址和对应 token，不要求调用方抄 token。`--download-media` 要与 `--output-dir` 一起使用。外部笔记须使用该笔记对应的 `xsec_token`；错配或不可见导致详情为空时返回 `NOTE_UNAVAILABLE`，应从搜索或用户列表重新获取链接。素材需要后续给 Agent 查看时，将 `--output-dir` 设在工作区内。
 
 `comments` 默认读取全部一级及二级评论；日常调研先用 `--limit 20 --no-inner` 采样，`--limit` 范围为 1–1000 条一级评论。大帖及高频读取容易返回“访问频繁”；相邻请求至少间隔 5 秒，超过 2000 条评论的帖子先限量采样。限流时停止并保留平台提示，不把空评论当作没有讨论。
 

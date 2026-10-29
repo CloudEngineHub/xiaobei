@@ -44,7 +44,7 @@ jobs:
         # "Unable to locate executable file: pnpm"（setup-node#1351）
         uses: actions/setup-node@v6
         with:
-          node-version: '24.15.0'
+          node-version: '24.16.0'
       - uses: pnpm/action-setup@v6
         # 不指定 version，action-setup v6 自动读 package.json 的 packageManager
         # （显式 version 会与其冲突报 "Multiple versions of pnpm specified"）
@@ -77,15 +77,16 @@ jobs:
         env:
           CI: 'true'
 
-      - name: Build camoufox-cli fork dist (no global install)
+      - name: Verify browser distribution
         run: |
-          cd patches/camoufox-cli
-          npm install --registry=https://registry.npmmirror.com
-          npm run build
+          test -f browser/dist/client/index.js
+          test -f browser/dist/broker/server.js
+          test -f browser/plugin/index.ts
+          test -f browser/openclaw.plugin.json
 
       - name: Fetch standalone pnpm (npm package, self-contained)
         run: |
-          curl -fsSL -o /tmp/pnpm.tgz https://registry.npmmirror.com/pnpm/-/pnpm-11.2.2.tgz
+          curl -fsSL -o /tmp/pnpm.tgz https://registry.npmmirror.com/pnpm/-/pnpm-12.5.1.tgz
           rm -rf /tmp/pnpm-pkg
           mkdir -p /tmp/pnpm-pkg
           tar -xzf /tmp/pnpm.tgz -C /tmp/pnpm-pkg
@@ -109,14 +110,15 @@ jobs:
             --exclude='.git' \
             --exclude='*.tsbuildinfo' \
             --exclude='coverage' \
+            --exclude='apps' \
             "$REPO/openclaw/" "$STAGE/openclaw/"
 
           # 2. standalone pnpm（用户侧 pnpm install --prod 用，入口 tools/pnpm/bin/pnpm.mjs）
           cp -a /tmp/pnpm-pkg/package "$STAGE/tools/pnpm"
 
-          # 3. camoufox-cli fork（dist 已 build，用户侧 npm install -g .）
-          rsync -a --exclude='node_modules' --exclude='.git' \
-            "$REPO/patches/camoufox-cli/" "$STAGE/camoufox-cli/"
+          # 3. xiaobei-browser（dist + bridge + fixed assets, dependencies installed on target）
+          rsync -a --exclude='node_modules' --exclude='.git' --exclude='.browsers' \
+            "$REPO/browser/" "$STAGE/browser/"
 
           # 4. xiaobei 模板与脚本
           # npm 包和 Playwright 浏览器在目标机器安装，不能从 CI 缓存带入 tarball。
@@ -126,7 +128,7 @@ jobs:
           cp -a "$REPO/config-templates" "$STAGE/config-templates"
           cp -a "$REPO/scripts" "$STAGE/scripts"
           # awada 本地插件（TS，jiti 加载；ship 源码 + lockfile，排除 node_modules，
-          # 用户侧 install.sh 在 awada/ 下 npm install --omit=dev 装 ws+zod）
+          # 用户侧 install.sh 在 awada/ 下 npm install --omit=dev 装 silk-wasm+typebox+ws+zod）
           rsync -a --exclude='node_modules' --exclude='.git' \
             "$REPO/awada/" "$STAGE/awada/"
           cp "$REPO/openclaw.version" "$REPO/version" "$STAGE/"
@@ -164,10 +166,10 @@ jobs:
 
           # 平台 → (node_url, subdir)
           declare -A PLATFORMS=(
-            [linux-x64]="https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz|node-v24.15.0-linux-x64"
-            [mac-arm64]="https://nodejs.org/dist/v24.15.0/node-v24.15.0-darwin-arm64.tar.xz|node-v24.15.0-darwin-arm64"
-            [mac-x64]="https://nodejs.org/dist/v24.15.0/node-v24.15.0-darwin-x64.tar.xz|node-v24.15.0-darwin-x64"
-            [win-x64]="https://nodejs.org/dist/v24.15.0/node-v24.15.0-win-x64.zip|node-v24.15.0-win-x64"
+            [linux-x64]="https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-x64.tar.xz|node-v24.16.0-linux-x64"
+            [mac-arm64]="https://nodejs.org/dist/v24.16.0/node-v24.16.0-darwin-arm64.tar.xz|node-v24.16.0-darwin-arm64"
+            [mac-x64]="https://nodejs.org/dist/v24.16.0/node-v24.16.0-darwin-x64.tar.xz|node-v24.16.0-darwin-x64"
+            [win-x64]="https://nodejs.org/dist/v24.16.0/node-v24.16.0-win-x64.zip|node-v24.16.0-win-x64"
           )
 
           for plat in linux-x64 mac-arm64 mac-x64 win-x64; do

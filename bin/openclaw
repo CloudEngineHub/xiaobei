@@ -1,0 +1,2 @@
+#!/bin/sh
+exec '/usr/bin/node' '/home/ctyun/wiseflow/openclaw/dist/index.js' "$@"

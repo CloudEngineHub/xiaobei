@@ -15,27 +15,23 @@ import time
 from html.parser import HTMLParser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from font_policy import font_available, font_css, font_family
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'video-producer/scripts'))
+from _visual_plan import visual_timeline
+sys.path.insert(0, str(Path(__file__).resolve().parents[7] / 'browser/bridge'))
+from shared_playwright import runtime_info
 
 TOOL = Path(__file__).resolve().parents[1]
 FONT = font_family()
 
 
 def browser_binary():
-    marker = TOOL / '.deck-render-browser'
-    if not marker.is_file():
-        return None
-    version, separator, relative = marker.read_text().strip().partition('\t')
-    if not separator or version != '1.61.1':
-        return None
-    path = (TOOL / relative).resolve()
-    return path if path.is_file() and path.is_relative_to(TOOL) else None
+    return Path(runtime_info()['executablePath'])
 
 
 def run(cmd, cwd=None):
     env = dict(os.environ, HYPERFRAMES_NO_TELEMETRY='1')
     browser = browser_binary()
-    if browser:
-        env['PRODUCER_HEADLESS_SHELL_PATH'] = str(browser)
+    env['PRODUCER_HEADLESS_SHELL_PATH'] = str(browser)
     # The explicit --no-browser-gpu flags own capture policy; don't inherit a conflicting override.
     env.pop('PRODUCER_BROWSER_GPU_MODE', None)
     result = subprocess.run([str(x) for x in cmd], cwd=cwd, env=env,
@@ -82,6 +78,7 @@ def validate_spec(spec):
     scenes = spec.get('scenes')
     if not isinstance(scenes, list) or not scenes:
         raise ValueError('scenes 必须是非空数组')
+    visual_timeline(spec)
     for scene in scenes:
         if not isinstance(scene, dict):
             raise ValueError('scene 必须是 JSON 对象')

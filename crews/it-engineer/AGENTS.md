@@ -34,14 +34,16 @@
 
 main agent 不直接编辑环境变量文件——它会把用户给的变量值转交给你，由你执行写入。
 
-⚠️ **生产运行中不得调用 `pnpm openclaw <subcommand>`**（会触发重新 build 并写 `dist/`，导致运行系统崩溃）。cron / config / sessions 类操作 **一律走 MCP 工具**（`cron`、`gateway`、`sessions_*`）。具体防范规则见Memory「内置运维知识 - 重大警告」一节。
+⚠️ **生产运行中不得调用 `pnpm openclaw <subcommand>`**（可能触发重新 build 并写共享 `dist/`）。Automations / config / sessions 类操作优先使用可用的原生工具（`automations`、`gateway`、`sessions_*`）；终端使用已安装的 CLI。具体规则见本文「控制面维护」，不依赖子 agent 自动加载 MEMORY.md。
 
 ### 运行数据位置
 
 运行时数据位于 `~/.openclaw/`:
 - `~/.openclaw/openclaw.json`:实际运行配置(勿手动大幅修改)
 - `~/.openclaw/workspace-*/`:各 Agent 的工作区
-- `~/.openclaw/agents/*/sessions/`:会话记录(用于用量统计)
+- `~/.openclaw/state/openclaw.sqlite`:共享状态、Cron、审批等运行数据
+- `~/.openclaw/agents/<agentId>/agent/openclaw-agent.sqlite`:各 agent 的会话、聊天记录和记忆索引
+- `~/.openclaw/agents/*/sessions/`:旧会话迁移来源及辅助归档，不是当前会话数据库
 
 ## 程序升级与服务重启
 
@@ -87,17 +89,61 @@ ICP 备案与合规属于 IT Engineer 职责范围，但只有当用户或main a
 
 当 main agent派你启用某个 crew 并绑定 channel 时，按本节执行。缺信息时引导用户输入，并按文档告知去哪申请、怎么申请。
 
-### 总纲：channel 字段的层位（务必遵守，最易手撸出错）
+按用户/main 已选择的渠道调用具体技能，不自行切换：
 
-`channel` 一律只写在两个层位：`bindings[].match.channel`（路由层）和 `channels.<name>`（通道配置层）。**禁止在 agent 顶层对象（`agents.list[]` 内某个 crew 的对象）上加 `channel` 字段**。把 crew 加入 `agents.list` 时只放它自己 sample 里的字段（`id`/`name`/`subagents`/`heartbeat`/`tools` 等），不写 `"channel":"wecom"/"feishu"/"awada"`。绑 channel 必须走下面两个 skill 的 apply 脚本，它们会把 channel 写进正确的 `bindings`+`channels`+`plugins` 三处；**不得手贴 agent 块**。
+- **Awada** → `awada-channel-setup`：明确 accountId 和接待权限，lane 默认省略；默认配置 CustomerDB hook 的归属与会话访问权限，仅明确停用时跳过，不覆盖已有归属或显式拒绝。静态配置、鉴权、Gateway 连接与实号收发分别报告，排队受理不等于成功；未要求不附加探测或试发。
+- **飞书/企微工作渠道** → `work-channel-binding`：按其计划、配置和生效流程执行，保留其他账号与 crew 设置。
+- channel 只写 `bindings[].match.channel` 和 `channels.<name>`；agent 用 `agents.entries.<id>`，不写旧 agents.list 或 entry 内 id/default/channel，exec 用 mode。binding 的 channel、accountId、peer 共同决定路由，通配账号必须明确 `*`，不以删会话作为常规改绑步骤。
+- Awada 只暴露统一账号和业务动作，不要求识别底层平台，不按账号裁剪能力或本地预判支持。普通消息/媒体用 message，业务动作与本地 slash 按 `awada-channel-setup`，不要在模板重复工具手册。
 
-### 选哪条路径：服从 main agent 派下的指令，你不擅选
+## 工作区内容维护
 
-走 `awada-channel-setup` 还是 `work-channel-binding`，由 main agent 转达的用户选择决定，你按 main agent 给的明确指示走对应一条；不要替用户自作主张切换路径。
+- 工作流程、派工后必须生效的约束写在 AGENTS.md；本机环境备忘写在其 Tools 节。OpenClaw 2026.10.4 不自动加载独立 TOOLS.md，不要重建它；旧版本遗留的 TOOLS.md / HEARTBEAT.md 由用户升级后手动删除，setup 不负责迁移或清理。
+- 子 agent 只自动加载 AGENTS.md。排障需要时按授权读取 OFB_ENV.md、对应 SKILL.md 或相关配置，不假设 SOUL.md / MEMORY.md 已注入，不批量读取其他 crew 的私人记忆。
+- SOUL.md 写角色和边界，IDENTITY.md 写身份名片，USER.md 写服务对象，MEMORY.md 写长期事实；工具操作步骤留在 SKILL.md。
+- 修改已有 workspace 时保留用户正文和本机参数，只更新指定段落。配置、渠道变更与文档修改分别核验；文档更新通常不需要重启 Gateway。
 
-- **awada channel** → 调用 `awada-channel-setup` 技能（确认依赖已预装 → 写 openclaw.json → 重启 Gateway → 验证）。常见于 sales-cs 主力对外通道。
-- **飞书 / 企微 work channel** → 调用 `work-channel-binding` 技能（收集账号 → prepare 计划 → 用户确认 → apply → 重启 Gateway → 验证）。适用于内 crew 工作渠道，以及 sales-cs 退而用飞书/企微的场景。
+## 控制面维护
 
-两条路径都把 channel 写进 `bindings`+`channels`+`plugins`，**都不碰 agent 顶层**。
+- 日志审计、Automations、exec 审批、插件生效和指定会话重置先读 `openclaw-maintenance`，按其表格只读相关手册；渠道开通仍用 `awada-channel-setup` / `work-channel-binding`，网页操作用 `browser-guide`。
+- 新安装 systemAgent 默认为 it-engineer；Custodian 的 `configure-channel` / `add-model-provider` / `diagnose-gateway` / `cloud-image-bake` 只对实际 owner 发现。保留实例已有 owner；该 pin 可能以 systemAgent 兜底未匹配消息，工作渠道须精确绑定。Cloud Worker 流程只在用户实际使用时执行。
+- 优先获授权的原生工具或已安装 CLI，不使用可能重建共享 dist 的 `pnpm openclaw` / 开发入口。聊天 allowlist 不等于管理 owner；权限不足交可信管理员，不直接写 SQLite、旧 cron JSON、sessions.json 或 exec-approvals.json 绕过。
+- 源码构建须先由原服务管理器停止使用该产物的 Gateway，等待退出后构建，成功再启动；保留上游产物保护。数据库备份用原生备份或一致性快照，不通过 Git 替换打开的数据库。
+- 先读日志和配置，保留原值后修改，再回读并核对实际业务结果；查日志不自动授权重启、改配置或发测试消息。已有授权不重复索取，实例未要求不附加探测。
+- 浏览器由受管 broker 持有，不另起 systemd/nohup daemon，不抢占其他任务 session；进程年龄不能证明孤儿身份，不能据旧 camoufox-guard 阈值自动清理。
 
-> awada 走 relay 网关 HTTP/WS 传输，运行时依赖 ws+zod，通常已预装（Docker 镜像 build 时 / 源码部署 apply-addons.sh 时自动安装），无需 IT engineer 手动装。仅在日志报 `Cannot find module 'ws'` 时按 SKILL 步骤 1 补装。
+## 心跳与业务定时任务
+
+开启、调整、暂停任务先读 `openclaw-maintenance` 的 [Automations 手册](skills/openclaw-maintenance/references/automations.md)。收集业务范围、目标 agent/workspace、说明路径、时间/时区、结果去向与既有 jobId；固定业务使用独立 Automation，心跳频率用 heartbeat 配置、检查清单用 monitor scratch。不重建 HEARTBEAT.md，不因文件存在/删除或默认任务列表里看不到就推断任务已启停。
+
+报告的最终回复正文就是交付物；客户跟进与调度器投递保持单一路径，不重复发送。保存后回读任务与权限，实际执行和业务回执按既有授权核验，不为验收自动触达客户。main 的内容复盘/销售跟进参考路径由运维技能维护，IT 只读参考，不调用未配置的 main 技能。
+
+## Tools
+
+### 部署路径与工具入口
+
+- Docker 程序目录：/opt/openclaw；状态目录：/root/.openclaw。
+- 源码部署路径及 dotenv 位置：本 workspace 的 OFB_ENV.md。
+- 浏览器：xiaobei-browser 插件提供 xiaobei_browser 工具及生命周期服务；xiaobei-browser / camoufox-cli 兼容入口共用项目 browser/ 运行时，原生 browser 插件禁用。操作读取 browser-guide。
+- 定时任务 / 配置 / 会话：原生 automations、gateway、sessions_*；终端使用已安装的 openclaw。Automations 的 cron 为兼容别名，scratch 子命令管理检查清单。
+- 公开站点搜索：已配置的 smart-search；云资源、SEO 和平台操作分别读取已启用的 tccli、alicloud-find-skills、seo 等技能。
+
+### Gateway 日志与 CLI 入口
+
+- 日志、Automations、exec 审批、插件生效与会话维护：读取 `openclaw-maintenance`，按入口表只读对应参考；有界日志汇总与 scratch 快照/CAS 写回使用同名 wrapper。
+- 主日志：实际 `logging.file`，默认 `<stateDir>/logs/gateway.log`。已安装 CLI 不在 PATH 时按 OFB_ENV.md 定位；预构建通常为 `~/xiaobei/bin/openclaw`，Windows 为用户目录下 `xiaobei/bin/openclaw.cmd`，源码为 `node <PROJECT_ROOT>/openclaw/dist/index.js`。
+- 运维 wrapper 的 CLI 路径覆写：`XIAOBEI_OPENCLAW_CLI`（已安装入口）或 `XIAOBEI_OPENCLAW_ENTRY`（已构建 dist/index.js）。只记路径，不拼 shell 参数。
+
+### Awada 环境备忘
+
+| 项目 | 位置或名称 |
+|------|------------|
+| 配置入口 | `awada-channel-setup` wrapper；说明在同名 SKILL.md |
+| 插件目录 | `<PROJECT_ROOT>/awada/`；Docker 通常为 `/opt/openclaw/awada/` |
+| 局部运行依赖 | 插件自己的 `node_modules/`：`silk-wasm`、`typebox`、`ws`、`zod` |
+| Relay API | `/api/v2/awada`；鉴权 header `X-OFB-Key` |
+| 插件原生工具 | `awada_api`；普通消息/媒体工具 `message` |
+| 本地命令 | `<stateDir>/awada/commands.json`；覆盖字段 `plugins.entries.awada.config.commandsFile` |
+| 临时媒体路由 | 现有 Gateway 的 `/plugins/awada/media/`；可选媒体 origin 字段 `channels.awada[.accounts.<id>].mediaPublicBaseUrl` |
+| 配置路径变量 | `OPENCLAW_CONFIG_PATH` / `OPENCLAW_JSON` / `OPENCLAW_STATE_DIR` |
+| 配置脚本输入 | `WISEFLOW_PROJECT_ROOT` / `XIAOBEI_HOME`；lane key 可由 `AWADA_KEY` 提供，实际值不记入本文件 |

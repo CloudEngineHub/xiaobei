@@ -32,7 +32,7 @@
 #      no need to install zstd)
 #   2. Extract to $XIAOBEI_HOME (default $env:USERPROFILE\xiaobei, the program directory)
 #   3. portable node + pnpm install --prod --frozen-lockfile (under openclaw\)
-#   4. pip install --user (python deps for skills; only runs if python is present)
+#   4. Upgrade pip, then pip install --user (skill deps; only runs if python is present)
 #   5. Place config-templates\openclaw.json -> $OPENCLAW_HOME\openclaw.json + prefill WeChat binding
 #   6. setup-crew.sh (requires bash: Git Bash or WSL; if absent, warn and skip; user can run it
 #      manually later)
@@ -122,11 +122,32 @@ function Capture-Streamed([scriptblock]$sb) {
     finally { $ErrorActionPreference = $prev }
 }
 
+# Standalone bootstrap: portable Node is not available before extracting the tarball.
+function Get-GitHubDownloadUrl([string]$Url) {
+    $prefix = $env:XIAOBEI_GITHUB_PROXY
+    if (-not $prefix) { return $Url }
+    $proxyUri = $null
+    if (-not [Uri]::TryCreate($prefix, [UriKind]::Absolute, [ref]$proxyUri) -or
+        $proxyUri.Scheme -ne 'https' -or -not $proxyUri.Host -or $proxyUri.UserInfo -or
+        $proxyUri.Query -or $proxyUri.Fragment -or $prefix -match '[\s?#]') {
+        throw 'XIAOBEI_GITHUB_PROXY must be an HTTPS URL prefix without credentials, query or fragment'
+    }
+    $prefix = $prefix.TrimEnd('/') + '/'
+    if ($Url.StartsWith($prefix, [StringComparison]::Ordinal)) { return $Url }
+    $target = [Uri]$Url
+    if ($target.Scheme -eq 'https' -and $target.Authority -in @(
+        'github.com', 'api.github.com', 'raw.githubusercontent.com',
+        'codeload.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'
+    )) { return $prefix + $Url }
+    return $Url
+}
+
 # --- 1. Resolve latest release tag (GitHub API) ---
 function Resolve-Tag {
     if ($env:XIAOBEI_TAG) { return $env:XIAOBEI_TAG }
-    $api = "https://api.github.com/repos/$Repo/releases/latest"
-    $rel = Invoke-RestMethod $api -Headers @{ "User-Agent" = "xiaobei-install" }
+    $api = Get-GitHubDownloadUrl "https://api.github.com/repos/$Repo/releases/latest"
+    try { $rel = Invoke-RestMethod $api -Headers @{ "User-Agent" = "xiaobei-install" } }
+    catch { throw 'Unable to resolve the GitHub release. If the proxy does not support the GitHub API, use install-atomgit.ps1 or set XIAOBEI_TAG explicitly.' }
     return $rel.tag_name
 }
 
@@ -151,7 +172,7 @@ function Download-Tarball([string]$tag) {
         return $cached
     }
 
-    $url = "https://github.com/$Repo/releases/download/$tag/$asset"
+    $url = Get-GitHubDownloadUrl "https://github.com/$Repo/releases/download/$tag/$asset"
     Write-Host "  downloading $url"
     New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     $part = "$cached.part"
@@ -216,15 +237,23 @@ function Install-PythonDeps {
         ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
     if (-not $merged) { Write-Ok "no python deps"; return }
-    Invoke-Streamed { python -m pip install --user $merged }
+    Capture-Streamed { & $py.Source -m pip --version } | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warn "python -m pip unavailable, skipping skill python deps"; return }
+    # Keep the same interpreter for the upgrade and dependency installation. Windows does not
+    # need the Unix-only PEP 668 override; these arguments also work with older pip versions.
+    $pipArgs = @('--user', '--no-warn-script-location', '--disable-pip-version-check')
+    Write-Stage "Upgrading pip"
+    Invoke-Streamed { & $py.Source -m pip install @pipArgs --upgrade pip }
+    if ($LASTEXITCODE -ne 0) { Write-Warn "pip upgrade failed; attempting skill dependencies with the current pip" }
+    Write-Stage "Installing python skill deps"
+    Invoke-Streamed { & $py.Source -m pip install @pipArgs $merged }
     if ($LASTEXITCODE -ne 0) { Write-Warn "pip install returned non-zero; you can manually install the skills' python deps later" }
     else { Write-Ok "python deps installed" }
 }
 
 # --- 6. Place config template (mirrors install.sh place_config_template) ---
-# The template already pre-populates channels.openclaw-weixin / bindings / session.dmScope; we no
-# longer mutate it at runtime (the sh version once broke the plugins top-level via runtime mutation,
-# causing "Invalid input"; that mutation has been removed in parallel here).
+# The template pre-populates channels.openclaw-weixin / bindings / session.dmScope. Existing
+# healthy configs keep user settings; only missing logging defaults and plugin path refs are filled.
 # Health check: if the existing config is missing models/agents.defaults (most likely a minimal config
 # auto-created by `openclaw plugins install` when Install-WeixinPlugin ran first, or by openclaw's
 # first launch), back it up and overwrite with the template; otherwise channels/bindings would be
@@ -272,6 +301,26 @@ function Place-Config {
         [System.IO.File]::WriteAllText($cfg, $raw.Replace('${XIAOBEI_HOME}', $rootFwd), [System.Text.UTF8Encoding]::new($false))
         Write-Ok "resolved XIAOBEI_HOME refs -> $rootFwd"
     }
+
+    # Fill only missing logging fields on both fresh installs and updates. Use the bundled Node
+    # to preserve arbitrary JSON values and nesting; stdin avoids PS 5.1 native quote rewriting.
+    $syncLogging = @'
+const fs = require('node:fs');
+const [configPath, templatePath] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+let changed = false;
+for (const [key, value] of Object.entries(template.logging ?? {})) {
+    config.logging ??= {};
+    if (config.logging[key] === undefined) {
+        config.logging[key] = value;
+        changed = true;
+    }
+}
+if (changed) fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+'@
+    Invoke-Streamed { $syncLogging | & $NodeExe --input-type=commonjs - $cfg $tmpl }
+    if ($LASTEXITCODE -ne 0) { throw "logging defaults sync failed (exit $LASTEXITCODE)" }
 }
 
 # --- 7. setup-crew (requires bash) ---
@@ -463,53 +512,10 @@ function Expose-SkillWrappers {
 
 # --- 8. camoufox-cli ---
 function Install-CamoufoxCli {
-    if ($script:SkipBrowser) {
-        Write-Host "  [i]  skipping camoufox-cli browser binary (XIAOBEI_SKIP_BROWSER=1); run manually later: camoufox-cli install" -ForegroundColor Yellow
-        return
-    }
-    Write-Stage "Installing camoufox-cli browser"
-    $fork = Join-Path $Root "camoufox-cli"
-    if (-not (Test-Path $fork)) { Write-Warn "camoufox-cli fork not in tarball: $fork; skipping"; return }
-    # Place a camoufox-cli.cmd shim in $Root\bin and prepend it to PATH so the `camoufox-cli install`
-    # below can be found.
-    $env:PATH = "$(Join-Path $Root 'bin');$(Split-Path $NodeExe);$env:PATH"
-    $env:npm_config_registry = "https://registry.npmmirror.com"
-    $camoufoxBin = Join-Path $Root "bin\camoufox-cli.cmd"
-    $cliJs = Join-Path $fork "dist\cli.js"
-    $hasDeps = Test-Path (Join-Path $fork "node_modules\camoufox-js")
-
-    # Runtime deps of the fork: dist is a tsc build, and camoufox-js/playwright-core/pdf-lib are
-    # external imports resolved at runtime via the node_modules under the fork directory. The fork
-    # shipped in the slim tarball does not carry node_modules.
-    if (-not $hasDeps) {
-        Push-Location $fork
-        try {
-            & $NpmCmd install --omit=dev
-            if ($LASTEXITCODE -ne 0) { Write-Warn "camoufox-cli fork deps install failed"; return }
-        } finally { Pop-Location }
-    }
-
-    # Windows does not go through `npm install -g $fork`: when npm installs the fork into
-    # $prefix\node_modules it collides with the fork's own source directory (EEXIST: file already
-    # exists $Root\camoufox-cli) - Windows npm cannot symlink to the source dir the way Linux does.
-    # Instead, mirroring openclaw.cmd, we write a .cmd shim that directly runs
-    # node $fork\dist\cli.js; the fork's node_modules is already in place and Node resolves deps
-    # upward from cli.js. camoufox-cli's JS uses __dirname to locate its own package root, so the
-    # behavior matches a global install.
-    if (-not (Test-Path $cliJs)) { Write-Warn "camoufox-cli entry not found: $cliJs; skipping"; return }
-    $shimLines = @(
-        '@echo off'
-        'setlocal'
-        'set "HERE=%~dp0.."'
-        '"%HERE%\tools\node\node.exe" "%HERE%\camoufox-cli\dist\cli.js" %*'
-    )
-    Set-Content -Path $camoufoxBin -Value $shimLines -Encoding ASCII
-    Write-Ok "camoufox-cli shim written: $camoufoxBin"
-
-    Write-Host "  downloading Firefox binary (first time ~557MB)..."
-    Invoke-Streamed { camoufox-cli install }
-    if ($LASTEXITCODE -ne 0) { Write-Warn "camoufox-cli install failed; you can run manually later: camoufox-cli install" }
-    else { Write-Ok "camoufox-cli ready" }
+    $browserArgs = @((Join-Path $Root "scripts\install-browser.mjs"), "--root", $Root)
+    if ($SkipBrowser) { $browserArgs += "--skip-assets" }
+    & $NodeExe @browserArgs
+    if ($LASTEXITCODE -ne 0) { throw "xiaobei-browser install failed (exit $LASTEXITCODE)" }
 }
 
 # --- 9. openclaw-weixin plugin ---
@@ -563,7 +569,7 @@ function Get-WeixinInstalledVersion([string]$pkg) {
 function Install-WeixinPlugin {
     Write-Stage "Installing WeChat plugin"
     if (-not (Test-Path $ClawCmd)) { Write-Warn "openclaw wrapper not found: $ClawCmd; skipping"; return }
-    $pkg = "@tencent-weixin/openclaw-weixin"; $ver = "2.4.6"
+    $pkg = "@tencent-weixin/openclaw-weixin"; $ver = "2.4.10"
     $pin = Join-Path $Root "openclaw-weixin.version.json"
     if (Test-Path $pin) {
         try {
@@ -594,14 +600,14 @@ function Install-WeixinPlugin {
     else { Write-Warn "plugin install failed; you can run manually later: $ClawCmd plugins install $pkg@$ver --pin$forceHint" }
 }
 
-# --- 10. awada local plugin deps (ws + zod) ---
+# --- 10. awada local plugin deps (silk-wasm + typebox + ws + zod) ---
 function Install-AwadaPlugin {
     Write-Stage "Installing awada plugin deps"
     $awada = Join-Path $Root "awada"
     if (-not (Test-Path $awada)) { Write-Warn "awada not in tarball: $awada; skipping"; return }
     $hasWs   = Test-Path (Join-Path $awada "node_modules\ws")
     $hasZod  = Test-Path (Join-Path $awada "node_modules\zod")
-    if ($hasWs -and $hasZod) { Write-Ok "awada deps already installed"; return }
+    if ((Test-Path (Join-Path $awada "node_modules\silk-wasm")) -and (Test-Path (Join-Path $awada "node_modules\typebox")) -and $hasWs -and $hasZod) { Write-Ok "awada deps already installed"; return }
     $env:npm_config_registry = "https://registry.npmmirror.com"
     Push-Location $awada
     try {
@@ -779,6 +785,7 @@ function Bind-WeixinChannel {
 
 # --- main ---
 function Main {
+    Get-GitHubDownloadUrl 'https://github.com/' | Out-Null
     Write-Host "wiseflow installer (Windows, GitHub) - prebuilt tarball route" -ForegroundColor Magenta
     Write-Host "  Program dir : $Root"
     Write-Host "  Runtime dir : $OpenclawHome"
@@ -809,6 +816,14 @@ function Main {
 
     Write-Stage "Extracting tarball"
     Extract-Tarball $tb
+    if ($env:XIAOBEI_GITHUB_PROXY) {
+        $networkHelper = Join-Path $Root 'scripts\lib\download-network.ps1'
+        if (-not (Test-Path $networkHelper)) {
+            throw 'This release does not support XIAOBEI_GITHUB_PROXY; install a newer tarball.'
+        }
+        . $networkHelper
+        Initialize-XiaobeiDownloadNetwork $Root $NodeExe
+    }
 
     Install-Deps
     Write-Stage "Installing per-skill Node.js dependencies"
@@ -818,6 +833,7 @@ function Main {
     if ($LASTEXITCODE -ne 0) { throw "skill Node.js dependency install failed (exit $LASTEXITCODE)" }
     Install-PythonDeps
     Install-AwadaPlugin
+    Install-CamoufoxCli
     Write-Stage "Installing deck-render runtime"
     $deckArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Root 'scripts\install-deck-render.ps1'), '-Root', $Root)
     if ($script:SkipBrowser) { $deckArgs += '-SkipBrowser' }
@@ -825,7 +841,6 @@ function Main {
     if ($LASTEXITCODE -ne 0) { throw "deck-render runtime install failed" }
     $env:PATH = @($env:PATH, [Environment]::GetEnvironmentVariable('Path', 'User'),
         [Environment]::GetEnvironmentVariable('Path', 'Machine')) -join ';'
-    Install-CamoufoxCli
     Install-WeixinPlugin
 
     if ($isUpdate) {

@@ -2,9 +2,9 @@
 
 ## 产品/服务
 
-见 workspace 下的 `business_knowledge.md`
+见 workspace 下的 `business_knowledge/business_knowledge.md`
 
-> Workspace下`business_knowledge.md`为软链接，注意使用 `find` 命令查询时要加 `-L`
+共享的 `business_knowledge/` 目录由 main 维护，正文是目录内的普通文件。
 
 ## 常见问题与解决方案
 

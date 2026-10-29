@@ -188,7 +188,7 @@ python3 ./scripts/html_to_longimage.py pitch-deck.html --scale 2.0
 python3 ./scripts/html_to_longimage.py pitch-deck.html --save-slides
 ```
 
-**依赖**：`playwright`、`Pillow`（若缺失脚本会提示安装命令，首次使用需 `python3 -m playwright install chromium`）
+**依赖**：`Pillow` 由 xiaobei 统一安装；浏览器通过 Node 桥接共用 `browser/` 的 Playwright 与 Chromium，版本跟随 `browser/package.json`，唯一缓存为 `browser/.browsers`。不要安装 Python Playwright 或在技能内下载浏览器；缺依赖时交 IT engineer 修复统一安装。
 
 ## HTML → PPTX 转换
 
@@ -222,7 +222,7 @@ python3 ./scripts/html_to_pptx.py <pitch-deck.html> --save-screenshots
 2. 用户要求 PPT 格式时，直接调用此脚本转换
 3. 如果之前已生成长图且用了 `--save-slides`，可用 `--screenshots-dir` 复用截图
 
-**依赖**：`python-pptx`、`Pillow`、`playwright`（与 ppt-maker 共用 python-pptx 依赖，若缺失脚本会提示安装命令）
+**依赖**：`python-pptx`、`Pillow` 由 xiaobei 统一安装；与长图导出共用实例级 Node Playwright/Chromium，不安装独立驱动或浏览器。
 
 ## PPT / PPTX → HTML 转换
 

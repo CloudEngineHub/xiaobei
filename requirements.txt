@@ -6,8 +6,10 @@
 #
 # 第三方包清单（被 skills/ crews/ 下脚本 import）：
 requests          # relay_sign.py / youtube-publish / pexels / pixabay ...
+PyYAML>=6,<7      # wx-mp-publisher 精确解析 frontmatter 图片字段
 urllib3           # youtube-publish 重试策略
 Pillow            # wxwork-moments / expert-xhs 媒体处理 / pitch-deck / process_images 自动缩放 / expert-video 旧版 motion-graphics 与 PiP 蒙版
+python-pptx>=1,<2  # pitch-deck；浏览器渲染统一使用 Node Playwright，不安装 Python Playwright
 websockets        # wechat-channels-publish 视频上传
 httpx             # wx-mp-hunter fetch（MicroMessenger UA 直访）
 zstandard         # wx-mp-hunter posts-list（49 号消息 Zstd 解压）

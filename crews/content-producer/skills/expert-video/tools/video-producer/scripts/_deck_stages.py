@@ -78,7 +78,7 @@ STAGES = {
     10: ("slots/delivery-promise.json", "render/deck-render-plan.json", {
         "segments": [], "presenter_source": None, "visual_source": None,
         "base_video": None, "presenter_video": None, "audio_source": None,
-        "instruction": "按承诺渲染底画面：slides 用 deck-render，broll 用 clip-trim/assemble，mixed 两者拼接；avatar 用 liveportrait 生成小窗。记录实际路径与时长，再进 Stage 11。此文件是渲染计划，不是已渲染成功的证明。",
+        "instruction": "按承诺渲染底画面：slides 用 deck-render，broll 用 clip-trim/assemble，mixed 两者拼接；数字人用 avatar 生成小窗。记录实际路径与时长，再进 Stage 11。此文件是渲染计划，不是已渲染成功的证明。",
     }),
 }
 
@@ -92,6 +92,9 @@ def run_if_deck(project: Path, stage: int) -> bool:
     source = project / previous
     if not source.is_file():
         raise SystemExit(f"[error] Stage {stage} 前置缺失: {previous}")
+    if stage == 10:
+        from _visual_plan import check
+        check(project, require_preview=True)
     output = project / target
     if output.is_file():
         print(f"[checkpoint] Stage {stage} 已有产物，沿用：{output}")

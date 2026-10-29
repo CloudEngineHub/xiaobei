@@ -110,7 +110,7 @@ DECK_STUB = """# 幻灯脚本（Stage 1 · deck-talk）
 
 模式：待按 Brief 填 footage / avatar / audio（兼容 none）。
 底画面：slides / broll / mixed；音频讲解模式可只用 B-roll。
-音频来源：待填 recorded / cloned / designed / stock-tts 与路径；footage 沿用 main 已剪视频原声，avatar 使用 LivePortrait 的原驱动音频，audio 保留用户/main 提供音频。
+音频来源：待填 recorded / cloned / designed / stock-tts 与路径；footage 沿用 main 已剪视频原声，avatar 使用 avatar job 的原驱动音频，audio 保留用户/main 提供音频。
 
 ## 第 1 页
 - 单一命题：

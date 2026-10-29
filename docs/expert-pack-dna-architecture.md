@@ -1,5 +1,7 @@
 # 专家包（Expert Pack）+ DNA 架构规划
 
+> 2026-10-17 兼容性说明：下方保留旧版源码调研和结构规划。OpenClaw 2026.10.4 已退役独立 TOOLS.md（备忘迁到 AGENTS.md 的 Tools 节）和 HEARTBEAT.md 自动注入；子 agent 只自动加载 AGENTS.md，Cron 加载 AGENTS/SOUL/IDENTITY/USER，总注入默认预算为 60,000 字符。旧文件布局、2.1/2.2 的白名单和预算不可直接用于新部署；当前规则以 [Workspace Bootstrap 文件机制](workspace-bootstrap-files.md) 为准。专家包按技能按需读取的原则不变。
+
 > 2026-09-23 注：本文件中的 `collage-broll` 独立工具结构已由 `expert-video/workflows/collage-broll.md` 和 `video-producer` 通用视觉工具取代；下方保留当时的架构记录。
 > 2026-10-12 注：main 新增 `expert-osbi` 收纳公开信息提取、跟踪和研究；`expert-bd` 聚焦互动与联络，原始采集走 hunter / smart-search。当前结构与浏览器搜索合并评估见 [OSBI 重构说明](osbi-refactor-and-browser-search.md)。下方旧 BD/市场研究例子按该职责划分理解。
 
@@ -500,7 +502,7 @@ crews/content-producer/
 | `AGENTS.md` 中各平台流程细节 | 拆进对应专家包 `workflows/*.md` |
 | 各平台起号/运营知识文档 | 拆分：平台规则进 SKILL.md、操作步骤进 workflow、风格偏好进 DNA |
 | 外部移植的专家 persona | 拆分：通用原则进 SKILL.md、风格调性拆成 DNA 文档、KPI 和不适用的内容删除 |
-| `business_knowledge.md`（品牌与业务） | 留在 workspace 根，专家包只引用不复制 |
+| `business_knowledge/business_knowledge.md`（品牌与业务） | 留在 main workspace 的共享业务知识目录，专家包只引用不复制 |
 | `calibration/`、`campaign_assets/`（数据 / 资产） | 留在原位，专家包通过路径引用（不是知识资产，不搬家） |
 | 仅限单一领域的技能 | 整体迁入对应专家包 `tools/`，同时从 `BUILTIN_SKILLS` / allowlist 移除 |
 | 跨领域技能（如 `wx-mp-hunter`、`content-calibrator`、`published-track`） | 保持顶层独立技能，由专家包编排调用 |
