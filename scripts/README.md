@@ -126,7 +126,9 @@ bash scripts/update.sh --atomgit
 
 > 目录职责：`~/xiaobei/` = 程序（引擎 + 模板 + 脚本 + 工具 + wrapper）；`~/.openclaw/` = 运行数据（openclaw.json + daemon.env + workspaces + logs）。升级只换 `~/xiaobei/`，用户数据不动。
 
-GitHub PR CI 检查 Linux/macOS 的补丁应用、依赖安装、引擎构建、CLI 入口与技能依赖重复安装。发布 workflow 在上传 tarball 前对 Linux 包执行首装和重跑升级，检查用户配置、工作区文件、登录态文件和 API key 保留；冒烟跳过浏览器下载与微信扫码，服务托管及真实平台登录仍需实际环境验证。
+GitHub PR CI 检查 Linux/macOS 的便携 pnpm 离线启动、补丁应用、依赖安装、引擎构建、CLI 入口与技能依赖重复安装。发布 workflow 在上传 tarball 前对 Linux 包执行首装和重跑升级，检查用户配置、工作区文件、登录态文件和 API key 保留；冒烟跳过浏览器下载与微信扫码，服务托管及真实平台登录仍需实际环境验证。
+
+`prepare-portable-pnpm.mjs` 从仓根 `package.json` 的 `packageManager` 读取 pnpm 版本及 SHA-512，下载并校验 launcher 和四个平台对应的 `@pnpm/exe.*` 原生包，保留 `tools/pnpm/bin/pnpm.mjs` 安装入口。原生文件按启动器支持的 `pnpm-native` / `pnpm-native.exe` 路径放在 pnpm 根目录，与 `dist/` 同级，确保生命周期脚本能找到内置的 node-gyp。pnpm 12 的 npm 包不再含 `dist/pnpm.mjs`，只复制 launcher 会在首次使用时额外下载原生文件，因此 tarball 必须携带目标平台的原生文件；引擎的 `node_modules` 仍由用户安装时重建。PR CI 使用 `--platform host` 准备本机包，禁止启动器联网下载，验证版本和 node-gyp 脚本；发布使用默认 `--platform all` 准备四个平台，再用 portable Node 验证 Linux 入口。包结构或校验失败会在 OpenClaw clone/build 前报错。
 
 ---
 

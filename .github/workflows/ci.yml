@@ -39,6 +39,10 @@ jobs:
         # （显式 version 会与其冲突报 "Multiple versions of pnpm specified"）
         uses: pnpm/action-setup@v6
 
+      - name: Verify bundled pnpm and node-gyp work offline
+        # 与 tarball 发布共用打包器，Linux/macOS 在耗时的引擎构建前验证本机原生包。
+        run: node scripts/prepare-portable-pnpm.mjs --platform host --output "$RUNNER_TEMP/portable-pnpm"
+
       - name: Setup Python and cache downloads
         uses: actions/setup-python@v6
         with:
