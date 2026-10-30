@@ -543,10 +543,11 @@ pnpm_install_prod() {
     # 把 portable node bin 前置到 PATH：esbuild/protobufjs/tlon-skill 等 postinstall
     # 跑 sh -c "node ..."，PATH 里没 node 就 command not found。本脚本卖点是无预装 Node，
     # 小白机无系统 node，必须显式前置 portable node，否则 postinstall 全挂。
+    # pnpm 12 的重试次数通过 PNPM_CONFIG_* 设置，不接受 --fetch-retries。
     run_required_step "pnpm install --prod" \
-        env PATH="$node_bin_dir:$PATH" NODE_OPTIONS="--max-old-space-size=4096" \
+        env PATH="$node_bin_dir:$PATH" NODE_OPTIONS="--max-old-space-size=4096" PNPM_CONFIG_FETCH_RETRIES=5 \
         "$node" "$pnpm" -C "$openclaw_dir" install --prod --frozen-lockfile \
-        --registry=https://registry.npmmirror.com --fetch-retries=5 --fetch-timeout=600000 --network-concurrency=8
+        --registry=https://registry.npmmirror.com --fetch-timeout=600000 --network-concurrency=8
     ui_success "Dependencies installed"
 }
 

@@ -112,10 +112,36 @@ export async function preparePortablePnpm({ output, platform = "all", registry =
           "--offline", "--config.update-notifier=false", "run", "check-node-gyp"], {
           cwd: temporary, env, encoding: "utf8", timeout: 30_000,
         });
+        if (process.platform !== "win32") {
+          // Exercise the shipped installers' actual arguments before the engine
+          // build, using an isolated project with a real node-gyp lifecycle.
+          const project = path.join(smoke, "openclaw");
+          fs.mkdirSync(project);
+          fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({
+            private: true, scripts: { install: "node-gyp --version" },
+          }));
+          const installerEnv = { ...env, WISEFLOW_INSTALL_SH_NO_RUN: "1", WISEFLOW_ROOT: smoke,
+            PNPM_CONFIG_OFFLINE: "true", PNPM_CONFIG_UPDATE_NOTIFIER: "false",
+            PNPM_CONFIG_STORE_DIR: path.join(smoke, "store"),
+          };
+          execFileSync(process.execPath, [path.join(staged, "bin/pnpm.mjs"), "--dir", project,
+            "install", "--lockfile-only", "--ignore-scripts"], {
+            cwd: temporary, env: installerEnv, encoding: "utf8", timeout: 30_000,
+          });
+          fs.mkdirSync(path.join(smoke, "tools/node/bin"), { recursive: true });
+          fs.symlinkSync(process.execPath, path.join(smoke, "tools/node/bin/node"));
+          fs.symlinkSync(staged, path.join(smoke, "tools/pnpm"), "dir");
+          for (const installer of ["install.sh", "install-atomgit.sh"]) {
+            execFileSync("bash", ["-c", 'source "$1"\nVERBOSE=1\npnpm_install_prod',
+              "portable-pnpm-installer-check", fileURLToPath(new URL(installer, import.meta.url))], {
+              cwd: temporary, env: installerEnv, encoding: "utf8", timeout: 30_000,
+            });
+          }
+        }
       }
       fs.mkdirSync(outputRoot, { recursive: true });
       fs.cpSync(staged, path.join(outputRoot, key), { recursive: true });
-      console.log(`Prepared pnpm ${version} for ${key}${key === host ? " (offline launch and node-gyp verified)" : ""}`);
+      console.log(`Prepared pnpm ${version} for ${key}${key === host ? " (offline launch, node-gyp and installer arguments verified)" : ""}`);
     }
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
