@@ -1,6 +1,6 @@
 name: Build Dist Tarball
 
-# 方案 B：CI 只 build 一次（dist 跨平台），ship dist+lockfile（不 ship node_modules）+ pnpm.cjs
+# 方案 B：CI 只 build 一次（dist 跨平台），ship dist+lockfile（不 ship 引擎 node_modules）+ 原生 pnpm
 # + 4 平台 portable Node → 4 个瘦 tarball。
 # 用户侧 install.sh 跑 `pnpm install --prod --frozen-lockfile`（用 bundled pnpm + portable Node）
 # 拉依赖+native prebuilt，无 tsc/无 OOM。
@@ -49,6 +49,10 @@ jobs:
         # 不指定 version，action-setup v6 自动读 package.json 的 packageManager
         # （显式 version 会与其冲突报 "Multiple versions of pnpm specified"）
 
+      - name: Prepare portable pnpm for all release platforms
+        # 在耗时的 clone/build 前验证包结构；版本和 SHA-512 读取仓根 packageManager。
+        run: node scripts/prepare-portable-pnpm.mjs --output "$RUNNER_TEMP/portable-pnpm"
+
       - name: Setup Python and cache downloads
         uses: actions/setup-python@v6
         with:
@@ -84,16 +88,6 @@ jobs:
           test -f browser/plugin/index.ts
           test -f browser/openclaw.plugin.json
 
-      - name: Fetch standalone pnpm (npm package, self-contained)
-        run: |
-          curl -fsSL -o /tmp/pnpm.tgz https://registry.npmmirror.com/pnpm/-/pnpm-12.5.1.tgz
-          rm -rf /tmp/pnpm-pkg
-          mkdir -p /tmp/pnpm-pkg
-          tar -xzf /tmp/pnpm.tgz -C /tmp/pnpm-pkg
-          # 入口 bin/pnpm.mjs（main 字段），dist/pnpm.mjs 是自包含 bundle
-          test -f /tmp/pnpm-pkg/package/bin/pnpm.mjs
-          test -f /tmp/pnpm-pkg/package/dist/pnpm.mjs
-
       - name: Stage engine (no node_modules)
         id: stage
         run: |
@@ -113,8 +107,8 @@ jobs:
             --exclude='apps' \
             "$REPO/openclaw/" "$STAGE/openclaw/"
 
-          # 2. standalone pnpm（用户侧 pnpm install --prod 用，入口 tools/pnpm/bin/pnpm.mjs）
-          cp -a /tmp/pnpm-pkg/package "$STAGE/tools/pnpm"
+          # 2. pnpm 的 launcher + 目标平台原生包在各平台打包时加入。
+          #    保留用户安装入口 tools/pnpm/bin/pnpm.mjs，不在用户机临时下载 pnpm。
 
           # 3. xiaobei-browser（dist + bridge + fixed assets, dependencies installed on target）
           rsync -a --exclude='node_modules' --exclude='.git' --exclude='.browsers' \
@@ -178,6 +172,7 @@ jobs:
             PKG="$RUNNER_TEMP/pkg-$plat"
             rm -rf "$PKG"
             cp -a "$STAGE" "$PKG"
+            cp -a "$RUNNER_TEMP/portable-pnpm/$plat" "$PKG/tools/pnpm"
             # asset 名用 git tag（release 的 source of truth），与 install.sh 按 tag 拉对齐
             TAG="$ASSET_TAG"
 
@@ -190,6 +185,10 @@ jobs:
               curl -fsSL -o /tmp/node.tar.xz "$url"
               tar -xJf /tmp/node.tar.xz -C /tmp/
               mv "/tmp/$subdir" "$PKG/tools/node"
+            fi
+
+            if [[ "$plat" == linux-x64 ]]; then
+              COREPACK_ENABLE_NETWORK=0 "$PKG/tools/node/bin/node" "$PKG/tools/pnpm/bin/pnpm.mjs" --version
             fi
 
             # wrapper: <ROOT>/bin/openclaw → portable node + openclaw.mjs（ROOT 默认 ~/.xiaobei）
